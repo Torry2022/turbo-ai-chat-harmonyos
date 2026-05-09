@@ -1,5 +1,7 @@
 # Turbo AI Chat
 
+[English](README_EN.md) | 中文
+
 ![Turbo AI Chat hero](docs/images/hero.png)
 
 **Turbo AI Chat** 是一个 HarmonyOS NEXT 原生本地大模型聊天 Demo。它用 ArkTS 构建界面，通过 N-API 调用 C++ 原生推理层，并使用 MNN Runtime 在鸿蒙设备端加载 **Gemma 4** MNN 模型完成离线对话。
