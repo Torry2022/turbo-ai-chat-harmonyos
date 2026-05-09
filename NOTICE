@@ -1,0 +1,9 @@
+Turbo AI Chat
+
+This project includes a staged HarmonyOS arm64 MNN runtime binary and minimal
+MNN headers for demo build convenience. MNN is developed by Alibaba and is
+licensed under the Apache License 2.0. See https://github.com/alibaba/MNN.
+
+The recommended Gemma 4 MNN model weights are not included in this repository.
+Download them from the upstream Hugging Face repository:
+https://huggingface.co/taobao-mnn/gemma-4-E2B-it-MNN

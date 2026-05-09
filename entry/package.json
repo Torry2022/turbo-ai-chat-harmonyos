@@ -1,0 +1,13 @@
+{
+  "name": "entry",
+  "version": "1.0.0",
+  "ohos": {
+    "org": "huawei",
+    "buildTool": "hvigor",
+    "directoryLevel": "module"
+  },
+  "description": "Entry module for the MNN Gemma 4 native demo.",
+  "repository": {},
+  "license": "ISC",
+  "dependencies": {}
+}

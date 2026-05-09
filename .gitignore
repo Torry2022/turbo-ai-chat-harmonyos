@@ -1,0 +1,16 @@
+/.DS_Store
+/.idea/
+/.hvigor/
+/build/
+/entry/build/
+/entry/.cxx/
+/entry/.preview/
+/local.properties
+/node_modules/
+/entry/node_modules/
+/oh_modules/
+/entry/oh_modules/
+/models/*
+!/models/.gitkeep
+/turbo_ai_chat*.jpeg
+/third_party/mnn/include/llm/reranker.hpp

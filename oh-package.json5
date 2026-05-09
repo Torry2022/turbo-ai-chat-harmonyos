@@ -1,0 +1,7 @@
+{
+  "modelVersion": "5.0.0",
+  "name": "harmony-gemma4-demo",
+  "version": "1.0.0",
+  "description": "Minimal Harmony native Gemma 4 demo through MNN.",
+  "dependencies": {}
+}

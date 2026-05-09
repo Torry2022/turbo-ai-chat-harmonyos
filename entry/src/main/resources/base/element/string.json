@@ -1,0 +1,16 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "Turbo AI Chat 本地智能聊天"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "Turbo AI Chat 本地智能聊天"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "Turbo AI Chat"
+    }
+  ]
+}
