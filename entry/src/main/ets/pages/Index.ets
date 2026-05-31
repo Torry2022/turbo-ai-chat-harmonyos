@@ -1,6 +1,8 @@
 import { common } from '@kit.AbilityKit';
 import picker from '@ohos.file.picker';
+import fs from '@ohos.file.fs';
 import hidebug from '@ohos.hidebug';
+import image from '@ohos.multimedia.image';
 import entry from 'libentry.so';
 
 interface ChatMessage {
@@ -25,8 +27,15 @@ interface ChatTurn {
   content: string;
 }
 
+interface ImagePayload {
+  pixels: ArrayBuffer;
+  width: number;
+  height: number;
+}
+
 const MAX_GENERATION_TOKENS: number = 512;
 const CONTEXT_MESSAGE_LIMIT: number = 6;
+const VISION_MAX_PIXELS: number = 640000;
 
 @Entry
 @Component
@@ -106,6 +115,31 @@ struct Index {
     return `${(Number(value.toString()) / 1024 / 1024).toFixed(1)} MB`;
   }
 
+  private formatError(err: Object): string {
+    if (err === undefined || err === null) {
+      return '未知错误';
+    }
+    if (typeof err === 'string') {
+      return err;
+    }
+
+    const record = err as Record<string, Object>;
+    const parts: string[] = [];
+    if (record.code !== undefined) {
+      parts.push(`code=${record.code}`);
+    }
+    if (record.name !== undefined) {
+      parts.push(`name=${record.name}`);
+    }
+    if (record.message !== undefined) {
+      parts.push(`${record.message}`);
+    }
+    if (parts.length > 0) {
+      return parts.join(' ');
+    }
+    return `${err}`;
+  }
+
   private refreshStats(): void {
     try {
       const systemMem = hidebug.getSystemMemInfo();
@@ -123,7 +157,7 @@ struct Index {
         systemCpu: '--',
         appPss: '--',
         nativeHeap: '--',
-        systemMem: `不可用：${JSON.stringify(err)}`
+        systemMem: `不可用：${this.formatError(err as Object)}`
       };
     }
   }
@@ -196,6 +230,17 @@ struct Index {
       return message;
     });
     this.scrollToBottom();
+  }
+
+  private sanitizeAssistantText(text: string): string {
+    const lines = text
+      .split('\n')
+      .map((line: string) => line.trimEnd())
+      .filter((line: string) => {
+        const trimmed = line.trim();
+        return trimmed.length > 0 && !/^[*\-•]+\s*$/.test(trimmed);
+      });
+    return lines.join('\n').trim();
   }
 
   private newChat(): void {
@@ -275,7 +320,7 @@ struct Index {
         this.scrollToBottom();
       }, 450);
     }).catch((err: Error) => {
-      this.status = `加载失败：${JSON.stringify(err)}`;
+      this.status = `加载失败：${this.formatError(err as Object)}`;
       this.modelLoadMessage = this.status;
       this.stopModelLoadProgress();
       this.modelLoadProgress = 0;
@@ -288,12 +333,9 @@ struct Index {
   }
 
   private composeChatTurns(text: string): ChatTurn[] {
-    const imageNote = this.selectedImageUri.length > 0
-      ? `\n已选择图片 URI：${this.selectedImageUri}\n说明：界面已选择图片，但原生图片推理暂未接入。`
-      : '';
     const turns: ChatTurn[] = [{
       role: 'system',
-      content: '你是运行在鸿蒙 NEXT 本地设备上的 Gemma 4。请使用用户的语言回答，表达简洁清楚。'
+        content: '你是运行在鸿蒙 NEXT 本地设备上的 Gemma 4。请始终使用简体中文回答，表达简洁清楚。用户提供图片时，请结合图片内容回答；如果用户要求提取文字，请尽量逐行转写图片中的可见文字。'
     }];
     const contextMessages = this.messages
       .filter((message: ChatMessage) => message.includeInContext && message.content.trim().length > 0)
@@ -307,12 +349,54 @@ struct Index {
     });
     turns.push({
       role: 'user',
-      content: `${text}${imageNote}`
+      content: text
     });
     return turns;
   }
 
-  private sendMessage(): void {
+  private async buildImagePayload(uri: string): Promise<ImagePayload> {
+    const file = fs.openSync(uri, fs.OpenMode.READ_ONLY);
+    const source = image.createImageSource(file.fd);
+    let pixelMap: image.PixelMap | undefined = undefined;
+    try {
+      const sourceInfo = await source.getImageInfo();
+      const sourceWidth = sourceInfo.size.width;
+      const sourceHeight = sourceInfo.size.height;
+        const sourcePixels = sourceWidth * sourceHeight;
+        const scale = sourcePixels > VISION_MAX_PIXELS ? Math.sqrt(VISION_MAX_PIXELS / sourcePixels) : 1;
+      const targetWidth = Math.max(1, Math.round(sourceWidth * scale));
+      const targetHeight = Math.max(1, Math.round(sourceHeight * scale));
+
+      pixelMap = await source.createPixelMap({
+        desiredPixelFormat: image.PixelMapFormat.RGBA_8888,
+        desiredSize: {
+          width: targetWidth,
+          height: targetHeight
+        }
+      });
+      if (!pixelMap) {
+        pixelMap = await source.createPixelMap({
+          desiredPixelFormat: image.PixelMapFormat.RGBA_8888
+        });
+      }
+      if (!pixelMap) {
+        throw new Error('createPixelMap returned undefined');
+      }
+      const info = await pixelMap.getImageInfo();
+      const width = info.size.width;
+      const height = info.size.height;
+      const pixels = new ArrayBuffer(width * height * 4);
+      await pixelMap.readPixelsToBuffer(pixels);
+      return { pixels, width, height };
+    } finally {
+      if (pixelMap) {
+        await pixelMap.release();
+      }
+      fs.closeSync(file);
+    }
+  }
+
+  private async sendMessage(): Promise<void> {
     const text = this.inputText.trim();
     if (!this.loaded || this.busy || text.length === 0) {
       return;
@@ -329,20 +413,44 @@ struct Index {
     this.refreshStats();
 
     let streamedChars = 0;
-    entry.generateChatStream(chatTurns, this.maxNewTokens, (chunk: string) => {
-      if (chunk.length > 0) {
-        streamedChars += chunk.length;
-        this.status = `正在生成... ${streamedChars} 字符`;
-        this.appendToMessage(assistantId, chunk);
-      }
-    }).then((finalText: string) => {
-      const answer = finalText.trim().length > 0 ? finalText : '（原生层返回空内容）';
+    let generation: Promise<string>;
+    if (attachedImage.length > 0) {
+      this.status = '正在读取图片...';
+      generation = this.buildImagePayload(attachedImage).then((payload: ImagePayload): Promise<string> => {
+        this.status = '等待视觉模型...';
+        return entry.generateImageChatStream(
+          chatTurns,
+          payload.pixels,
+          payload.width,
+          payload.height,
+          this.maxNewTokens,
+          (chunk: string) => {
+            if (chunk.length > 0) {
+              streamedChars += chunk.length;
+              this.status = `正在生成... ${streamedChars} 字符`;
+              this.appendToMessage(assistantId, chunk);
+            }
+          });
+      });
+    } else {
+      generation = entry.generateChatStream(chatTurns, this.maxNewTokens, (chunk: string) => {
+        if (chunk.length > 0) {
+          streamedChars += chunk.length;
+          this.status = `正在生成... ${streamedChars} 字符`;
+          this.appendToMessage(assistantId, chunk);
+        }
+      });
+    }
+
+    generation.then((finalText: string) => {
+      const cleanedText = this.sanitizeAssistantText(finalText);
+      const answer = cleanedText.length > 0 ? cleanedText : '（原生层返回空内容）';
       this.updateMessage(assistantId, answer);
       this.status = `生成完成（${answer.length} 字符）`;
       this.busy = false;
       this.refreshStats();
     }).catch((err: Error) => {
-      const message = `生成失败：${JSON.stringify(err)}`;
+      const message = `生成失败：${this.formatError(err as Object)}`;
       this.updateMessage(assistantId, message, false);
       this.status = message;
       this.busy = false;
@@ -361,7 +469,7 @@ struct Index {
         this.selectedImageUri = result.photoUris[0];
       }
     }).catch((err: Error) => {
-      this.status = `选择图片失败：${JSON.stringify(err)}`;
+      this.status = `选择图片失败：${this.formatError(err as Object)}`;
     });
   }
 

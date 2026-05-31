@@ -19,6 +19,12 @@ public:
         std::string content;
     };
 
+    struct ImageData {
+        std::vector<uint8_t> rgb;
+        int width = 0;
+        int height = 0;
+    };
+
     GemmaRunner();
     ~GemmaRunner();
 
@@ -31,6 +37,12 @@ public:
         std::string& error);
     std::string generateChatStreaming(
         const std::vector<ChatTurn>& messages,
+        int maxNewTokens,
+        const std::function<void(const std::string&)>& onChunk,
+        std::string& error);
+    std::string generateImageChatStreaming(
+        const std::vector<ChatTurn>& messages,
+        const ImageData& image,
         int maxNewTokens,
         const std::function<void(const std::string&)>& onChunk,
         std::string& error);
