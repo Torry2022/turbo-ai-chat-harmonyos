@@ -33,14 +33,46 @@ interface ImagePayload {
   height: number;
 }
 
+interface ModelProfile {
+  id: string;
+  name: string;
+  shortName: string;
+  directoryName: string;
+  description: string;
+  supportsImage: boolean;
+  systemPrompt: string;
+}
+
 const MAX_GENERATION_TOKENS: number = 512;
 const CONTEXT_MESSAGE_LIMIT: number = 6;
 const VISION_MAX_PIXELS: number = 640000;
+const DEFAULT_MODEL_ID: string = 'gemma4';
+const MODEL_PROFILES: ModelProfile[] = [
+  {
+    id: 'gemma4',
+    name: 'Gemma 4 E2B',
+    shortName: 'Gemma 4',
+    directoryName: 'gemma-4-E2B-it-MNN',
+    description: '多模态 MNN 模型，支持文本和图片输入。',
+    supportsImage: true,
+    systemPrompt: '你是运行在鸿蒙 NEXT 本地设备上的 Gemma 4。请始终使用简体中文回答，表达简洁清楚。用户提供图片时，请结合图片内容回答；如果用户要求提取文字，请尽量逐行转写图片中的可见文字。'
+  },
+  {
+    id: 'minicpm5-1b',
+    name: 'MiniCPM5-1B',
+    shortName: 'MiniCPM5',
+    directoryName: 'MiniCPM5-1B-MNN',
+    description: '轻量文本 MNN 模型，适合快速本地对话。',
+    supportsImage: false,
+    systemPrompt: '你是运行在鸿蒙 NEXT 本地设备上的 MiniCPM5-1B。请始终使用简体中文回答，表达简洁清楚。'
+  }
+];
 
 @Entry
 @Component
 struct Index {
   @State private modelPath: string = '';
+  @State private selectedModelId: string = DEFAULT_MODEL_ID;
   @State private inputText: string = '用一段话介绍鸿蒙 NEXT。';
   @State private selectedImageUri: string = '';
   @State private messages: ChatMessage[] = [];
@@ -71,11 +103,11 @@ struct Index {
 
   aboutToAppear(): void {
     const context = getContext(this) as common.UIAbilityContext;
-    this.modelPath = `${context.filesDir}/gemma-4-E2B-it-MNN/config.json`;
+    this.modelPath = this.defaultConfigPath(context.filesDir, this.currentModel());
     this.messages = [{
       id: this.nextMessageId++,
       role: 'assistant',
-      content: '请先加载模型，然后发送一条简短问题。想要更快响应，可以降低最大输出。',
+      content: `请先加载 ${this.currentModel().shortName}，然后发送一条简短问题。想要更快响应，可以降低最大输出。`,
       imageUri: '',
       time: this.nowTime(),
       includeInContext: false
@@ -98,6 +130,55 @@ struct Index {
       this.monitorTimer = -1;
     }
     this.stopModelLoadProgress();
+  }
+
+  private currentModel(): ModelProfile {
+    const fallback = MODEL_PROFILES[0];
+    for (let index = 0; index < MODEL_PROFILES.length; index++) {
+      if (MODEL_PROFILES[index].id === this.selectedModelId) {
+        return MODEL_PROFILES[index];
+      }
+    }
+    return fallback;
+  }
+
+  private defaultConfigPath(filesDir: string, model: ModelProfile): string {
+    return `${filesDir}/${model.directoryName}/config.json`;
+  }
+
+  private resetLoadedModel(status: string): void {
+    if (this.loaded) {
+      entry.reset();
+    }
+    this.loaded = false;
+    this.status = status;
+    this.modelLoadProgress = 0;
+    this.modelLoadMessage = status;
+  }
+
+  private switchModel(modelId: string): void {
+    if (this.busy || this.modelLoading || modelId === this.selectedModelId) {
+      return;
+    }
+
+    this.selectedModelId = modelId;
+    const context = getContext(this) as common.UIAbilityContext;
+    const model = this.currentModel();
+    this.modelPath = this.defaultConfigPath(context.filesDir, model);
+    if (!model.supportsImage) {
+      this.selectedImageUri = '';
+    }
+    this.resetLoadedModel(`已切换至 ${model.shortName}，请加载模型。`);
+  }
+
+  private updateModelPath(value: string): void {
+    if (this.modelPath === value) {
+      return;
+    }
+    this.modelPath = value;
+    if (!this.modelLoading) {
+      this.resetLoadedModel('模型路径已修改，请重新加载。');
+    }
   }
 
   private nowTime(): string {
@@ -247,14 +328,14 @@ struct Index {
     this.messages = [{
       id: this.nextMessageId++,
       role: 'assistant',
-      content: '新对话已开始。已加载的模型会继续保留在内存中。',
+      content: `新对话已开始。${this.loaded ? `已加载的 ${this.currentModel().shortName} 会继续保留在内存中。` : '请先加载模型。'}`,
       imageUri: '',
       time: this.nowTime(),
       includeInContext: false
     }];
     this.inputText = '';
     this.selectedImageUri = '';
-    this.status = this.loaded ? '模型已加载' : '模型未加载';
+    this.status = this.loaded ? `${this.currentModel().shortName} 已加载` : '模型未加载';
     this.scrollToBottom();
   }
 
@@ -279,7 +360,7 @@ struct Index {
     this.showModelLoadDialog = true;
     this.activeTab = 0;
     this.modelLoadProgress = this.loaded ? 100 : 0;
-    this.modelLoadMessage = this.loaded ? '模型已加载，可以开始聊天。' : '正在准备加载 Gemma 4 本地模型...';
+    this.modelLoadMessage = this.loaded ? `${this.currentModel().shortName} 已加载，可以开始聊天。` : `正在准备加载 ${this.currentModel().shortName} 本地模型...`;
     if (autoStart) {
       setTimeout(() => {
         if (this.showModelLoadDialog && !this.loaded && !this.modelLoading) {
@@ -301,17 +382,17 @@ struct Index {
     this.busy = true;
     this.modelLoading = true;
     this.showModelLoadDialog = true;
-    this.status = '正在加载模型...';
+    this.status = `正在加载 ${this.currentModel().shortName}...`;
     this.modelLoadMessage = '正在加载模型权重，请保持应用在前台。';
     this.startModelLoadProgress();
 
     entry.loadModelAsync(this.modelPath, this.threadNum, this.maxNewTokens).then((_result: string) => {
       this.loaded = entry.isLoaded() as boolean;
-      this.status = '模型已加载';
-      this.modelLoadMessage = '模型加载完成，已进入聊天。';
+      this.status = `${this.currentModel().shortName} 已加载`;
+      this.modelLoadMessage = `${this.currentModel().shortName} 加载完成，已进入聊天。`;
       this.stopModelLoadProgress();
       this.modelLoadProgress = 100;
-      this.appendMessage('assistant', '模型加载完成，现在可以开始提问。', '', false);
+      this.appendMessage('assistant', `${this.currentModel().shortName} 加载完成，现在可以开始提问。`, '', false);
       this.busy = false;
       this.modelLoading = false;
       this.refreshStats();
@@ -335,7 +416,7 @@ struct Index {
   private composeChatTurns(text: string): ChatTurn[] {
     const turns: ChatTurn[] = [{
       role: 'system',
-        content: '你是运行在鸿蒙 NEXT 本地设备上的 Gemma 4。请始终使用简体中文回答，表达简洁清楚。用户提供图片时，请结合图片内容回答；如果用户要求提取文字，请尽量逐行转写图片中的可见文字。'
+      content: this.currentModel().systemPrompt
     }];
     const contextMessages = this.messages
       .filter((message: ChatMessage) => message.includeInContext && message.content.trim().length > 0)
@@ -404,6 +485,11 @@ struct Index {
 
     const chatTurns = this.composeChatTurns(text);
     const attachedImage = this.selectedImageUri;
+    if (attachedImage.length > 0 && !this.currentModel().supportsImage) {
+      this.status = `${this.currentModel().shortName} 不支持图片输入，请清除图片后发送。`;
+      return;
+    }
+
     this.appendMessage('user', text, attachedImage);
     const assistantId = this.appendMessage('assistant', '', '');
     this.inputText = '';
@@ -459,6 +545,11 @@ struct Index {
   }
 
   private chooseImage(): void {
+    if (!this.currentModel().supportsImage) {
+      this.status = `${this.currentModel().shortName} 不支持图片输入。`;
+      return;
+    }
+
     const context = getContext(this) as common.UIAbilityContext;
     const photoPicker = new picker.PhotoViewPicker(context);
     const options = new picker.PhotoSelectOptions();
@@ -516,6 +607,36 @@ struct Index {
       if (index === 0) {
         this.scrollToBottom();
       }
+    });
+  }
+
+  @Builder
+  private ModelOption(profile: ModelProfile) {
+    Column({ space: 4 }) {
+      Row() {
+        Text(profile.name)
+          .fontSize(14)
+          .fontWeight(FontWeight.Medium)
+          .fontColor(this.selectedModelId === profile.id ? '#F4FBFF' : '#B7CDE1')
+          .layoutWeight(1);
+        Text(profile.supportsImage ? '文本 + 图片' : '仅文本')
+          .fontSize(11)
+          .fontColor(profile.supportsImage ? '#8DE4C3' : '#F2B35D');
+      }
+      .width('100%');
+
+      Text(profile.description)
+        .fontSize(12)
+        .lineHeight(18)
+        .fontColor(this.selectedModelId === profile.id ? '#9FBDD5' : '#64788D')
+        .width('100%');
+    }
+    .width('100%')
+    .padding(10)
+    .backgroundColor(this.selectedModelId === profile.id ? '#14344A' : '#091522')
+    .borderRadius(8)
+    .onClick(() => {
+      this.switchModel(profile.id);
     });
   }
 
@@ -631,8 +752,8 @@ struct Index {
       }
 
       Row({ space: 8 }) {
-        Button('图片')
-          .enabled(!this.busy)
+        Button(this.currentModel().supportsImage ? '图片' : '仅文本')
+          .enabled(!this.busy && this.currentModel().supportsImage)
           .height(44)
           .onClick(() => {
             this.chooseImage();
@@ -650,7 +771,7 @@ struct Index {
           });
 
         Button(this.busy ? '生成中' : '发送')
-          .enabled(this.loaded && !this.busy && this.inputText.trim().length > 0)
+          .enabled(this.loaded && !this.busy && this.inputText.trim().length > 0 && (this.selectedImageUri.length === 0 || this.currentModel().supportsImage))
           .height(44)
           .onClick(() => {
             this.sendMessage();
@@ -677,14 +798,28 @@ struct Index {
             .fontSize(18)
             .fontWeight(FontWeight.Bold)
             .fontColor('#F4FBFF');
+
+          Column({ space: 8 }) {
+            ForEach(MODEL_PROFILES, (profile: ModelProfile) => {
+              this.ModelOption(profile);
+            }, (profile: ModelProfile) => profile.id);
+          }
+          .width('100%');
+
           TextInput({ text: this.modelPath, placeholder: '模型配置路径' })
             .onChange((value: string) => {
-              this.modelPath = value;
+              this.updateModelPath(value);
             })
+            .enabled(!this.busy)
             .height(42)
             .fontSize(12)
             .fontColor('#EAF4FF')
             .backgroundColor('#0A1623')
+            .width('100%');
+
+          Text(`当前模型：${this.currentModel().name} · ${this.currentModel().supportsImage ? '支持图片输入' : '仅支持文本输入'}`)
+            .fontSize(12)
+            .fontColor('#8CA2B8')
             .width('100%');
 
           Row({ space: 8 }) {
@@ -733,7 +868,7 @@ struct Index {
             .fontSize(16)
             .fontWeight(FontWeight.Medium)
             .fontColor('#F4FBFF');
-          Text(`每轮会带上最近 ${CONTEXT_MESSAGE_LIMIT} 条可记忆消息，系统提示会固定告诉模型使用中文简洁回答。`)
+          Text(`每轮会带上最近 ${CONTEXT_MESSAGE_LIMIT} 条可记忆消息，系统提示会按当前模型生成，并固定要求使用中文简洁回答。`)
             .fontSize(13)
             .lineHeight(20)
             .fontColor('#8CA2B8');
@@ -835,7 +970,7 @@ struct Index {
               .fontSize(20)
               .fontWeight(FontWeight.Bold)
               .fontColor('#F4FBFF');
-            Text('Gemma 4 · MNN')
+            Text(`${this.currentModel().shortName} · MNN`)
               .fontSize(12)
               .fontColor('#8DE4C3');
           }
