@@ -41,7 +41,16 @@
 
 这个项目当前主线使用的是 **MNN 模型目录**，不是直接加载 `.gguf`。
 
-推荐模型：
+内置可选模型：
+
+| 模型 | 默认目录 | 输入能力 |
+| --- | --- | --- |
+| Gemma 4 E2B | `gemma-4-E2B-it-MNN/` | 文本、图片 |
+| MiniCPM5-1B | `MiniCPM5-1B-MNN/` | 文本 |
+
+App 会读取所选模型目录下的 `config.json`。切换模型只会切换配置路径和提示词，点击“加载模型”后才会真正释放旧模型并加载新模型。
+
+推荐 Gemma 4 模型：
 
 - Hugging Face: [`taobao-mnn/gemma-4-E2B-it-MNN`](https://huggingface.co/taobao-mnn/gemma-4-E2B-it-MNN)
 - 模型类型：Gemma 4 E2B instruction，MNN 4-bit 量化导出
@@ -62,6 +71,8 @@ gemma-4-E2B-it-MNN/
   audio.mnn
   audio.mnn.weight
 ```
+
+MiniCPM5-1B 需要准备为同样的 MNN 目录结构，并放到 App files 目录的 `MiniCPM5-1B-MNN/` 下。官方 BF16、GGUF、MLX 权重不能被当前原生 MNN 推理层直接读取。
 
 如果你手里是 GGUF，需要先走转换或另接 llama.cpp 鸿蒙移植层；这个仓库当前没有直接读取 GGUF。
 
@@ -101,6 +112,12 @@ models/gemma-4-E2B-it-MNN/
 ./scripts/download_gemma4_e2b_mnn.sh /path/to/gemma-4-E2B-it-MNN
 ```
 
+MiniCPM5-1B 暂未提供内置下载脚本；请先自行准备 MNN 导出目录，例如：
+
+```text
+models/MiniCPM5-1B-MNN/
+```
+
 如果没有 `huggingface-cli`，脚本会使用 Python 的 `huggingface_hub`。缺依赖时先安装：
 
 ```sh
@@ -113,6 +130,7 @@ App 默认读取这个路径：
 
 ```text
 /data/storage/el2/base/haps/entry/files/gemma-4-E2B-it-MNN/config.json
+/data/storage/el2/base/haps/entry/files/MiniCPM5-1B-MNN/config.json
 ```
 
 这是 App 内看到的沙箱路径。使用 `hdc file send` 时，通常需要推到物理路径：
@@ -125,6 +143,7 @@ App 默认读取这个路径：
 
 ```sh
 ./scripts/push_model_to_device.sh
+./scripts/push_model_to_device.sh models/MiniCPM5-1B-MNN
 ```
 
 如果你的设备不是默认用户 `100`，可以指定：

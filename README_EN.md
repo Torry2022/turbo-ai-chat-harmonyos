@@ -41,7 +41,16 @@ This is not a cloud-chat wrapper and not a WebView shell. Model files live on th
 
 The current mainline uses an **MNN model directory**, not direct `.gguf` loading.
 
-Recommended model:
+Built-in selectable models:
+
+| Model | Default directory | Input support |
+| --- | --- | --- |
+| Gemma 4 E2B | `gemma-4-E2B-it-MNN/` | Text, image |
+| MiniCPM5-1B | `MiniCPM5-1B-MNN/` | Text |
+
+The app reads `config.json` from the selected model directory. Switching models only changes the selected config path and prompt behavior; the previous model is released and the new model is loaded only after tapping "Load model".
+
+Recommended Gemma 4 model:
 
 - Hugging Face: [`taobao-mnn/gemma-4-E2B-it-MNN`](https://huggingface.co/taobao-mnn/gemma-4-E2B-it-MNN)
 - Model type: Gemma 4 E2B instruction, MNN 4-bit quantized export
@@ -62,6 +71,8 @@ gemma-4-E2B-it-MNN/
   audio.mnn
   audio.mnn.weight
 ```
+
+MiniCPM5-1B must be prepared as the same kind of MNN model directory and placed under `MiniCPM5-1B-MNN/` in the app files directory. The official BF16, GGUF, and MLX weights cannot be loaded directly by the current native MNN inference layer.
 
 If you have a GGUF model, you need a conversion path or a separate llama.cpp HarmonyOS port. This repository does not directly read GGUF yet.
 
@@ -101,6 +112,12 @@ You can also choose a custom directory:
 ./scripts/download_gemma4_e2b_mnn.sh /path/to/gemma-4-E2B-it-MNN
 ```
 
+MiniCPM5-1B does not have a built-in download script yet. Prepare an MNN export directory yourself, for example:
+
+```text
+models/MiniCPM5-1B-MNN/
+```
+
 If `huggingface-cli` is not available, the script falls back to Python `huggingface_hub`. Install it first if needed:
 
 ```sh
@@ -113,6 +130,7 @@ The app reads this path by default:
 
 ```text
 /data/storage/el2/base/haps/entry/files/gemma-4-E2B-it-MNN/config.json
+/data/storage/el2/base/haps/entry/files/MiniCPM5-1B-MNN/config.json
 ```
 
 That is the sandbox path visible to the app. When using `hdc file send`, you usually need to push to the physical path:
@@ -125,6 +143,7 @@ Recommended script:
 
 ```sh
 ./scripts/push_model_to_device.sh
+./scripts/push_model_to_device.sh models/MiniCPM5-1B-MNN
 ```
 
 If your device user id is not `100`, specify it explicitly:
