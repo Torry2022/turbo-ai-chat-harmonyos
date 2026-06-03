@@ -3,7 +3,6 @@ import { ChatViewModel } from '../state/ChatViewModel';
 @Component
 export struct MonitorTab {
   @ObjectLink viewModel: ChatViewModel;
-  @Prop renderVersion: number;
 
   @Builder
   private StatItem(label: string, value: string) {

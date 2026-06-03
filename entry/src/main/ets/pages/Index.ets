@@ -2,6 +2,7 @@ import { common } from '@kit.AbilityKit';
 import { AppHeader } from '../components/AppHeader';
 import { BottomTabs } from '../components/BottomTabs';
 import { ChatTab } from '../components/ChatTab';
+import { DeleteImportedModelDialog } from '../components/DeleteImportedModelDialog';
 import { LaunchScreen } from '../components/LaunchScreen';
 import { ModelLoadDialog } from '../components/ModelLoadDialog';
 import { ModelTab } from '../components/ModelTab';
@@ -29,29 +30,47 @@ struct Index {
         this.viewModel.openModelLoadDialog(true);
       }
     }, 1200);
-    this.monitorTimer = setInterval(() => {
-      this.viewModel.refreshStats();
-    }, 1500);
   }
 
   aboutToDisappear(): void {
-    if (this.monitorTimer >= 0) {
-      clearInterval(this.monitorTimer);
-      this.monitorTimer = -1;
-    }
+    this.stopMonitorTimer();
     this.viewModel.dispose();
   }
 
   private changeTab(index: number): void {
     this.activeTab = index;
     if (index === 0) {
+      this.stopMonitorTimer();
       this.viewModel.scrollToBottom();
+    } else if (index === 2) {
+      this.viewModel.refreshStats();
+      this.startMonitorTimer();
+    } else {
+      this.stopMonitorTimer();
     }
   }
 
   private newChat(): void {
     this.viewModel.newChat();
     this.activeTab = 0;
+    this.stopMonitorTimer();
+  }
+
+  private startMonitorTimer(): void {
+    if (this.monitorTimer >= 0) {
+      return;
+    }
+    this.monitorTimer = setInterval(() => {
+      this.viewModel.refreshStats();
+    }, 1500);
+  }
+
+  private stopMonitorTimer(): void {
+    if (this.monitorTimer < 0) {
+      return;
+    }
+    clearInterval(this.monitorTimer);
+    this.monitorTimer = -1;
   }
 
   @Builder
@@ -60,7 +79,6 @@ struct Index {
       Column({ space: 10 }) {
         AppHeader({
           viewModel: this.viewModel,
-          renderVersion: this.stateVersion,
           onNewChat: () => {
             this.newChat();
           }
@@ -72,18 +90,15 @@ struct Index {
           });
         } else if (this.activeTab === 1) {
           ModelTab({
-            viewModel: this.viewModel,
-            renderVersion: this.stateVersion
+            viewModel: this.viewModel
           });
         } else {
           MonitorTab({
-            viewModel: this.viewModel,
-            renderVersion: this.stateVersion
+            viewModel: this.viewModel
           });
         }
         BottomTabs({
           activeTab: this.activeTab,
-          renderVersion: this.stateVersion,
           onTabChange: (index: number) => {
             this.changeTab(index);
           }
@@ -95,8 +110,12 @@ struct Index {
 
       if (this.viewModel.showModelLoadDialog) {
         ModelLoadDialog({
-          viewModel: this.viewModel,
-          renderVersion: this.stateVersion
+          viewModel: this.viewModel
+        });
+      }
+      if (this.viewModel.showDeleteImportedModelDialog) {
+        DeleteImportedModelDialog({
+          viewModel: this.viewModel
         });
       }
     }

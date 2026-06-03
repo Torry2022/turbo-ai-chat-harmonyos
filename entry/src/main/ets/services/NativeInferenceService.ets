@@ -1,5 +1,5 @@
 import entry from 'libentry.so';
-import { ChatTurn, ImagePayload } from '../models/ChatTypes';
+import { ChatTurn, GenerationResult, ImagePayload } from '../models/ChatTypes';
 
 export class NativeInferenceService {
   loadModel(configPath: string, threadNum: number, maxNewTokens: number): Promise<boolean> {
@@ -8,8 +8,17 @@ export class NativeInferenceService {
     });
   }
 
-  generateText(turns: ChatTurn[], maxNewTokens: number, onChunk: (chunk: string) => void): Promise<string> {
+  generateText(turns: ChatTurn[], maxNewTokens: number, onChunk: (chunk: string) => void): Promise<GenerationResult> {
     return entry.generateChatStream(turns, maxNewTokens, onChunk);
+  }
+
+  generateRawPrompt(
+    prompt: string,
+    maxNewTokens: number,
+    endWith: string,
+    onChunk: (chunk: string) => void
+  ): Promise<GenerationResult> {
+    return entry.generateRawPromptStream(prompt, maxNewTokens, endWith, onChunk);
   }
 
   generateImage(
@@ -17,7 +26,7 @@ export class NativeInferenceService {
     image: ImagePayload,
     maxNewTokens: number,
     onChunk: (chunk: string) => void
-  ): Promise<string> {
+  ): Promise<GenerationResult> {
     return entry.generateImageChatStream(
       turns,
       image.pixels,

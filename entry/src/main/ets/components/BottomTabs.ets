@@ -1,7 +1,6 @@
 @Component
 export struct BottomTabs {
   @Prop activeTab: number;
-  @Prop renderVersion: number;
   onTabChange: (index: number) => void = (_index: number) => {};
 
   @Builder

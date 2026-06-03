@@ -13,6 +13,9 @@ export function stripModelSpecialTokens(content: string): string {
     .replace(/<unk>/g, '')
     .replace(/<\|im_start\|>/g, '')
     .replace(/<\|im_end\|>/g, '')
+    .replace(/<\|begin_of_sentence\|>/g, '')
+    .replace(/<\|User\|>/g, '')
+    .replace(/<\|Assistant\|>/g, '')
     .replace(/<\|begin_of_text\|>/g, '')
     .replace(/<\|end_of_text\|>/g, '');
 

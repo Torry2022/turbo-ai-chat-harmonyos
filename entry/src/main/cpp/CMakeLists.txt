@@ -22,6 +22,10 @@ add_library(entry SHARED
     gemma_runner.cpp
 )
 
+set_target_properties(entry PROPERTIES
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/native-output/${OHOS_ARCH}"
+)
+
 target_include_directories(entry PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}"
     "${MNN_STAGED_INCLUDE_DIR}"

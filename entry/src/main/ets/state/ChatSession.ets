@@ -100,24 +100,9 @@ export class ChatSession {
       role: 'system',
       content: systemPrompt
     }];
-    const contextMessages = this.messages
-      .filter((message: ChatMessage) => {
-        if (!message.includeInContext || message.content.trim().length === 0) {
-          return false;
-        }
-        return message.role !== 'assistant' || !isLikelyIncompleteAssistantText(message.content);
-      })
-      .slice(-CONTEXT_MESSAGE_LIMIT);
-
-    contextMessages.forEach((message: ChatMessage) => {
-      const content = message.role === 'assistant' ? answerTextForContext(message.content) : message.content;
-      if (content.trim().length === 0) {
-        return;
-      }
-      turns.push({
-        role: message.role === 'assistant' ? 'assistant' : 'user',
-        content
-      });
+    const contextTurns = this.composeCompleteContextTurns().slice(-CONTEXT_MESSAGE_LIMIT);
+    contextTurns.forEach((turn: ChatTurn) => {
+      turns.push(turn);
     });
     turns.push({
       role: 'user',
@@ -134,7 +119,53 @@ export class ChatSession {
       .filter((line: string) => {
         const trimmed = line.trim();
         return trimmed.length > 0 && !/^[*\-•]+\s*$/.test(trimmed);
-      });
+    });
     return lines.join('\n').trim();
+  }
+
+  private composeCompleteContextTurns(): ChatTurn[] {
+    const turns: ChatTurn[] = [];
+    let pendingUser: ChatMessage | undefined = undefined;
+
+    this.messages.forEach((message: ChatMessage) => {
+      if (!message.includeInContext || message.content.trim().length === 0) {
+        if (message.role === 'assistant') {
+          pendingUser = undefined;
+        }
+        return;
+      }
+
+      if (message.role === 'user') {
+        pendingUser = message;
+        return;
+      }
+
+      if (message.role !== 'assistant' || pendingUser === undefined) {
+        return;
+      }
+
+      if (isLikelyIncompleteAssistantText(message.content)) {
+        pendingUser = undefined;
+        return;
+      }
+
+      const userContent = pendingUser.content.trim();
+      const assistantContent = answerTextForContext(message.content).trim();
+      pendingUser = undefined;
+      if (userContent.length <= 0 || assistantContent.length <= 0) {
+        return;
+      }
+
+      turns.push({
+        role: 'user',
+        content: userContent
+      });
+      turns.push({
+        role: 'assistant',
+        content: assistantContent
+      });
+    });
+
+    return turns;
   }
 }

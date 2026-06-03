@@ -22,12 +22,13 @@ struct StreamWork {
     napi_deferred deferred = nullptr;
     napi_threadsafe_function callback = nullptr;
     std::string prompt;
+    std::string endWith;
     std::vector<GemmaRunner::ChatTurn> chatMessages;
     bool useChatMessages = false;
     bool useImage = false;
     GemmaRunner::ImageData image;
     int32_t maxNewTokens = 64;
-    std::string output;
+    GemmaRunner::GenerationResult output;
     std::string error;
 };
 
@@ -78,6 +79,23 @@ int32_t ReadOptionalInt(napi_env env, napi_value* args, size_t argc, size_t inde
 napi_value MakeString(napi_env env, const std::string& value) {
     napi_value result = nullptr;
     napi_create_string_utf8(env, value.c_str(), value.size(), &result);
+    return result;
+}
+
+napi_value MakeGenerationResult(napi_env env, const GemmaRunner::GenerationResult& value) {
+    napi_value result = nullptr;
+    napi_create_object(env, &result);
+
+    napi_value text = MakeString(env, value.text);
+    napi_set_named_property(env, result, "text", text);
+
+    napi_value generatedTokens = nullptr;
+    napi_create_int32(env, value.generatedTokens, &generatedTokens);
+    napi_set_named_property(env, result, "generatedTokens", generatedTokens);
+
+    napi_value stopReason = MakeString(env, value.stopReason);
+    napi_set_named_property(env, result, "stopReason", stopReason);
+
     return result;
 }
 
@@ -406,7 +424,97 @@ napi_value GenerateStream(napi_env env, napi_callback_info info) {
                 napi_value err = MakeString(env, work->error);
                 napi_reject_deferred(env, work->deferred, err);
             } else {
-                napi_value result = MakeString(env, work->output);
+                napi_value result = MakeGenerationResult(env, work->output);
+                napi_resolve_deferred(env, work->deferred, result);
+            }
+            napi_release_threadsafe_function(work->callback, napi_tsfn_release);
+            napi_delete_async_work(env, work->work);
+            delete work;
+        },
+        streamWork,
+        &streamWork->work);
+
+    napi_queue_async_work(env, streamWork->work);
+    return promise;
+}
+
+napi_value GenerateRawPromptStream(napi_env env, napi_callback_info info) {
+    size_t argc = 4;
+    napi_value args[4] = {nullptr};
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+
+    if (argc < 1 || args[0] == nullptr) {
+        napi_throw_error(env, nullptr, "generateRawPromptStream requires a prompt");
+        return nullptr;
+    }
+    if (argc < 4 || args[3] == nullptr) {
+        napi_throw_error(env, nullptr, "generateRawPromptStream requires an onChunk callback");
+        return nullptr;
+    }
+
+    napi_valuetype callbackType = napi_undefined;
+    napi_typeof(env, args[3], &callbackType);
+    if (callbackType != napi_function) {
+        napi_throw_error(env, nullptr, "generateRawPromptStream onChunk must be a function");
+        return nullptr;
+    }
+
+    auto* streamWork = new StreamWork();
+    streamWork->env = env;
+    streamWork->prompt = ReadString(env, args[0]);
+    streamWork->maxNewTokens = std::clamp(ReadOptionalInt(env, args, argc, 1, 64), 1, 2048);
+    if (argc >= 3 && args[2] != nullptr) {
+        napi_valuetype endWithType = napi_undefined;
+        napi_typeof(env, args[2], &endWithType);
+        if (endWithType == napi_string) {
+            streamWork->endWith = ReadString(env, args[2]);
+        }
+    }
+
+    napi_value promise = nullptr;
+    napi_create_promise(env, &streamWork->deferred, &promise);
+
+    napi_value resourceName = nullptr;
+    napi_create_string_utf8(env, "gemmaGenerateRawPromptStream", NAPI_AUTO_LENGTH, &resourceName);
+    napi_create_threadsafe_function(
+        env,
+        args[3],
+        nullptr,
+        resourceName,
+        0,
+        1,
+        nullptr,
+        nullptr,
+        nullptr,
+        CallStreamChunk,
+        &streamWork->callback);
+
+    napi_create_async_work(
+        env,
+        nullptr,
+        resourceName,
+        [](napi_env, void* data) {
+            auto* work = static_cast<StreamWork*>(data);
+            work->output = g_runner.generateRawPromptStreaming(
+                work->prompt,
+                work->maxNewTokens,
+                work->endWith,
+                [work](const std::string& chunk) {
+                    if (chunk.empty()) {
+                        return;
+                    }
+                    auto* streamChunk = new StreamChunk{chunk};
+                    napi_call_threadsafe_function(work->callback, streamChunk, napi_tsfn_nonblocking);
+                },
+                work->error);
+        },
+        [](napi_env env, napi_status, void* data) {
+            auto* work = static_cast<StreamWork*>(data);
+            if (!work->error.empty()) {
+                napi_value err = MakeString(env, work->error);
+                napi_reject_deferred(env, work->deferred, err);
+            } else {
+                napi_value result = MakeGenerationResult(env, work->output);
                 napi_resolve_deferred(env, work->deferred, result);
             }
             napi_release_threadsafe_function(work->callback, napi_tsfn_release);
@@ -495,7 +603,7 @@ napi_value GenerateChatStream(napi_env env, napi_callback_info info) {
                 napi_value err = MakeString(env, work->error);
                 napi_reject_deferred(env, work->deferred, err);
             } else {
-                napi_value result = MakeString(env, work->output);
+                napi_value result = MakeGenerationResult(env, work->output);
                 napi_resolve_deferred(env, work->deferred, result);
             }
             napi_release_threadsafe_function(work->callback, napi_tsfn_release);
@@ -600,7 +708,7 @@ napi_value GenerateImageChatStream(napi_env env, napi_callback_info info) {
                 napi_value err = MakeString(env, work->error);
                 napi_reject_deferred(env, work->deferred, err);
             } else {
-                napi_value result = MakeString(env, work->output);
+                napi_value result = MakeGenerationResult(env, work->output);
                 napi_resolve_deferred(env, work->deferred, result);
             }
             napi_release_threadsafe_function(work->callback, napi_tsfn_release);
@@ -634,6 +742,7 @@ static napi_value Init(napi_env env, napi_value exports) {
         {"generate", nullptr, Generate, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"generateAsync", nullptr, GenerateAsync, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"generateStream", nullptr, GenerateStream, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"generateRawPromptStream", nullptr, GenerateRawPromptStream, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"generateChatStream", nullptr, GenerateChatStream, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"generateImageChatStream", nullptr, GenerateImageChatStream, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"reset", nullptr, Reset, nullptr, nullptr, nullptr, napi_default, nullptr},

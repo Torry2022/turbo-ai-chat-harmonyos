@@ -19,5 +19,11 @@ export interface ImagePayload {
   height: number;
 }
 
+export interface GenerationResult {
+  text: string;
+  generatedTokens: number;
+  stopReason: string;
+}
+
 export const CONTEXT_MESSAGE_LIMIT: number = 6;
 export const VISION_MAX_PIXELS: number = 640000;

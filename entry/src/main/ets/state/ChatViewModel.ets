@@ -1,6 +1,10 @@
 import { common } from '@kit.AbilityKit';
-import { ChatMessage, ChatTurn } from '../models/ChatTypes';
+import { ChatMessage, ChatTurn, GenerationResult } from '../models/ChatTypes';
+import { ImportedModelDraft } from '../models/ImportedModelTypes';
 import {
+  CHAT_FORMAT_MNN_AUTO,
+  CHAT_FORMAT_QWEN_IM,
+  CHAT_FORMAT_RAW_TEMPLATE,
   DEFAULT_MAX_NEW_TOKENS,
   DEFAULT_THREAD_NUM,
   MAX_GENERATION_TOKENS,
@@ -8,6 +12,7 @@ import {
 } from '../models/ModelProfile';
 import { EMPTY_RUNTIME_STATS, RuntimeStats } from '../models/RuntimeStats';
 import { ImagePayloadService } from '../services/ImagePayloadService';
+import { ModelImportService } from '../services/ModelImportService';
 import { NativeInferenceService } from '../services/NativeInferenceService';
 import { RuntimeStatsService } from '../services/RuntimeStatsService';
 import { formatError } from '../utils/formatters';
@@ -28,6 +33,18 @@ export class ChatViewModel {
   modelLoading: boolean = false;
   modelLoadProgress: number = 0;
   modelLoadMessage: string = '准备加载本地模型';
+  modelImporting: boolean = false;
+  modelImportMessage: string = '可导入 MNN 模型 zip 包';
+  editingImportedModelId: string = '';
+  importedModelNameInput: string = '';
+  importedModelShortNameInput: string = '';
+  importedModelSystemPromptInput: string = '';
+  importedModelChatFormatInput: string = CHAT_FORMAT_MNN_AUTO;
+  importedModelPromptTemplateInput: string = '';
+  importedModelStopSequenceInput: string = '';
+  importedModelSupportsImage: boolean = false;
+  showDeleteImportedModelDialog: boolean = false;
+  pendingDeleteImportedModelId: string = '';
   stats: RuntimeStats = EMPTY_RUNTIME_STATS;
   chatScroller: Scroller = new Scroller();
 
@@ -40,6 +57,7 @@ export class ChatViewModel {
   private modelManager: ModelManager = new ModelManager();
   private nativeService: NativeInferenceService = new NativeInferenceService();
   private imageService: ImagePayloadService = new ImagePayloadService();
+  private modelImportService: ModelImportService = new ModelImportService();
   private statsService: RuntimeStatsService = new RuntimeStatsService();
 
   get messages(): ChatMessage[] {
@@ -69,6 +87,14 @@ export class ChatViewModel {
     this.session.initializeWelcome(this.currentModel().shortName);
     this.refreshStats();
     this.notify();
+    this.modelImportService.loadImportedProfiles(this.filesDir).then((profiles: ModelProfile[]) => {
+      this.modelManager.updateImportedProfiles(profiles, this.filesDir);
+      this.prepareImportedModelEditor(this.selectedModelId);
+      this.notify();
+    }).catch((err: Error) => {
+      this.modelImportMessage = `读取导入模型失败：${formatError(err as Object)}`;
+      this.notify();
+    });
   }
 
   dispose(): void {
@@ -89,6 +115,7 @@ export class ChatViewModel {
     }
 
     const model = this.modelManager.switchModel(modelId, this.filesDir);
+    this.prepareImportedModelEditor(model.id);
     if (!model.supportsImage) {
       this.selectedImageUri = '';
     }
@@ -119,6 +146,217 @@ export class ChatViewModel {
   updateThreadNum(value: number): void {
     this.threadNum = Math.round(value);
     this.notify();
+  }
+
+  importModelPackage(): void {
+    if (this.busy || this.modelLoading || this.modelImporting) {
+      return;
+    }
+    if (!this.context) {
+      this.modelImportMessage = '导入失败：上下文不可用';
+      this.notify();
+      return;
+    }
+
+    this.busy = true;
+    this.modelImporting = true;
+    this.modelImportMessage = '请选择 MNN 模型 zip 包...';
+    this.status = '正在导入模型包...';
+    this.notify();
+
+    this.modelImportService.pickAndImport(this.context, this.modelProfiles()).then((result) => {
+      if (result === undefined) {
+        this.modelImportMessage = '已取消导入模型包';
+        this.status = this.loaded ? `${this.currentModel().shortName} 已加载` : '模型未加载';
+        this.busy = false;
+        this.modelImporting = false;
+        this.notify();
+        return;
+      }
+
+      this.modelManager.addImportedProfile(result.profile, this.filesDir);
+      this.prepareImportedModelEditor(result.profile.id);
+      if (!result.profile.supportsImage) {
+        this.selectedImageUri = '';
+      }
+      this.resetLoadedModel(result.message);
+      this.modelImportMessage = result.message;
+      this.busy = false;
+      this.modelImporting = false;
+      this.notify();
+    }).catch((err: Error) => {
+      const message = `导入失败：${formatError(err as Object)}`;
+      this.modelImportMessage = message;
+      this.status = message;
+      this.busy = false;
+      this.modelImporting = false;
+      this.refreshStats();
+      this.notify();
+    });
+  }
+
+  prepareImportedModelEditor(modelId: string): void {
+    const profile = this.findProfile(modelId);
+    if (profile === undefined || profile.source !== 'imported') {
+      this.editingImportedModelId = '';
+      this.importedModelNameInput = '';
+      this.importedModelShortNameInput = '';
+      this.importedModelSystemPromptInput = '';
+      this.importedModelChatFormatInput = CHAT_FORMAT_MNN_AUTO;
+      this.importedModelPromptTemplateInput = '';
+      this.importedModelStopSequenceInput = '';
+      this.importedModelSupportsImage = false;
+      return;
+    }
+    const draft = this.modelImportService.createDraft(profile);
+    this.editingImportedModelId = profile.id;
+    this.importedModelNameInput = draft.name;
+    this.importedModelShortNameInput = draft.shortName;
+    this.importedModelSystemPromptInput = draft.systemPrompt;
+    this.importedModelChatFormatInput = draft.chatFormat;
+    this.importedModelPromptTemplateInput = draft.promptTemplate;
+    this.importedModelStopSequenceInput = draft.stopSequence;
+    this.importedModelSupportsImage = draft.supportsImage;
+  }
+
+  updateImportedModelName(value: string): void {
+    this.importedModelNameInput = value;
+    this.notify();
+  }
+
+  updateImportedModelShortName(value: string): void {
+    this.importedModelShortNameInput = value;
+    this.notify();
+  }
+
+  updateImportedModelSystemPrompt(value: string): void {
+    this.importedModelSystemPromptInput = value;
+    this.notify();
+  }
+
+  updateImportedModelChatFormat(value: string): void {
+    this.importedModelChatFormatInput = value;
+    this.notify();
+  }
+
+  cycleImportedModelChatFormat(): void {
+    if (this.importedModelChatFormatInput === CHAT_FORMAT_MNN_AUTO) {
+      this.importedModelChatFormatInput = CHAT_FORMAT_RAW_TEMPLATE;
+    } else if (this.importedModelChatFormatInput === CHAT_FORMAT_RAW_TEMPLATE) {
+      this.importedModelChatFormatInput = CHAT_FORMAT_QWEN_IM;
+    } else {
+      this.importedModelChatFormatInput = CHAT_FORMAT_MNN_AUTO;
+    }
+    this.notify();
+  }
+
+  updateImportedModelPromptTemplate(value: string): void {
+    this.importedModelPromptTemplateInput = value;
+    this.notify();
+  }
+
+  updateImportedModelStopSequence(value: string): void {
+    this.importedModelStopSequenceInput = value;
+    this.notify();
+  }
+
+  updateImportedModelSupportsImage(value: boolean): void {
+    this.importedModelSupportsImage = value;
+    this.notify();
+  }
+
+  saveImportedModelProfile(): void {
+    if (this.busy || this.modelLoading || this.modelImporting || this.editingImportedModelId.length <= 0) {
+      return;
+    }
+    const profile = this.findProfile(this.editingImportedModelId);
+    if (profile === undefined) {
+      this.modelImportMessage = '保存失败：导入模型不存在';
+      this.notify();
+      return;
+    }
+    const draft: ImportedModelDraft = {
+      name: this.importedModelNameInput,
+      shortName: this.importedModelShortNameInput,
+      supportsImage: this.importedModelSupportsImage,
+      systemPrompt: this.importedModelSystemPromptInput,
+      chatFormat: this.importedModelChatFormatInput,
+      promptTemplate: this.importedModelPromptTemplateInput,
+      stopSequence: this.importedModelStopSequenceInput
+    };
+    const updated = this.modelImportService.applyDraft(profile, draft);
+    this.modelImportService.updateImportedProfile(this.filesDir, updated, this.modelProfiles()).then((profiles: ModelProfile[]) => {
+      this.modelManager.updateImportedProfiles(profiles, this.filesDir);
+      this.prepareImportedModelEditor(updated.id);
+      if (!updated.supportsImage) {
+        this.selectedImageUri = '';
+      }
+      this.modelImportMessage = `${updated.shortName} 配置已保存`;
+      this.status = this.loaded ? `${this.currentModel().shortName} 已加载` : this.status;
+      this.notify();
+    }).catch((err: Error) => {
+      this.modelImportMessage = `保存失败：${formatError(err as Object)}`;
+      this.notify();
+    });
+  }
+
+  requestDeleteImportedModel(modelId: string): void {
+    if (this.busy || this.modelLoading || this.modelImporting) {
+      return;
+    }
+    const profile = this.findProfile(modelId);
+    if (profile === undefined || profile.source !== 'imported') {
+      return;
+    }
+    this.pendingDeleteImportedModelId = modelId;
+    this.showDeleteImportedModelDialog = true;
+    this.notify();
+  }
+
+  cancelDeleteImportedModel(): void {
+    this.pendingDeleteImportedModelId = '';
+    this.showDeleteImportedModelDialog = false;
+    this.notify();
+  }
+
+  confirmDeleteImportedModel(): void {
+    if (this.pendingDeleteImportedModelId.length <= 0 || this.busy || this.modelLoading || this.modelImporting) {
+      return;
+    }
+    const modelId = this.pendingDeleteImportedModelId;
+    const profile = this.findProfile(modelId);
+    if (profile === undefined) {
+      this.cancelDeleteImportedModel();
+      return;
+    }
+
+    this.busy = true;
+    this.modelImporting = true;
+    this.showDeleteImportedModelDialog = false;
+    this.modelImportMessage = `正在删除 ${profile.shortName}...`;
+    this.notify();
+
+    this.modelImportService.deleteImportedProfile(this.filesDir, modelId).then((profiles: ModelProfile[]) => {
+      const deletingCurrent = this.selectedModelId === modelId;
+      if (deletingCurrent && this.loaded) {
+        this.nativeService.reset();
+        this.loaded = false;
+      }
+      this.modelManager.updateImportedProfiles(profiles, this.filesDir);
+      this.prepareImportedModelEditor(this.selectedModelId);
+      this.pendingDeleteImportedModelId = '';
+      this.modelImportMessage = `${profile.shortName} 已删除`;
+      this.status = deletingCurrent ? '导入模型已删除，请重新选择并加载模型。' : this.status;
+      this.busy = false;
+      this.modelImporting = false;
+      this.notify();
+    }).catch((err: Error) => {
+      this.pendingDeleteImportedModelId = '';
+      this.modelImportMessage = `删除失败：${formatError(err as Object)}`;
+      this.busy = false;
+      this.modelImporting = false;
+      this.notify();
+    });
   }
 
   clearSelectedImage(): void {
@@ -256,7 +494,7 @@ export class ChatViewModel {
     this.notifyAndScroll();
 
     let streamedChars = 0;
-    let generation: Promise<string>;
+    let generation: Promise<GenerationResult>;
     if (attachedImage.length > 0) {
       this.status = '正在读取图片...';
       this.notify();
@@ -273,17 +511,17 @@ export class ChatViewModel {
         );
       });
     } else {
-      generation = this.nativeService.generateText(chatTurns, this.maxNewTokens, (chunk: string) => {
+      generation = this.generateTextForCurrentModel(chatTurns, (chunk: string) => {
         streamedChars = this.handleStreamChunk(assistantId, chunk, streamedChars);
       });
     }
 
-    generation.then((finalText: string) => {
-      const cleanedText = this.session.sanitizeAssistantText(finalText);
+    generation.then((result: GenerationResult) => {
+      const cleanedText = this.session.sanitizeAssistantText(result.text);
       const answer = cleanedText.length > 0 ? cleanedText : '（原生层返回空内容）';
-      const includeInContext = !isLikelyIncompleteAssistantText(answer);
+      const includeInContext = this.shouldIncludeAssistantInContext(answer, result);
       this.session.updateMessage(assistantId, answer, includeInContext);
-      this.status = includeInContext ? `生成完成（${answer.length} 字符）` : `生成完成（${answer.length} 字符，可能被截断）`;
+      this.status = this.formatGenerationStatus(answer, includeInContext, result);
       this.busy = false;
       this.refreshStats();
       this.notifyAndScroll();
@@ -331,6 +569,113 @@ export class ChatViewModel {
 
   private composeChatTurns(text: string): ChatTurn[] {
     return this.session.composeChatTurns(this.currentModel().systemPrompt, text);
+  }
+
+  private generateTextForCurrentModel(turns: ChatTurn[], onChunk: (chunk: string) => void): Promise<GenerationResult> {
+    const model = this.currentModel();
+    const chatFormat = model.chatFormat ?? CHAT_FORMAT_MNN_AUTO;
+    if (chatFormat === CHAT_FORMAT_QWEN_IM) {
+      return this.nativeService.generateRawPrompt(
+        this.composeQwenPrompt(turns),
+        this.maxNewTokens,
+        model.stopSequence ?? '<|im_end|>',
+        onChunk
+      );
+    }
+    if (chatFormat === CHAT_FORMAT_RAW_TEMPLATE && model.promptTemplate !== undefined && model.promptTemplate.length > 0) {
+      return this.nativeService.generateRawPrompt(
+        this.composeRawTemplatePrompt(turns, model.promptTemplate),
+        this.maxNewTokens,
+        model.stopSequence ?? '',
+        onChunk
+      );
+    }
+    return this.nativeService.generateText(turns, this.maxNewTokens, onChunk);
+  }
+
+  private composeQwenPrompt(turns: ChatTurn[]): string {
+    let prompt = '';
+    turns.forEach((turn: ChatTurn) => {
+      const role = turn.role === 'assistant' ? 'assistant' : turn.role === 'system' ? 'system' : 'user';
+      const content = turn.content.trim();
+      if (content.length <= 0) {
+        return;
+      }
+      prompt += `<|im_start|>${role}\n${content}<|im_end|>\n`;
+    });
+    prompt += '<|im_start|>assistant\n';
+    return prompt;
+  }
+
+  private composeRawTemplatePrompt(turns: ChatTurn[], promptTemplate: string): string {
+    const conversation = this.composeSingleUserPromptText(turns);
+    if (promptTemplate.indexOf('%s') >= 0) {
+      return promptTemplate.replace('%s', conversation);
+    }
+    return `${promptTemplate}\n${conversation}`;
+  }
+
+  private composeSingleUserPromptText(turns: ChatTurn[]): string {
+    let systemPrompt = '';
+    const historyParts: string[] = [];
+    let currentUserText = '';
+    turns.forEach((turn: ChatTurn) => {
+      const content = turn.content.trim();
+      if (content.length <= 0) {
+        return;
+      }
+      if (turn.role === 'system') {
+        systemPrompt = content;
+      } else if (turn.role === 'assistant') {
+        historyParts.push(`助手：${content}`);
+      } else {
+        currentUserText = content;
+      }
+    });
+
+    const sections: string[] = [];
+    const constraints = '请只回答“当前用户问题”。如果当前问题涉及具体产品、版本、年份、型号、厂商路线或外部事实，而你没有可靠把握，请明确说不确定，不要猜测或编造。专有名词保持原样，不要按英文或字面含义拆解。';
+    if (systemPrompt.length > 0) {
+      sections.push(`系统要求：\n${systemPrompt}\n${constraints}`);
+    } else {
+      sections.push(`系统要求：\n${constraints}`);
+    }
+    if (historyParts.length > 0) {
+      sections.push(`历史对话：\n${historyParts.join('\n')}`);
+    }
+    sections.push(`当前用户问题：\n${currentUserText}`);
+    return sections.join('\n\n');
+  }
+
+  private shouldIncludeAssistantInContext(answer: string, result: GenerationResult): boolean {
+    if (result.stopReason === 'max_tokens') {
+      return false;
+    }
+    if (result.stopReason === 'eos' || result.stopReason === 'user_stop') {
+      return true;
+    }
+    return !isLikelyIncompleteAssistantText(answer);
+  }
+
+  private formatGenerationStatus(answer: string, includeInContext: boolean, result: GenerationResult): string {
+    const tokenText = result.generatedTokens > 0 ? `，${result.generatedTokens} tokens` : '';
+    if (result.stopReason === 'max_tokens') {
+      return `生成完成（${answer.length} 字符${tokenText}，达到最大输出）`;
+    }
+    if (!includeInContext) {
+      return `生成完成（${answer.length} 字符${tokenText}，可能被截断）`;
+    }
+    return `生成完成（${answer.length} 字符${tokenText}）`;
+  }
+
+  private findProfile(modelId: string): ModelProfile | undefined {
+    const profiles = this.modelProfiles();
+    for (let index = 0; index < profiles.length; index++) {
+      if (profiles[index].id === modelId) {
+        return profiles[index];
+      }
+    }
+    return undefined;
   }
 
   private handleStreamChunk(assistantId: number, chunk: string, streamedChars: number): number {

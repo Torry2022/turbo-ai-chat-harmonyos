@@ -3,7 +3,6 @@ import { ChatViewModel } from '../state/ChatViewModel';
 @Component
 export struct AppHeader {
   @ObjectLink viewModel: ChatViewModel;
-  @Prop renderVersion: number;
   onNewChat: () => void = () => {};
 
   build() {
@@ -17,11 +16,17 @@ export struct AppHeader {
           .fontSize(20)
           .fontWeight(FontWeight.Bold)
           .fontColor('#F4FBFF');
-        Text(this.viewModel.status)
+        Marquee({
+          start: true,
+          step: 4,
+          loop: -1,
+          fromStart: true,
+          src: this.viewModel.status
+        })
           .fontSize(12)
           .fontColor(this.viewModel.loaded ? '#45D6A4' : '#F2B35D')
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis });
+          .width('100%')
+          .height(18);
       }
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start);

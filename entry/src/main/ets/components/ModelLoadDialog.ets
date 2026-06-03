@@ -3,7 +3,6 @@ import { ChatViewModel } from '../state/ChatViewModel';
 @Component
 export struct ModelLoadDialog {
   @ObjectLink viewModel: ChatViewModel;
-  @Prop renderVersion: number;
 
   build() {
     Stack({ alignContent: Alignment.Center }) {

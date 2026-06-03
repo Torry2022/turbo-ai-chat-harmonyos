@@ -25,22 +25,34 @@ public:
         int height = 0;
     };
 
+    struct GenerationResult {
+        std::string text;
+        int generatedTokens = 0;
+        std::string stopReason = "unknown";
+    };
+
     GemmaRunner();
     ~GemmaRunner();
 
     bool load(const std::string& configPath, int threadNum, int maxNewTokens, std::string& error);
     std::string generate(const std::string& prompt, int maxNewTokens, std::string& error);
-    std::string generateStreaming(
+    GenerationResult generateStreaming(
         const std::string& prompt,
         int maxNewTokens,
         const std::function<void(const std::string&)>& onChunk,
         std::string& error);
-    std::string generateChatStreaming(
+    GenerationResult generateRawPromptStreaming(
+        const std::string& prompt,
+        int maxNewTokens,
+        const std::string& endWith,
+        const std::function<void(const std::string&)>& onChunk,
+        std::string& error);
+    GenerationResult generateChatStreaming(
         const std::vector<ChatTurn>& messages,
         int maxNewTokens,
         const std::function<void(const std::string&)>& onChunk,
         std::string& error);
-    std::string generateImageChatStreaming(
+    GenerationResult generateImageChatStreaming(
         const std::vector<ChatTurn>& messages,
         const ImageData& image,
         int maxNewTokens,

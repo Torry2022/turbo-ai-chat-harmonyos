@@ -7,27 +7,48 @@ import {
 export class ModelManager {
   selectedModelId: string = DEFAULT_MODEL_ID;
   modelPath: string = '';
+  private importedProfiles: ModelProfile[] = [];
 
   profiles(): ModelProfile[] {
-    return MODEL_PROFILES;
+    return MODEL_PROFILES.concat(this.importedProfiles);
   }
 
   currentModel(): ModelProfile {
     const fallback = MODEL_PROFILES[0];
-    for (let index = 0; index < MODEL_PROFILES.length; index++) {
-      if (MODEL_PROFILES[index].id === this.selectedModelId) {
-        return MODEL_PROFILES[index];
+    const profiles = this.profiles();
+    for (let index = 0; index < profiles.length; index++) {
+      if (profiles[index].id === this.selectedModelId) {
+        return profiles[index];
       }
     }
     return fallback;
   }
 
   defaultConfigPath(filesDir: string, model: ModelProfile): string {
+    if (model.configPath !== undefined && model.configPath.length > 0) {
+      return model.configPath;
+    }
     return `${filesDir}/${model.directoryName}/config.json`;
   }
 
-  initialize(filesDir: string): void {
+  initialize(filesDir: string, importedProfiles: ModelProfile[] = []): void {
+    this.importedProfiles = importedProfiles;
     this.modelPath = this.defaultConfigPath(filesDir, this.currentModel());
+  }
+
+  updateImportedProfiles(importedProfiles: ModelProfile[], filesDir: string): void {
+    this.importedProfiles = importedProfiles;
+    const current = this.currentModel();
+    if (current.id !== this.selectedModelId) {
+      this.selectedModelId = DEFAULT_MODEL_ID;
+    }
+    this.modelPath = this.defaultConfigPath(filesDir, this.currentModel());
+  }
+
+  addImportedProfile(profile: ModelProfile, filesDir: string): void {
+    this.importedProfiles = this.importedProfiles.concat([profile]);
+    this.selectedModelId = profile.id;
+    this.modelPath = this.defaultConfigPath(filesDir, profile);
   }
 
   switchModel(modelId: string, filesDir: string): ModelProfile {
