@@ -15,6 +15,78 @@ using MNN::Transformer::PromptImagePart;
 
 namespace {
 
+bool IsUtf8Continuation(unsigned char value) {
+    return (value & 0xC0) == 0x80;
+}
+
+bool IsValidUtf8Sequence(const std::string& text, size_t index, size_t length) {
+    if (index + length > text.size()) {
+        return false;
+    }
+
+    const auto first = static_cast<unsigned char>(text[index]);
+    if (length == 1) {
+        return first <= 0x7F;
+    }
+    if (length == 2) {
+        return IsUtf8Continuation(static_cast<unsigned char>(text[index + 1]));
+    }
+    if (length == 3) {
+        const auto second = static_cast<unsigned char>(text[index + 1]);
+        const auto third = static_cast<unsigned char>(text[index + 2]);
+        if (!IsUtf8Continuation(second) || !IsUtf8Continuation(third)) {
+            return false;
+        }
+        return (first != 0xE0 || second >= 0xA0) && (first != 0xED || second <= 0x9F);
+    }
+    if (length == 4) {
+        const auto second = static_cast<unsigned char>(text[index + 1]);
+        const auto third = static_cast<unsigned char>(text[index + 2]);
+        const auto fourth = static_cast<unsigned char>(text[index + 3]);
+        if (!IsUtf8Continuation(second) || !IsUtf8Continuation(third) || !IsUtf8Continuation(fourth)) {
+            return false;
+        }
+        return (first != 0xF0 || second >= 0x90) && (first != 0xF4 || second <= 0x8F);
+    }
+    return false;
+}
+
+size_t Utf8SequenceLength(unsigned char value) {
+    if (value <= 0x7F) {
+        return 1;
+    }
+    if (value >= 0xC2 && value <= 0xDF) {
+        return 2;
+    }
+    if (value >= 0xE0 && value <= 0xEF) {
+        return 3;
+    }
+    if (value >= 0xF0 && value <= 0xF4) {
+        return 4;
+    }
+    return 0;
+}
+
+size_t ValidUtf8PrefixLength(const std::string& text) {
+    size_t index = 0;
+    while (index < text.size()) {
+        const size_t length = Utf8SequenceLength(static_cast<unsigned char>(text[index]));
+        if (length == 0) {
+            index++;
+            continue;
+        }
+        if (index + length > text.size()) {
+            break;
+        }
+        if (!IsValidUtf8Sequence(text, index, length)) {
+            index++;
+            continue;
+        }
+        index += length;
+    }
+    return index;
+}
+
 class ChunkStreamBuffer : public std::streambuf {
 public:
     explicit ChunkStreamBuffer(const std::function<void(const std::string&)>& onChunk) : onChunk_(onChunk) {}
@@ -30,9 +102,8 @@ protected:
         }
         std::string chunk(s, static_cast<size_t>(n));
         output_ += chunk;
-        if (onChunk_) {
-            onChunk_(chunk);
-        }
+        pendingChunk_ += chunk;
+        FlushPendingChunk(false);
         return n;
     }
 
@@ -45,9 +116,32 @@ protected:
         return c;
     }
 
+    int sync() override {
+        FlushPendingChunk(true);
+        return 0;
+    }
+
 private:
+    void FlushPendingChunk(bool force) {
+        if (!onChunk_) {
+            pendingChunk_.clear();
+            return;
+        }
+
+        const size_t prefixLength = ValidUtf8PrefixLength(pendingChunk_);
+        if (prefixLength > 0) {
+            onChunk_(pendingChunk_.substr(0, prefixLength));
+            pendingChunk_.erase(0, prefixLength);
+        }
+        if (force && !pendingChunk_.empty()) {
+            onChunk_(pendingChunk_);
+            pendingChunk_.clear();
+        }
+    }
+
     std::function<void(const std::string&)> onChunk_;
     std::string output_;
+    std::string pendingChunk_;
 };
 
 std::string MapStopReason(LlmStatus status) {
@@ -74,11 +168,11 @@ std::string BuildSamplingConfigProperties(int maxNewTokens) {
            << "\"sampler_type\":\"mixed\","
            << "\"mixed_samplers\":[\"penalty\",\"topK\",\"topP\",\"temperature\"],"
            << "\"temperature\":0.6,"
-           << "\"top_k\":30,"
-           << "\"top_p\":0.85,"
-           << "\"repetition_penalty\":1.35,"
-           << "\"presence_penalty\":0.15,"
-           << "\"frequency_penalty\":0.2,"
+           << "\"top_k\":40,"
+           << "\"top_p\":0.9,"
+           << "\"repetition_penalty\":1.05,"
+           << "\"presence_penalty\":0.0,"
+           << "\"frequency_penalty\":0.0,"
            << "\"penalty_window\":256,"
            << "\"async\":false";
     return config.str();

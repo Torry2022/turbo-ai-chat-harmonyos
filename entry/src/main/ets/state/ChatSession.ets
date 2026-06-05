@@ -30,6 +30,18 @@ export class ChatSession {
     }];
   }
 
+  resetForModelSwitch(modelShortName: string): void {
+    this.messages = [{
+      id: this.nextMessageId++,
+      role: 'assistant',
+      content: `已切换至 ${modelShortName}。请先加载模型，然后开始新的对话。`,
+      imageUri: '',
+      time: nowTime(),
+      includeInContext: false,
+      thinkingExpanded: false
+    }];
+  }
+
   appendMessage(role: string, content: string, imageUri: string = '', includeInContext: boolean = true): number {
     const message: ChatMessage = {
       id: this.nextMessageId++,
@@ -111,7 +123,7 @@ export class ChatSession {
     return turns;
   }
 
-  sanitizeAssistantText(text: string): string {
+  sanitizeAssistantText(text: string, stripLeadingSeparator: boolean = false): string {
     const normalizedText = stripModelSpecialTokens(text);
     const lines = normalizedText
       .split('\n')
@@ -120,7 +132,17 @@ export class ChatSession {
         const trimmed = line.trim();
         return trimmed.length > 0 && !/^[*\-•]+\s*$/.test(trimmed);
     });
-    return lines.join('\n').trim();
+    const cleanedText = lines.join('\n').trim();
+    return stripLeadingSeparator ? this.stripLeadingAssistantSeparator(cleanedText) : cleanedText;
+  }
+
+  sanitizeStreamingAssistantText(text: string, stripLeadingSeparator: boolean = false): string {
+    const cleanedText = this.sanitizeAssistantText(text, stripLeadingSeparator);
+    return cleanedText.replace(/^\uFFFD+/, '').trimStart();
+  }
+
+  private stripLeadingAssistantSeparator(text: string): string {
+    return text.replace(/^(assistant|助手)?\s*[:：]\s*/, '').trim();
   }
 
   private composeCompleteContextTurns(): ChatTurn[] {

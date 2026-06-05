@@ -442,22 +442,56 @@ export class ModelImportService {
   }
 
   private async resolvePromptTemplateProfile(profile: ModelProfile): Promise<PromptTemplateProfile> {
+    const inferredConfig = profile.configPath === undefined || profile.configPath.length <= 0 ?
+      this.defaultPromptTemplateProfile(profile.name) :
+      await this.readPromptTemplateProfile(profile.configPath, profile.name);
+
     if (
       profile.chatFormat !== undefined &&
       profile.chatFormat.length > 0 &&
       profile.promptTemplate !== undefined &&
       profile.stopSequence !== undefined
     ) {
+      const storedConfig: PromptTemplateProfile = {
+        chatFormat: profile.chatFormat,
+        promptTemplate: profile.promptTemplate,
+        stopSequence: profile.stopSequence
+      };
+      if (this.shouldRefreshStoredPromptConfig(storedConfig, inferredConfig, profile.name)) {
+        return inferredConfig;
+      }
       return {
         chatFormat: profile.chatFormat,
         promptTemplate: profile.promptTemplate,
         stopSequence: profile.stopSequence
       };
     }
-    if (profile.configPath === undefined || profile.configPath.length <= 0) {
-      return this.defaultPromptTemplateProfile(profile.name);
+    return inferredConfig;
+  }
+
+  private shouldRefreshStoredPromptConfig(
+    stored: PromptTemplateProfile,
+    inferred: PromptTemplateProfile,
+    modelName: string
+  ): boolean {
+    if (stored.promptTemplate.length <= 0 && inferred.promptTemplate.length > 0) {
+      return true;
     }
-    return this.readPromptTemplateProfile(profile.configPath, profile.name);
+    if (stored.chatFormat === CHAT_FORMAT_MNN_AUTO && inferred.chatFormat !== CHAT_FORMAT_MNN_AUTO) {
+      return true;
+    }
+    if (stored.promptTemplate === inferred.promptTemplate && stored.stopSequence !== inferred.stopSequence) {
+      return true;
+    }
+
+    const normalizedStored = this.inferPromptTemplateProfile(stored.promptTemplate, modelName);
+    if (stored.chatFormat !== normalizedStored.chatFormat) {
+      return true;
+    }
+    if (stored.stopSequence.length <= 0 && normalizedStored.stopSequence.length > 0) {
+      return true;
+    }
+    return false;
   }
 
   private async readPromptTemplateProfile(configPath: string, modelName: string): Promise<PromptTemplateProfile> {
@@ -490,18 +524,18 @@ export class ModelImportService {
     const template = promptTemplate.trim();
     const lowerTemplate = template.toLowerCase();
     const lowerName = modelName.toLowerCase();
-    if (lowerTemplate.indexOf('<|im_start|>') >= 0 && lowerTemplate.indexOf('<|im_end|>') >= 0) {
-      return {
-        chatFormat: CHAT_FORMAT_QWEN_IM,
-        promptTemplate: template,
-        stopSequence: '<|im_end|>'
-      };
-    }
     if (template.indexOf('%s') >= 0) {
       return {
         chatFormat: CHAT_FORMAT_RAW_TEMPLATE,
         promptTemplate: template,
         stopSequence: this.inferStopSequence(template, lowerName)
+      };
+    }
+    if (lowerTemplate.indexOf('<|im_start|>') >= 0 && lowerTemplate.indexOf('<|im_end|>') >= 0) {
+      return {
+        chatFormat: CHAT_FORMAT_QWEN_IM,
+        promptTemplate: template,
+        stopSequence: '<|im_end|>'
       };
     }
     return {
@@ -520,6 +554,9 @@ export class ModelImportService {
     }
     if (promptTemplate.indexOf('<|end_of_text|>') >= 0) {
       return '<|end_of_text|>';
+    }
+    if (lowerName.indexOf('deepseek') >= 0) {
+      return '<|end_of_sentence|>';
     }
     if (lowerName.indexOf('qwen') >= 0 && lowerName.indexOf('deepseek') < 0) {
       return '<|im_end|>';

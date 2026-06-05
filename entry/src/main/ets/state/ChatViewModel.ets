@@ -119,8 +119,11 @@ export class ChatViewModel {
     if (!model.supportsImage) {
       this.selectedImageUri = '';
     }
+    this.inputText = '';
+    this.selectedImageUri = '';
+    this.session.resetForModelSwitch(model.shortName);
     this.resetLoadedModel(`已切换至 ${model.shortName}，请加载模型。`);
-    this.notify();
+    this.notifyAndScroll();
   }
 
   updateModelPath(value: string): void {
@@ -494,6 +497,7 @@ export class ChatViewModel {
     this.notifyAndScroll();
 
     let streamedChars = 0;
+    let streamedText = '';
     let generation: Promise<GenerationResult>;
     if (attachedImage.length > 0) {
       this.status = '正在读取图片...';
@@ -506,18 +510,20 @@ export class ChatViewModel {
           payload,
           this.maxNewTokens,
           (chunk: string) => {
-            streamedChars = this.handleStreamChunk(assistantId, chunk, streamedChars);
+            streamedText += chunk;
+            streamedChars = this.handleStreamText(assistantId, streamedText);
           }
         );
       });
     } else {
       generation = this.generateTextForCurrentModel(chatTurns, (chunk: string) => {
-        streamedChars = this.handleStreamChunk(assistantId, chunk, streamedChars);
+        streamedText += chunk;
+        streamedChars = this.handleStreamText(assistantId, streamedText);
       });
     }
 
     generation.then((result: GenerationResult) => {
-      const cleanedText = this.session.sanitizeAssistantText(result.text);
+      const cleanedText = this.session.sanitizeAssistantText(result.text, this.shouldStripLeadingAssistantSeparator());
       const answer = cleanedText.length > 0 ? cleanedText : '（原生层返回空内容）';
       const includeInContext = this.shouldIncludeAssistantInContext(answer, result);
       this.session.updateMessage(assistantId, answer, includeInContext);
@@ -571,6 +577,11 @@ export class ChatViewModel {
     return this.session.composeChatTurns(this.currentModel().systemPrompt, text);
   }
 
+  private shouldStripLeadingAssistantSeparator(): boolean {
+    const model = this.currentModel();
+    return model.source === 'imported' && (model.chatFormat ?? CHAT_FORMAT_MNN_AUTO) === CHAT_FORMAT_RAW_TEMPLATE;
+  }
+
   private generateTextForCurrentModel(turns: ChatTurn[], onChunk: (chunk: string) => void): Promise<GenerationResult> {
     const model = this.currentModel();
     const chatFormat = model.chatFormat ?? CHAT_FORMAT_MNN_AUTO;
@@ -608,43 +619,25 @@ export class ChatViewModel {
   }
 
   private composeRawTemplatePrompt(turns: ChatTurn[], promptTemplate: string): string {
-    const conversation = this.composeSingleUserPromptText(turns);
+    const conversation = this.composeRawTemplateUserText(turns);
     if (promptTemplate.indexOf('%s') >= 0) {
       return promptTemplate.replace('%s', conversation);
     }
     return `${promptTemplate}\n${conversation}`;
   }
 
-  private composeSingleUserPromptText(turns: ChatTurn[]): string {
-    let systemPrompt = '';
-    const historyParts: string[] = [];
+  private composeRawTemplateUserText(turns: ChatTurn[]): string {
     let currentUserText = '';
     turns.forEach((turn: ChatTurn) => {
       const content = turn.content.trim();
       if (content.length <= 0) {
         return;
       }
-      if (turn.role === 'system') {
-        systemPrompt = content;
-      } else if (turn.role === 'assistant') {
-        historyParts.push(`助手：${content}`);
-      } else {
+      if (turn.role === 'user') {
         currentUserText = content;
       }
     });
-
-    const sections: string[] = [];
-    const constraints = '请只回答“当前用户问题”。如果当前问题涉及具体产品、版本、年份、型号、厂商路线或外部事实，而你没有可靠把握，请明确说不确定，不要猜测或编造。专有名词保持原样，不要按英文或字面含义拆解。';
-    if (systemPrompt.length > 0) {
-      sections.push(`系统要求：\n${systemPrompt}\n${constraints}`);
-    } else {
-      sections.push(`系统要求：\n${constraints}`);
-    }
-    if (historyParts.length > 0) {
-      sections.push(`历史对话：\n${historyParts.join('\n')}`);
-    }
-    sections.push(`当前用户问题：\n${currentUserText}`);
-    return sections.join('\n\n');
+    return currentUserText;
   }
 
   private shouldIncludeAssistantInContext(answer: string, result: GenerationResult): boolean {
@@ -678,13 +671,17 @@ export class ChatViewModel {
     return undefined;
   }
 
-  private handleStreamChunk(assistantId: number, chunk: string, streamedChars: number): number {
-    if (chunk.length <= 0) {
-      return streamedChars;
+  private handleStreamText(assistantId: number, streamedText: string): number {
+    if (streamedText.length <= 0) {
+      return 0;
     }
-    const nextStreamedChars = streamedChars + chunk.length;
+    const displayText = this.session.sanitizeStreamingAssistantText(
+      streamedText,
+      this.shouldStripLeadingAssistantSeparator()
+    );
+    const nextStreamedChars = displayText.length;
     this.status = `正在生成... ${nextStreamedChars} 字符`;
-    this.session.appendToMessage(assistantId, chunk);
+    this.session.updateMessage(assistantId, displayText);
     this.notifyAndScroll();
     return nextStreamedChars;
   }

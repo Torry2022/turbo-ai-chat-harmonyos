@@ -94,8 +94,10 @@ export struct MessageBubble {
         }
         if (this.answerText().length > 0 || !this.hasThinking()) {
           Text(this.answerText().length > 0 ? this.answerText() : '...')
+            .width('100%')
             .fontSize(15)
             .lineHeight(22)
+            .textAlign(TextAlign.Start)
             .fontColor(this.message.role === 'user' ? Color.White : '#EAF4FF');
         }
       }

@@ -14,6 +14,7 @@ export function stripModelSpecialTokens(content: string): string {
     .replace(/<\|im_start\|>/g, '')
     .replace(/<\|im_end\|>/g, '')
     .replace(/<\|begin_of_sentence\|>/g, '')
+    .replace(/<\|end_of_sentence\|>/g, '')
     .replace(/<\|User\|>/g, '')
     .replace(/<\|Assistant\|>/g, '')
     .replace(/<\|begin_of_text\|>/g, '')
@@ -58,6 +59,14 @@ export function parseAssistantText(content: string): AssistantTextParts {
     answer = `${answer}\n${afterClose}`;
   } else if (afterClose.length > 0) {
     answer = afterClose;
+  }
+  if (thinking.length <= 0) {
+    return {
+      hasThinking: false,
+      thinking: '',
+      answer: answer.trim(),
+      thinkingClosed: false
+    };
   }
 
   return {
