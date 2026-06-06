@@ -27,7 +27,7 @@ struct StreamWork {
     bool useChatMessages = false;
     bool useImage = false;
     GemmaRunner::ImageData image;
-    int32_t maxNewTokens = 64;
+    GemmaRunner::SamplingConfig sampling;
     GemmaRunner::GenerationResult output;
     std::string error;
 };
@@ -37,7 +37,7 @@ struct AsyncGenerateWork {
     napi_async_work work = nullptr;
     napi_deferred deferred = nullptr;
     std::string prompt;
-    int32_t maxNewTokens = 64;
+    GemmaRunner::SamplingConfig sampling;
     std::string output;
     std::string error;
 };
@@ -48,7 +48,7 @@ struct AsyncLoadWork {
     napi_deferred deferred = nullptr;
     std::string configPath;
     int32_t threadNum = 4;
-    int32_t maxNewTokens = 128;
+    GemmaRunner::SamplingConfig sampling;
     std::string error;
 };
 
@@ -80,6 +80,93 @@ napi_value MakeString(napi_env env, const std::string& value) {
     napi_value result = nullptr;
     napi_create_string_utf8(env, value.c_str(), value.size(), &result);
     return result;
+}
+
+double ReadNamedDouble(napi_env env, napi_value object, const char* name, double fallback) {
+    bool hasProperty = false;
+    napi_has_named_property(env, object, name, &hasProperty);
+    if (!hasProperty) {
+        return fallback;
+    }
+
+    napi_value value = nullptr;
+    napi_get_named_property(env, object, name, &value);
+    if (value == nullptr) {
+        return fallback;
+    }
+
+    napi_valuetype type = napi_undefined;
+    napi_typeof(env, value, &type);
+    if (type != napi_number) {
+        return fallback;
+    }
+
+    double result = fallback;
+    napi_get_value_double(env, value, &result);
+    return result;
+}
+
+int32_t ReadNamedInt(napi_env env, napi_value object, const char* name, int32_t fallback) {
+    bool hasProperty = false;
+    napi_has_named_property(env, object, name, &hasProperty);
+    if (!hasProperty) {
+        return fallback;
+    }
+
+    napi_value value = nullptr;
+    napi_get_named_property(env, object, name, &value);
+    if (value == nullptr) {
+        return fallback;
+    }
+
+    napi_valuetype type = napi_undefined;
+    napi_typeof(env, value, &type);
+    if (type != napi_number) {
+        return fallback;
+    }
+
+    int32_t result = fallback;
+    napi_get_value_int32(env, value, &result);
+    return result;
+}
+
+GemmaRunner::SamplingConfig ReadSamplingConfig(
+    napi_env env,
+    napi_value* args,
+    size_t argc,
+    size_t maxTokensIndex,
+    int32_t fallbackMaxTokens,
+    size_t settingsIndex) {
+    GemmaRunner::SamplingConfig sampling;
+    sampling.maxNewTokens = std::clamp(
+        ReadOptionalInt(env, args, argc, maxTokensIndex, fallbackMaxTokens),
+        1,
+        2048);
+
+    if (settingsIndex >= argc || args[settingsIndex] == nullptr) {
+        return sampling;
+    }
+
+    napi_valuetype type = napi_undefined;
+    napi_typeof(env, args[settingsIndex], &type);
+    if (type != napi_object) {
+        return sampling;
+    }
+
+    sampling.temperature = std::clamp(ReadNamedDouble(env, args[settingsIndex], "temperature", sampling.temperature), 0.0, 2.0);
+    sampling.topP = std::clamp(ReadNamedDouble(env, args[settingsIndex], "topP", sampling.topP), 0.05, 1.0);
+    sampling.topP = std::clamp(ReadNamedDouble(env, args[settingsIndex], "top_p", sampling.topP), 0.05, 1.0);
+    sampling.topK = std::clamp(ReadNamedInt(env, args[settingsIndex], "topK", sampling.topK), 1, 256);
+    sampling.topK = std::clamp(ReadNamedInt(env, args[settingsIndex], "top_k", sampling.topK), 1, 256);
+    sampling.repetitionPenalty = std::clamp(
+        ReadNamedDouble(env, args[settingsIndex], "repetitionPenalty", sampling.repetitionPenalty),
+        0.8,
+        2.0);
+    sampling.repetitionPenalty = std::clamp(
+        ReadNamedDouble(env, args[settingsIndex], "repetition_penalty", sampling.repetitionPenalty),
+        0.8,
+        2.0);
+    return sampling;
 }
 
 napi_value MakeGenerationResult(napi_env env, const GemmaRunner::GenerationResult& value) {
@@ -198,8 +285,8 @@ bool ReadRgbaImage(
 }
 
 napi_value LoadModel(napi_env env, napi_callback_info info) {
-    size_t argc = 3;
-    napi_value args[3] = {nullptr};
+    size_t argc = 4;
+    napi_value args[4] = {nullptr};
     napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
 
     if (argc < 1 || args[0] == nullptr) {
@@ -209,10 +296,10 @@ napi_value LoadModel(napi_env env, napi_callback_info info) {
 
     std::string configPath = ReadString(env, args[0]);
     int32_t threadNum = std::clamp(ReadOptionalInt(env, args, argc, 1, 4), 1, 8);
-    int32_t maxNewTokens = std::clamp(ReadOptionalInt(env, args, argc, 2, 128), 1, 2048);
+    GemmaRunner::SamplingConfig sampling = ReadSamplingConfig(env, args, argc, 2, 128, 3);
 
     std::string error;
-    if (!g_runner.load(configPath, threadNum, maxNewTokens, error)) {
+    if (!g_runner.load(configPath, threadNum, sampling, error)) {
         napi_throw_error(env, nullptr, error.c_str());
         return nullptr;
     }
@@ -221,8 +308,8 @@ napi_value LoadModel(napi_env env, napi_callback_info info) {
 }
 
 napi_value LoadModelAsync(napi_env env, napi_callback_info info) {
-    size_t argc = 3;
-    napi_value args[3] = {nullptr};
+    size_t argc = 4;
+    napi_value args[4] = {nullptr};
     napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
 
     if (argc < 1 || args[0] == nullptr) {
@@ -234,7 +321,7 @@ napi_value LoadModelAsync(napi_env env, napi_callback_info info) {
     work->env = env;
     work->configPath = ReadString(env, args[0]);
     work->threadNum = std::clamp(ReadOptionalInt(env, args, argc, 1, 4), 1, 8);
-    work->maxNewTokens = std::clamp(ReadOptionalInt(env, args, argc, 2, 128), 1, 2048);
+    work->sampling = ReadSamplingConfig(env, args, argc, 2, 128, 3);
 
     napi_value promise = nullptr;
     napi_create_promise(env, &work->deferred, &promise);
@@ -247,7 +334,7 @@ napi_value LoadModelAsync(napi_env env, napi_callback_info info) {
         resourceName,
         [](napi_env, void* data) {
             auto* work = static_cast<AsyncLoadWork*>(data);
-            if (!g_runner.load(work->configPath, work->threadNum, work->maxNewTokens, work->error)) {
+            if (!g_runner.load(work->configPath, work->threadNum, work->sampling, work->error)) {
                 return;
             }
         },
@@ -271,8 +358,8 @@ napi_value LoadModelAsync(napi_env env, napi_callback_info info) {
 }
 
 napi_value Generate(napi_env env, napi_callback_info info) {
-    size_t argc = 2;
-    napi_value args[2] = {nullptr};
+    size_t argc = 3;
+    napi_value args[3] = {nullptr};
     napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
 
     if (argc < 1 || args[0] == nullptr) {
@@ -281,10 +368,10 @@ napi_value Generate(napi_env env, napi_callback_info info) {
     }
 
     std::string prompt = ReadString(env, args[0]);
-    int32_t maxNewTokens = std::clamp(ReadOptionalInt(env, args, argc, 1, 128), 1, 2048);
+    GemmaRunner::SamplingConfig sampling = ReadSamplingConfig(env, args, argc, 1, 128, 2);
 
     std::string error;
-    std::string output = g_runner.generate(prompt, maxNewTokens, error);
+    std::string output = g_runner.generate(prompt, sampling, error);
     if (!error.empty()) {
         napi_throw_error(env, nullptr, error.c_str());
         return nullptr;
@@ -294,8 +381,8 @@ napi_value Generate(napi_env env, napi_callback_info info) {
 }
 
 napi_value GenerateAsync(napi_env env, napi_callback_info info) {
-    size_t argc = 2;
-    napi_value args[2] = {nullptr};
+    size_t argc = 3;
+    napi_value args[3] = {nullptr};
     napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
 
     if (argc < 1 || args[0] == nullptr) {
@@ -306,7 +393,7 @@ napi_value GenerateAsync(napi_env env, napi_callback_info info) {
     auto* work = new AsyncGenerateWork();
     work->env = env;
     work->prompt = ReadString(env, args[0]);
-    work->maxNewTokens = std::clamp(ReadOptionalInt(env, args, argc, 1, 64), 1, 2048);
+    work->sampling = ReadSamplingConfig(env, args, argc, 1, 64, 2);
 
     napi_value promise = nullptr;
     napi_create_promise(env, &work->deferred, &promise);
@@ -319,7 +406,7 @@ napi_value GenerateAsync(napi_env env, napi_callback_info info) {
         resourceName,
         [](napi_env, void* data) {
             auto* work = static_cast<AsyncGenerateWork*>(data);
-            work->output = g_runner.generate(work->prompt, work->maxNewTokens, work->error);
+            work->output = g_runner.generate(work->prompt, work->sampling, work->error);
         },
         [](napi_env env, napi_status, void* data) {
             auto* work = static_cast<AsyncGenerateWork*>(data);
@@ -357,21 +444,22 @@ void CallStreamChunk(napi_env env, napi_value jsCallback, void*, void* data) {
 }
 
 napi_value GenerateStream(napi_env env, napi_callback_info info) {
-    size_t argc = 3;
-    napi_value args[3] = {nullptr};
+    size_t argc = 4;
+    napi_value args[4] = {nullptr};
     napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
 
     if (argc < 1 || args[0] == nullptr) {
         napi_throw_error(env, nullptr, "generateStream requires a prompt");
         return nullptr;
     }
-    if (argc < 3 || args[2] == nullptr) {
+    size_t callbackIndex = argc >= 4 && args[3] != nullptr ? 3 : 2;
+    if (argc <= callbackIndex || args[callbackIndex] == nullptr) {
         napi_throw_error(env, nullptr, "generateStream requires an onChunk callback");
         return nullptr;
     }
 
     napi_valuetype callbackType = napi_undefined;
-    napi_typeof(env, args[2], &callbackType);
+    napi_typeof(env, args[callbackIndex], &callbackType);
     if (callbackType != napi_function) {
         napi_throw_error(env, nullptr, "generateStream onChunk must be a function");
         return nullptr;
@@ -380,7 +468,7 @@ napi_value GenerateStream(napi_env env, napi_callback_info info) {
     auto* streamWork = new StreamWork();
     streamWork->env = env;
     streamWork->prompt = ReadString(env, args[0]);
-    streamWork->maxNewTokens = std::clamp(ReadOptionalInt(env, args, argc, 1, 64), 1, 2048);
+    streamWork->sampling = ReadSamplingConfig(env, args, argc, 1, 64, callbackIndex == 3 ? 2 : argc);
 
     napi_value promise = nullptr;
     napi_create_promise(env, &streamWork->deferred, &promise);
@@ -389,7 +477,7 @@ napi_value GenerateStream(napi_env env, napi_callback_info info) {
     napi_create_string_utf8(env, "gemmaGenerateStream", NAPI_AUTO_LENGTH, &resourceName);
     napi_create_threadsafe_function(
         env,
-        args[2],
+        args[callbackIndex],
         nullptr,
         resourceName,
         0,
@@ -408,7 +496,7 @@ napi_value GenerateStream(napi_env env, napi_callback_info info) {
             auto* work = static_cast<StreamWork*>(data);
             work->output = g_runner.generateStreaming(
                 work->prompt,
-                work->maxNewTokens,
+                work->sampling,
                 [work](const std::string& chunk) {
                     if (chunk.empty()) {
                         return;
@@ -439,21 +527,22 @@ napi_value GenerateStream(napi_env env, napi_callback_info info) {
 }
 
 napi_value GenerateRawPromptStream(napi_env env, napi_callback_info info) {
-    size_t argc = 4;
-    napi_value args[4] = {nullptr};
+    size_t argc = 5;
+    napi_value args[5] = {nullptr};
     napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
 
     if (argc < 1 || args[0] == nullptr) {
         napi_throw_error(env, nullptr, "generateRawPromptStream requires a prompt");
         return nullptr;
     }
-    if (argc < 4 || args[3] == nullptr) {
+    size_t callbackIndex = argc >= 5 && args[4] != nullptr ? 4 : 3;
+    if (argc <= callbackIndex || args[callbackIndex] == nullptr) {
         napi_throw_error(env, nullptr, "generateRawPromptStream requires an onChunk callback");
         return nullptr;
     }
 
     napi_valuetype callbackType = napi_undefined;
-    napi_typeof(env, args[3], &callbackType);
+    napi_typeof(env, args[callbackIndex], &callbackType);
     if (callbackType != napi_function) {
         napi_throw_error(env, nullptr, "generateRawPromptStream onChunk must be a function");
         return nullptr;
@@ -462,7 +551,7 @@ napi_value GenerateRawPromptStream(napi_env env, napi_callback_info info) {
     auto* streamWork = new StreamWork();
     streamWork->env = env;
     streamWork->prompt = ReadString(env, args[0]);
-    streamWork->maxNewTokens = std::clamp(ReadOptionalInt(env, args, argc, 1, 64), 1, 2048);
+    streamWork->sampling = ReadSamplingConfig(env, args, argc, 1, 64, callbackIndex == 4 ? 3 : argc);
     if (argc >= 3 && args[2] != nullptr) {
         napi_valuetype endWithType = napi_undefined;
         napi_typeof(env, args[2], &endWithType);
@@ -478,7 +567,7 @@ napi_value GenerateRawPromptStream(napi_env env, napi_callback_info info) {
     napi_create_string_utf8(env, "gemmaGenerateRawPromptStream", NAPI_AUTO_LENGTH, &resourceName);
     napi_create_threadsafe_function(
         env,
-        args[3],
+        args[callbackIndex],
         nullptr,
         resourceName,
         0,
@@ -497,7 +586,7 @@ napi_value GenerateRawPromptStream(napi_env env, napi_callback_info info) {
             auto* work = static_cast<StreamWork*>(data);
             work->output = g_runner.generateRawPromptStreaming(
                 work->prompt,
-                work->maxNewTokens,
+                work->sampling,
                 work->endWith,
                 [work](const std::string& chunk) {
                     if (chunk.empty()) {
@@ -529,21 +618,22 @@ napi_value GenerateRawPromptStream(napi_env env, napi_callback_info info) {
 }
 
 napi_value GenerateChatStream(napi_env env, napi_callback_info info) {
-    size_t argc = 3;
-    napi_value args[3] = {nullptr};
+    size_t argc = 4;
+    napi_value args[4] = {nullptr};
     napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
 
     if (argc < 1 || args[0] == nullptr) {
         napi_throw_error(env, nullptr, "generateChatStream requires chat messages");
         return nullptr;
     }
-    if (argc < 3 || args[2] == nullptr) {
+    size_t callbackIndex = argc >= 4 && args[3] != nullptr ? 3 : 2;
+    if (argc <= callbackIndex || args[callbackIndex] == nullptr) {
         napi_throw_error(env, nullptr, "generateChatStream requires an onChunk callback");
         return nullptr;
     }
 
     napi_valuetype callbackType = napi_undefined;
-    napi_typeof(env, args[2], &callbackType);
+    napi_typeof(env, args[callbackIndex], &callbackType);
     if (callbackType != napi_function) {
         napi_throw_error(env, nullptr, "generateChatStream onChunk must be a function");
         return nullptr;
@@ -552,7 +642,7 @@ napi_value GenerateChatStream(napi_env env, napi_callback_info info) {
     auto* streamWork = new StreamWork();
     streamWork->env = env;
     streamWork->useChatMessages = true;
-    streamWork->maxNewTokens = std::clamp(ReadOptionalInt(env, args, argc, 1, 64), 1, 2048);
+    streamWork->sampling = ReadSamplingConfig(env, args, argc, 1, 64, callbackIndex == 3 ? 2 : argc);
 
     std::string readError;
     if (!ReadChatMessages(env, args[0], streamWork->chatMessages, readError)) {
@@ -568,7 +658,7 @@ napi_value GenerateChatStream(napi_env env, napi_callback_info info) {
     napi_create_string_utf8(env, "gemmaGenerateChatStream", NAPI_AUTO_LENGTH, &resourceName);
     napi_create_threadsafe_function(
         env,
-        args[2],
+        args[callbackIndex],
         nullptr,
         resourceName,
         0,
@@ -587,7 +677,7 @@ napi_value GenerateChatStream(napi_env env, napi_callback_info info) {
             auto* work = static_cast<StreamWork*>(data);
             work->output = g_runner.generateChatStreaming(
                 work->chatMessages,
-                work->maxNewTokens,
+                work->sampling,
                 [work](const std::string& chunk) {
                     if (chunk.empty()) {
                         return;
@@ -618,8 +708,8 @@ napi_value GenerateChatStream(napi_env env, napi_callback_info info) {
 }
 
 napi_value GenerateImageChatStream(napi_env env, napi_callback_info info) {
-    size_t argc = 6;
-    napi_value args[6] = {nullptr};
+    size_t argc = 7;
+    napi_value args[7] = {nullptr};
     napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
 
     if (argc < 1 || args[0] == nullptr) {
@@ -630,13 +720,14 @@ napi_value GenerateImageChatStream(napi_env env, napi_callback_info info) {
         napi_throw_error(env, nullptr, "generateImageChatStream requires image buffer, width and height");
         return nullptr;
     }
-    if (argc < 6 || args[5] == nullptr) {
+    size_t callbackIndex = argc >= 7 && args[6] != nullptr ? 6 : 5;
+    if (argc <= callbackIndex || args[callbackIndex] == nullptr) {
         napi_throw_error(env, nullptr, "generateImageChatStream requires an onChunk callback");
         return nullptr;
     }
 
     napi_valuetype callbackType = napi_undefined;
-    napi_typeof(env, args[5], &callbackType);
+    napi_typeof(env, args[callbackIndex], &callbackType);
     if (callbackType != napi_function) {
         napi_throw_error(env, nullptr, "generateImageChatStream onChunk must be a function");
         return nullptr;
@@ -646,7 +737,7 @@ napi_value GenerateImageChatStream(napi_env env, napi_callback_info info) {
     streamWork->env = env;
     streamWork->useChatMessages = true;
     streamWork->useImage = true;
-    streamWork->maxNewTokens = std::clamp(ReadOptionalInt(env, args, argc, 4, 64), 1, 2048);
+    streamWork->sampling = ReadSamplingConfig(env, args, argc, 4, 64, callbackIndex == 6 ? 5 : argc);
 
     std::string readError;
     if (!ReadChatMessages(env, args[0], streamWork->chatMessages, readError)) {
@@ -672,7 +763,7 @@ napi_value GenerateImageChatStream(napi_env env, napi_callback_info info) {
     napi_create_string_utf8(env, "gemmaGenerateImageChatStream", NAPI_AUTO_LENGTH, &resourceName);
     napi_create_threadsafe_function(
         env,
-        args[5],
+        args[callbackIndex],
         nullptr,
         resourceName,
         0,
@@ -692,7 +783,7 @@ napi_value GenerateImageChatStream(napi_env env, napi_callback_info info) {
             work->output = g_runner.generateImageChatStreaming(
                 work->chatMessages,
                 work->image,
-                work->maxNewTokens,
+                work->sampling,
                 [work](const std::string& chunk) {
                     if (chunk.empty()) {
                         return;

@@ -1,12 +1,16 @@
 import { common } from '@kit.AbilityKit';
-import { ChatMessage, ChatTurn, GenerationResult } from '../models/ChatTypes';
+import { ChatMessage, ChatTurn, GenerationResult, GenerationSettings } from '../models/ChatTypes';
 import { ImportedModelDraft } from '../models/ImportedModelTypes';
 import {
   CHAT_FORMAT_MNN_AUTO,
   CHAT_FORMAT_QWEN_IM,
   CHAT_FORMAT_RAW_TEMPLATE,
   DEFAULT_MAX_NEW_TOKENS,
+  DEFAULT_REPETITION_PENALTY,
+  DEFAULT_TEMPERATURE,
   DEFAULT_THREAD_NUM,
+  DEFAULT_TOP_K,
+  DEFAULT_TOP_P,
   MAX_GENERATION_TOKENS,
   ModelProfile
 } from '../models/ModelProfile';
@@ -29,6 +33,11 @@ export class ChatViewModel {
   status: string = '模型未加载';
   maxNewTokens: number = DEFAULT_MAX_NEW_TOKENS;
   threadNum: number = DEFAULT_THREAD_NUM;
+  temperature: number = DEFAULT_TEMPERATURE;
+  topP: number = DEFAULT_TOP_P;
+  topK: number = DEFAULT_TOP_K;
+  repetitionPenalty: number = DEFAULT_REPETITION_PENALTY;
+  showAdvancedModelSettings: boolean = false;
   showModelLoadDialog: boolean = false;
   modelLoading: boolean = false;
   modelLoadProgress: number = 0;
@@ -42,7 +51,6 @@ export class ChatViewModel {
   importedModelChatFormatInput: string = CHAT_FORMAT_MNN_AUTO;
   importedModelPromptTemplateInput: string = '';
   importedModelStopSequenceInput: string = '';
-  importedModelSupportsImage: boolean = false;
   showDeleteImportedModelDialog: boolean = false;
   pendingDeleteImportedModelId: string = '';
   stats: RuntimeStats = EMPTY_RUNTIME_STATS;
@@ -141,13 +149,57 @@ export class ChatViewModel {
     this.notify();
   }
 
-  updateMaxNewTokens(value: number): void {
+  updateMaxNewTokens(value: number, notify: boolean = true): void {
     this.maxNewTokens = Math.round(value);
-    this.notify();
+    if (notify) {
+      this.notify();
+    }
   }
 
   updateThreadNum(value: number): void {
     this.threadNum = Math.round(value);
+    this.notify();
+  }
+
+  updateTemperature(value: number, notify: boolean = true): void {
+    this.temperature = Math.round(value * 100) / 100;
+    if (notify) {
+      this.notify();
+    }
+  }
+
+  updateTopP(value: number, notify: boolean = true): void {
+    this.topP = Math.round(value * 100) / 100;
+    if (notify) {
+      this.notify();
+    }
+  }
+
+  updateTopK(value: number, notify: boolean = true): void {
+    this.topK = Math.round(value);
+    if (notify) {
+      this.notify();
+    }
+  }
+
+  updateRepetitionPenalty(value: number, notify: boolean = true): void {
+    this.repetitionPenalty = Math.round(value * 100) / 100;
+    if (notify) {
+      this.notify();
+    }
+  }
+
+  resetGenerationSettings(): void {
+    this.maxNewTokens = DEFAULT_MAX_NEW_TOKENS;
+    this.temperature = DEFAULT_TEMPERATURE;
+    this.topP = DEFAULT_TOP_P;
+    this.topK = DEFAULT_TOP_K;
+    this.repetitionPenalty = DEFAULT_REPETITION_PENALTY;
+    this.notify();
+  }
+
+  toggleAdvancedModelSettings(): void {
+    this.showAdvancedModelSettings = !this.showAdvancedModelSettings;
     this.notify();
   }
 
@@ -208,7 +260,6 @@ export class ChatViewModel {
       this.importedModelChatFormatInput = CHAT_FORMAT_MNN_AUTO;
       this.importedModelPromptTemplateInput = '';
       this.importedModelStopSequenceInput = '';
-      this.importedModelSupportsImage = false;
       return;
     }
     const draft = this.modelImportService.createDraft(profile);
@@ -219,7 +270,6 @@ export class ChatViewModel {
     this.importedModelChatFormatInput = draft.chatFormat;
     this.importedModelPromptTemplateInput = draft.promptTemplate;
     this.importedModelStopSequenceInput = draft.stopSequence;
-    this.importedModelSupportsImage = draft.supportsImage;
   }
 
   updateImportedModelName(value: string): void {
@@ -250,21 +300,7 @@ export class ChatViewModel {
     } else {
       this.importedModelChatFormatInput = CHAT_FORMAT_MNN_AUTO;
     }
-    this.notify();
-  }
-
-  updateImportedModelPromptTemplate(value: string): void {
-    this.importedModelPromptTemplateInput = value;
-    this.notify();
-  }
-
-  updateImportedModelStopSequence(value: string): void {
-    this.importedModelStopSequenceInput = value;
-    this.notify();
-  }
-
-  updateImportedModelSupportsImage(value: boolean): void {
-    this.importedModelSupportsImage = value;
+    this.syncImportedTemplateFieldsForFormat();
     this.notify();
   }
 
@@ -281,11 +317,11 @@ export class ChatViewModel {
     const draft: ImportedModelDraft = {
       name: this.importedModelNameInput,
       shortName: this.importedModelShortNameInput,
-      supportsImage: this.importedModelSupportsImage,
+      supportsImage: profile.supportsImage,
       systemPrompt: this.importedModelSystemPromptInput,
       chatFormat: this.importedModelChatFormatInput,
-      promptTemplate: this.importedModelPromptTemplateInput,
-      stopSequence: this.importedModelStopSequenceInput
+      promptTemplate: this.promptTemplateForImportedProfile(profile),
+      stopSequence: this.stopSequenceForImportedProfile(profile)
     };
     const updated = this.modelImportService.applyDraft(profile, draft);
     this.modelImportService.updateImportedProfile(this.filesDir, updated, this.modelProfiles()).then((profiles: ModelProfile[]) => {
@@ -421,7 +457,12 @@ export class ChatViewModel {
     this.startModelLoadProgress();
     this.notify();
 
-    this.nativeService.loadModel(this.modelPath, this.threadNum, this.maxNewTokens).then((loaded: boolean) => {
+    this.nativeService.loadModel(
+      this.modelPath,
+      this.threadNum,
+      this.maxNewTokens,
+      this.currentGenerationSettings()
+    ).then((loaded: boolean) => {
       this.loaded = loaded;
       this.status = `${this.currentModel().shortName} 已加载`;
       this.modelLoadMessage = `${this.currentModel().shortName} 加载完成，可以开始聊天。`;
@@ -499,6 +540,7 @@ export class ChatViewModel {
     let streamedChars = 0;
     let streamedText = '';
     let generation: Promise<GenerationResult>;
+    const assistantOutputPrefix = this.expectedAssistantOutputPrefixForCurrentModel();
     if (attachedImage.length > 0) {
       this.status = '正在读取图片...';
       this.notify();
@@ -509,21 +551,25 @@ export class ChatViewModel {
           chatTurns,
           payload,
           this.maxNewTokens,
+          this.currentGenerationSettings(),
           (chunk: string) => {
             streamedText += chunk;
-            streamedChars = this.handleStreamText(assistantId, streamedText);
+            streamedChars = this.handleStreamText(assistantId, streamedText, assistantOutputPrefix);
           }
         );
       });
     } else {
       generation = this.generateTextForCurrentModel(chatTurns, (chunk: string) => {
         streamedText += chunk;
-        streamedChars = this.handleStreamText(assistantId, streamedText);
+        streamedChars = this.handleStreamText(assistantId, streamedText, assistantOutputPrefix);
       });
     }
 
     generation.then((result: GenerationResult) => {
-      const cleanedText = this.session.sanitizeAssistantText(result.text, this.shouldStripLeadingAssistantSeparator());
+      const cleanedText = this.session.sanitizeAssistantText(
+        this.applyExpectedAssistantOutputPrefix(result.text, assistantOutputPrefix),
+        this.shouldStripLeadingAssistantSeparator()
+      );
       const answer = cleanedText.length > 0 ? cleanedText : '（原生层返回空内容）';
       const includeInContext = this.shouldIncludeAssistantInContext(answer, result);
       this.session.updateMessage(assistantId, answer, includeInContext);
@@ -585,23 +631,128 @@ export class ChatViewModel {
   private generateTextForCurrentModel(turns: ChatTurn[], onChunk: (chunk: string) => void): Promise<GenerationResult> {
     const model = this.currentModel();
     const chatFormat = model.chatFormat ?? CHAT_FORMAT_MNN_AUTO;
+    if (model.id === 'minicpm5-1b') {
+      return this.nativeService.generateRawPrompt(
+        this.composeMiniCpmThinkingPrompt(turns),
+        this.maxNewTokens,
+        '<|im_end|>',
+        this.currentGenerationSettings(),
+        onChunk
+      );
+    }
     if (chatFormat === CHAT_FORMAT_QWEN_IM) {
       return this.nativeService.generateRawPrompt(
         this.composeQwenPrompt(turns),
         this.maxNewTokens,
         model.stopSequence ?? '<|im_end|>',
+        this.currentGenerationSettings(),
         onChunk
       );
     }
     if (chatFormat === CHAT_FORMAT_RAW_TEMPLATE && model.promptTemplate !== undefined && model.promptTemplate.length > 0) {
       return this.nativeService.generateRawPrompt(
-        this.composeRawTemplatePrompt(turns, model.promptTemplate),
+        this.composeRawTemplatePrompt(turns, model.promptTemplate, model),
         this.maxNewTokens,
         model.stopSequence ?? '',
+        this.currentGenerationSettings(),
         onChunk
       );
     }
-    return this.nativeService.generateText(turns, this.maxNewTokens, onChunk);
+    return this.nativeService.generateText(turns, this.maxNewTokens, this.currentGenerationSettings(), onChunk);
+  }
+
+  private expectedAssistantOutputPrefixForCurrentModel(): string {
+    const model = this.currentModel();
+    if (model.id === 'minicpm5-1b') {
+      return '<think>\n';
+    }
+    return '';
+  }
+
+  private applyExpectedAssistantOutputPrefix(text: string, prefix: string): string {
+    if (prefix.length <= 0 || text.length <= 0) {
+      return text;
+    }
+    const trimmedStart = text.trimStart();
+    if (trimmedStart.startsWith('<think>') || '<think>'.startsWith(trimmedStart)) {
+      return text;
+    }
+    return `${prefix}${text}`;
+  }
+
+  private currentGenerationSettings(): GenerationSettings {
+    return {
+      temperature: this.temperature,
+      topP: this.topP,
+      topK: this.topK,
+      repetitionPenalty: this.repetitionPenalty
+    };
+  }
+
+  private syncImportedTemplateFieldsForFormat(): void {
+    const profile = this.findProfile(this.editingImportedModelId);
+    const originalTemplate = profile?.promptTemplate ?? '';
+    if (this.importedModelChatFormatInput === CHAT_FORMAT_MNN_AUTO) {
+      this.importedModelPromptTemplateInput = '';
+      this.importedModelStopSequenceInput = '';
+      return;
+    }
+    if (this.importedModelChatFormatInput === CHAT_FORMAT_QWEN_IM) {
+      this.importedModelPromptTemplateInput = '';
+      this.importedModelStopSequenceInput = '<|im_end|>';
+      return;
+    }
+    this.importedModelPromptTemplateInput = originalTemplate;
+    this.importedModelStopSequenceInput = this.inferStopSequenceForTemplate(originalTemplate, profile?.name ?? '');
+  }
+
+  private promptTemplateForImportedProfile(profile: ModelProfile): string {
+    if (this.importedModelChatFormatInput === CHAT_FORMAT_RAW_TEMPLATE) {
+      const currentTemplate = this.importedModelPromptTemplateInput.trim();
+      if (currentTemplate.length > 0) {
+        return currentTemplate;
+      }
+      return profile.promptTemplate ?? '';
+    }
+    if (this.importedModelChatFormatInput === CHAT_FORMAT_QWEN_IM) {
+      return '';
+    }
+    return '';
+  }
+
+  private stopSequenceForImportedProfile(profile: ModelProfile): string {
+    if (this.importedModelChatFormatInput === CHAT_FORMAT_QWEN_IM) {
+      return '<|im_end|>';
+    }
+    if (this.importedModelChatFormatInput === CHAT_FORMAT_RAW_TEMPLATE) {
+      const template = this.promptTemplateForImportedProfile(profile);
+      const currentStopSequence = this.importedModelStopSequenceInput.trim();
+      if (currentStopSequence.length > 0) {
+        return currentStopSequence;
+      }
+      return this.inferStopSequenceForTemplate(template, profile.name);
+    }
+    return '';
+  }
+
+  private inferStopSequenceForTemplate(promptTemplate: string, modelName: string): string {
+    if (promptTemplate.indexOf('<|im_end|>') >= 0) {
+      return '<|im_end|>';
+    }
+    if (promptTemplate.indexOf('<|end_of_sentence|>') >= 0) {
+      return '<|end_of_sentence|>';
+    }
+    if (promptTemplate.indexOf('<|end_of_text|>') >= 0) {
+      return '<|end_of_text|>';
+    }
+    const lowerName = modelName.toLowerCase();
+    if (lowerName.indexOf('deepseek') >= 0) {
+      return '<|end_of_sentence|>';
+    }
+    if (lowerName.indexOf('qwen') >= 0 && lowerName.indexOf('deepseek') < 0) {
+      return '<|im_end|>';
+    }
+    return '';
   }
 
   private composeQwenPrompt(turns: ChatTurn[]): string {
@@ -618,15 +769,29 @@ export class ChatViewModel {
     return prompt;
   }
 
-  private composeRawTemplatePrompt(turns: ChatTurn[], promptTemplate: string): string {
-    const conversation = this.composeRawTemplateUserText(turns);
+  private composeMiniCpmThinkingPrompt(turns: ChatTurn[]): string {
+    let prompt = '<s>';
+    turns.forEach((turn: ChatTurn) => {
+      const role = turn.role === 'assistant' ? 'assistant' : turn.role === 'system' ? 'system' : 'user';
+      const content = turn.content.trim();
+      if (content.length <= 0) {
+        return;
+      }
+      prompt += `<|im_start|>${role}\n${content}<|im_end|>\n`;
+    });
+    prompt += '<|im_start|>assistant\n<think>\n';
+    return prompt;
+  }
+
+  private composeRawTemplatePrompt(turns: ChatTurn[], promptTemplate: string, model: ModelProfile): string {
+    const conversation = this.composeRawTemplateUserText(turns, model);
     if (promptTemplate.indexOf('%s') >= 0) {
       return promptTemplate.replace('%s', conversation);
     }
     return `${promptTemplate}\n${conversation}`;
   }
 
-  private composeRawTemplateUserText(turns: ChatTurn[]): string {
+  private composeRawTemplateUserText(turns: ChatTurn[], model: ModelProfile): string {
     let currentUserText = '';
     turns.forEach((turn: ChatTurn) => {
       const content = turn.content.trim();
@@ -637,7 +802,14 @@ export class ChatViewModel {
         currentUserText = content;
       }
     });
+    if (this.isDeepSeekModel(model)) {
+      return `请用简体中文回答用户问题。最终答案必须直接回答问题，不要在已经可以回答时说“我还没有学会回答这个问题”。\n\n用户问题：${currentUserText}`;
+    }
     return currentUserText;
+  }
+
+  private isDeepSeekModel(model: ModelProfile): boolean {
+    return `${model.id} ${model.name} ${model.shortName}`.toLowerCase().indexOf('deepseek') >= 0;
   }
 
   private shouldIncludeAssistantInContext(answer: string, result: GenerationResult): boolean {
@@ -671,12 +843,12 @@ export class ChatViewModel {
     return undefined;
   }
 
-  private handleStreamText(assistantId: number, streamedText: string): number {
+  private handleStreamText(assistantId: number, streamedText: string, assistantOutputPrefix: string = ''): number {
     if (streamedText.length <= 0) {
       return 0;
     }
     const displayText = this.session.sanitizeStreamingAssistantText(
-      streamedText,
+      this.applyExpectedAssistantOutputPrefix(streamedText, assistantOutputPrefix),
       this.shouldStripLeadingAssistantSeparator()
     );
     const nextStreamedChars = displayText.length;

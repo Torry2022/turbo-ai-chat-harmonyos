@@ -53,36 +53,6 @@ export struct ModelLoadDialog {
             .fontColor(this.viewModel.loaded ? '#45D6A4' : '#F2B35D');
         }
         .width('100%');
-
-        Row({ space: 10 }) {
-          if (!this.viewModel.modelLoading && !this.viewModel.loaded) {
-            Button('稍后')
-              .height(38)
-              .layoutWeight(1)
-              .onClick(() => {
-                this.viewModel.closeModelLoadDialog();
-              });
-            Button('立即加载')
-              .height(38)
-              .layoutWeight(1)
-              .onClick(() => {
-                this.viewModel.startModelLoad();
-              });
-          } else if (this.viewModel.loaded) {
-            Button('开始聊天')
-              .height(38)
-              .layoutWeight(1)
-              .onClick(() => {
-                this.viewModel.closeModelLoadDialog();
-              });
-          } else {
-            Button('正在加载')
-              .enabled(false)
-              .height(38)
-              .layoutWeight(1);
-          }
-        }
-        .width('100%');
       }
       .width('86%')
       .padding(18)

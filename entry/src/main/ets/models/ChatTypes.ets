@@ -25,5 +25,12 @@ export interface GenerationResult {
   stopReason: string;
 }
 
+export interface GenerationSettings {
+  temperature: number;
+  topP: number;
+  topK: number;
+  repetitionPenalty: number;
+}
+
 export const CONTEXT_MESSAGE_LIMIT: number = 6;
 export const VISION_MAX_PIXELS: number = 640000;

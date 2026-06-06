@@ -14,6 +14,14 @@ class Llm;
 
 class GemmaRunner {
 public:
+    struct SamplingConfig {
+        int maxNewTokens = 256;
+        double temperature = 0.6;
+        double topP = 0.9;
+        int topK = 40;
+        double repetitionPenalty = 1.05;
+    };
+
     struct ChatTurn {
         std::string role;
         std::string content;
@@ -34,28 +42,28 @@ public:
     GemmaRunner();
     ~GemmaRunner();
 
-    bool load(const std::string& configPath, int threadNum, int maxNewTokens, std::string& error);
-    std::string generate(const std::string& prompt, int maxNewTokens, std::string& error);
+    bool load(const std::string& configPath, int threadNum, const SamplingConfig& sampling, std::string& error);
+    std::string generate(const std::string& prompt, const SamplingConfig& sampling, std::string& error);
     GenerationResult generateStreaming(
         const std::string& prompt,
-        int maxNewTokens,
+        const SamplingConfig& sampling,
         const std::function<void(const std::string&)>& onChunk,
         std::string& error);
     GenerationResult generateRawPromptStreaming(
         const std::string& prompt,
-        int maxNewTokens,
+        const SamplingConfig& sampling,
         const std::string& endWith,
         const std::function<void(const std::string&)>& onChunk,
         std::string& error);
     GenerationResult generateChatStreaming(
         const std::vector<ChatTurn>& messages,
-        int maxNewTokens,
+        const SamplingConfig& sampling,
         const std::function<void(const std::string&)>& onChunk,
         std::string& error);
     GenerationResult generateImageChatStreaming(
         const std::vector<ChatTurn>& messages,
         const ImageData& image,
-        int maxNewTokens,
+        const SamplingConfig& sampling,
         const std::function<void(const std::string&)>& onChunk,
         std::string& error);
     void reset();

@@ -1,30 +1,37 @@
 import entry from 'libentry.so';
-import { ChatTurn, GenerationResult, ImagePayload } from '../models/ChatTypes';
+import { ChatTurn, GenerationResult, GenerationSettings, ImagePayload } from '../models/ChatTypes';
 
 export class NativeInferenceService {
-  loadModel(configPath: string, threadNum: number, maxNewTokens: number): Promise<boolean> {
-    return entry.loadModelAsync(configPath, threadNum, maxNewTokens).then((_result: string) => {
+  loadModel(configPath: string, threadNum: number, maxNewTokens: number, settings: GenerationSettings): Promise<boolean> {
+    return entry.loadModelAsync(configPath, threadNum, maxNewTokens, settings).then((_result: string) => {
       return entry.isLoaded() as boolean;
     });
   }
 
-  generateText(turns: ChatTurn[], maxNewTokens: number, onChunk: (chunk: string) => void): Promise<GenerationResult> {
-    return entry.generateChatStream(turns, maxNewTokens, onChunk);
+  generateText(
+    turns: ChatTurn[],
+    maxNewTokens: number,
+    settings: GenerationSettings,
+    onChunk: (chunk: string) => void
+  ): Promise<GenerationResult> {
+    return entry.generateChatStream(turns, maxNewTokens, settings, onChunk);
   }
 
   generateRawPrompt(
     prompt: string,
     maxNewTokens: number,
     endWith: string,
+    settings: GenerationSettings,
     onChunk: (chunk: string) => void
   ): Promise<GenerationResult> {
-    return entry.generateRawPromptStream(prompt, maxNewTokens, endWith, onChunk);
+    return entry.generateRawPromptStream(prompt, maxNewTokens, endWith, settings, onChunk);
   }
 
   generateImage(
     turns: ChatTurn[],
     image: ImagePayload,
     maxNewTokens: number,
+    settings: GenerationSettings,
     onChunk: (chunk: string) => void
   ): Promise<GenerationResult> {
     return entry.generateImageChatStream(
@@ -33,6 +40,7 @@ export class NativeInferenceService {
       image.width,
       image.height,
       maxNewTokens,
+      settings,
       onChunk
     );
   }

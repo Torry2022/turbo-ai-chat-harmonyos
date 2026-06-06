@@ -161,16 +161,16 @@ std::string MapStopReason(LlmStatus status) {
     }
 }
 
-std::string BuildSamplingConfigProperties(int maxNewTokens) {
+std::string BuildSamplingConfigProperties(const GemmaRunner::SamplingConfig& sampling) {
     std::ostringstream config;
-    config << "\"max_new_tokens\":" << maxNewTokens << ","
+    config << "\"max_new_tokens\":" << sampling.maxNewTokens << ","
            << "\"reuse_kv\":false,"
            << "\"sampler_type\":\"mixed\","
            << "\"mixed_samplers\":[\"penalty\",\"topK\",\"topP\",\"temperature\"],"
-           << "\"temperature\":0.6,"
-           << "\"top_k\":40,"
-           << "\"top_p\":0.9,"
-           << "\"repetition_penalty\":1.05,"
+           << "\"temperature\":" << sampling.temperature << ","
+           << "\"top_k\":" << sampling.topK << ","
+           << "\"top_p\":" << sampling.topP << ","
+           << "\"repetition_penalty\":" << sampling.repetitionPenalty << ","
            << "\"presence_penalty\":0.0,"
            << "\"frequency_penalty\":0.0,"
            << "\"penalty_window\":256,"
@@ -178,7 +178,7 @@ std::string BuildSamplingConfigProperties(int maxNewTokens) {
     return config.str();
 }
 
-std::string BuildRuntimeConfig(int threadNum, int maxNewTokens) {
+std::string BuildRuntimeConfig(int threadNum, const GemmaRunner::SamplingConfig& sampling) {
     std::ostringstream config;
     config << "{"
            << "\"tmp_path\":\"tmp\","
@@ -186,15 +186,15 @@ std::string BuildRuntimeConfig(int threadNum, int maxNewTokens) {
            << "\"thread_num\":" << threadNum << ","
            << "\"precision\":\"low\","
            << "\"memory\":\"low\","
-           << BuildSamplingConfigProperties(maxNewTokens) << ","
+           << BuildSamplingConfigProperties(sampling) << ","
            << "\"max_all_tokens\":2048,"
            << "\"prompt_cache\":false"
            << "}";
     return config.str();
 }
 
-std::string BuildGenerationConfig(int maxNewTokens) {
-    return "{" + BuildSamplingConfigProperties(maxNewTokens) + "}";
+std::string BuildGenerationConfig(const GemmaRunner::SamplingConfig& sampling) {
+    return "{" + BuildSamplingConfigProperties(sampling) + "}";
 }
 
 int ResolveGeneratedTokens(Llm* llm, const std::string& text, int maxNewTokens) {
@@ -240,7 +240,11 @@ GemmaRunner::GenerationResult BuildGenerationResult(Llm* llm, const std::string&
 GemmaRunner::GemmaRunner() = default;
 GemmaRunner::~GemmaRunner() = default;
 
-bool GemmaRunner::load(const std::string& configPath, int threadNum, int maxNewTokens, std::string& error) {
+bool GemmaRunner::load(
+    const std::string& configPath,
+    int threadNum,
+    const SamplingConfig& sampling,
+    std::string& error) {
     std::lock_guard<std::mutex> lock(mutex_);
     error.clear();
 
@@ -256,7 +260,7 @@ bool GemmaRunner::load(const std::string& configPath, int threadNum, int maxNewT
         return false;
     }
 
-    candidate->set_config(BuildRuntimeConfig(threadNum, maxNewTokens));
+    candidate->set_config(BuildRuntimeConfig(threadNum, sampling));
 
     if (!candidate->load()) {
         error = "MNN LLM load failed";
@@ -267,7 +271,7 @@ bool GemmaRunner::load(const std::string& configPath, int threadNum, int maxNewT
     return true;
 }
 
-std::string GemmaRunner::generate(const std::string& prompt, int maxNewTokens, std::string& error) {
+std::string GemmaRunner::generate(const std::string& prompt, const SamplingConfig& sampling, std::string& error) {
     std::lock_guard<std::mutex> lock(mutex_);
     error.clear();
 
@@ -276,19 +280,19 @@ std::string GemmaRunner::generate(const std::string& prompt, int maxNewTokens, s
         return {};
     }
 
-    if (maxNewTokens > 0) {
-        llm_->set_config(BuildGenerationConfig(maxNewTokens));
+    if (sampling.maxNewTokens > 0) {
+        llm_->set_config(BuildGenerationConfig(sampling));
     }
 
     llm_->reset();
     std::ostringstream output;
-    llm_->response(prompt, &output, nullptr, maxNewTokens);
+    llm_->response(prompt, &output, nullptr, sampling.maxNewTokens);
     return output.str();
 }
 
 GemmaRunner::GenerationResult GemmaRunner::generateStreaming(
     const std::string& prompt,
-    int maxNewTokens,
+    const SamplingConfig& sampling,
     const std::function<void(const std::string&)>& onChunk,
     std::string& error) {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -299,21 +303,21 @@ GemmaRunner::GenerationResult GemmaRunner::generateStreaming(
         return {};
     }
 
-    if (maxNewTokens > 0) {
-        llm_->set_config(BuildGenerationConfig(maxNewTokens));
+    if (sampling.maxNewTokens > 0) {
+        llm_->set_config(BuildGenerationConfig(sampling));
     }
 
     llm_->reset();
     ChunkStreamBuffer buffer(onChunk);
     std::ostream output(&buffer);
-    llm_->response(prompt, &output, nullptr, maxNewTokens);
+    llm_->response(prompt, &output, nullptr, sampling.maxNewTokens);
     output.flush();
-    return BuildGenerationResult(llm_.get(), buffer.output(), maxNewTokens);
+    return BuildGenerationResult(llm_.get(), buffer.output(), sampling.maxNewTokens);
 }
 
 GemmaRunner::GenerationResult GemmaRunner::generateRawPromptStreaming(
     const std::string& prompt,
-    int maxNewTokens,
+    const SamplingConfig& sampling,
     const std::string& endWith,
     const std::function<void(const std::string&)>& onChunk,
     std::string& error) {
@@ -329,8 +333,8 @@ GemmaRunner::GenerationResult GemmaRunner::generateRawPromptStreaming(
         return {};
     }
 
-    if (maxNewTokens > 0) {
-        llm_->set_config(BuildGenerationConfig(maxNewTokens));
+    if (sampling.maxNewTokens > 0) {
+        llm_->set_config(BuildGenerationConfig(sampling));
     }
 
     llm_->reset();
@@ -343,14 +347,14 @@ GemmaRunner::GenerationResult GemmaRunner::generateRawPromptStreaming(
     ChunkStreamBuffer buffer(onChunk);
     std::ostream output(&buffer);
     const char* endWithPtr = endWith.empty() ? nullptr : endWith.c_str();
-    llm_->response(inputIds, &output, endWithPtr, maxNewTokens);
+    llm_->response(inputIds, &output, endWithPtr, sampling.maxNewTokens);
     output.flush();
-    return BuildGenerationResult(llm_.get(), buffer.output(), maxNewTokens);
+    return BuildGenerationResult(llm_.get(), buffer.output(), sampling.maxNewTokens);
 }
 
 GemmaRunner::GenerationResult GemmaRunner::generateChatStreaming(
     const std::vector<ChatTurn>& messages,
-    int maxNewTokens,
+    const SamplingConfig& sampling,
     const std::function<void(const std::string&)>& onChunk,
     std::string& error) {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -366,8 +370,8 @@ GemmaRunner::GenerationResult GemmaRunner::generateChatStreaming(
         return {};
     }
 
-    if (maxNewTokens > 0) {
-        llm_->set_config(BuildGenerationConfig(maxNewTokens));
+    if (sampling.maxNewTokens > 0) {
+        llm_->set_config(BuildGenerationConfig(sampling));
     }
 
     MNN::Transformer::ChatMessages chatMessages;
@@ -386,15 +390,15 @@ GemmaRunner::GenerationResult GemmaRunner::generateChatStreaming(
     ChunkStreamBuffer buffer(onChunk);
     std::ostream output(&buffer);
     llm_->reset();
-    llm_->response(chatMessages, &output, nullptr, maxNewTokens);
+    llm_->response(chatMessages, &output, nullptr, sampling.maxNewTokens);
     output.flush();
-    return BuildGenerationResult(llm_.get(), buffer.output(), maxNewTokens);
+    return BuildGenerationResult(llm_.get(), buffer.output(), sampling.maxNewTokens);
 }
 
 GemmaRunner::GenerationResult GemmaRunner::generateImageChatStreaming(
     const std::vector<ChatTurn>& messages,
     const ImageData& image,
-    int maxNewTokens,
+    const SamplingConfig& sampling,
     const std::function<void(const std::string&)>& onChunk,
     std::string& error) {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -413,8 +417,8 @@ GemmaRunner::GenerationResult GemmaRunner::generateImageChatStreaming(
         return {};
     }
 
-    if (maxNewTokens > 0) {
-        llm_->set_config(BuildGenerationConfig(maxNewTokens));
+    if (sampling.maxNewTokens > 0) {
+        llm_->set_config(BuildGenerationConfig(sampling));
     }
 
     std::string userContent;
@@ -454,7 +458,7 @@ GemmaRunner::GenerationResult GemmaRunner::generateImageChatStreaming(
     llm_->reset();
     const auto* contextBefore = llm_->getContext();
     const auto visionUsBefore = contextBefore == nullptr ? 0 : contextBefore->vision_us;
-    llm_->response(prompt, &output, nullptr, maxNewTokens);
+    llm_->response(prompt, &output, nullptr, sampling.maxNewTokens);
     output.flush();
     const auto* contextAfter = llm_->getContext();
     const auto visionUsAfter = contextAfter == nullptr ? 0 : contextAfter->vision_us;
@@ -462,7 +466,7 @@ GemmaRunner::GenerationResult GemmaRunner::generateImageChatStreaming(
         error = "MNN vision encoder did not run. Rebuild libMNN.so with LLM_SUPPORT_VISION=ON and MNN_BUILD_OPENCV=ON.";
         return {};
     }
-    return BuildGenerationResult(llm_.get(), buffer.output(), maxNewTokens);
+    return BuildGenerationResult(llm_.get(), buffer.output(), sampling.maxNewTokens);
 }
 
 void GemmaRunner::reset() {
