@@ -6,7 +6,7 @@
 
 **Turbo AI Chat** 是一个 HarmonyOS NEXT 原生本地大模型聊天 Demo。它用 ArkTS 构建界面，通过 N-API 调用 C++ 原生推理层，并使用 MNN Runtime 在鸿蒙设备端加载 **Gemma 4** MNN 模型完成离线对话。
 
-关键词：HarmonyOS NEXT, HarmonyOS native LLM, ArkTS, N-API, MNN, Gemma 4, on-device AI, local LLM, mobile inference, Hugging Face model.
+关键词：HarmonyOS NEXT, HarmonyOS native LLM, ArkTS, N-API, MNN, Gemma 4, MiniCPM5, on-device AI, local LLM, mobile inference, ModelScope model.
 
 ## 项目背景
 
@@ -23,12 +23,12 @@
 - HarmonyOS NEXT 原生 ArkTS UI
 - C++ / N-API 推理桥接
 - MNN LLM Runtime 设备端推理
-- Gemma 4 MNN 模型加载
+- Gemma 4 / MiniCPM5 MNN 模型切换与加载
 - 流式输出
 - 多轮上下文记忆
 - 图片选择入口
 - CPU / 内存状态展示
-- 启动后自动弹窗加载模型
+- 启动后检测内置模型目录，缺失时引导一键下载
 - 中文界面、沉浸式布局、底部 Tab
 
 ## 截图
@@ -50,9 +50,10 @@
 
 App 会读取所选模型目录下的 `config.json`。切换模型只会切换配置路径和提示词，点击“加载模型”后才会真正释放旧模型并加载新模型。
 
-推荐 Gemma 4 模型：
+推荐内置模型来源：
 
-- Hugging Face: [`taobao-mnn/gemma-4-E2B-it-MNN`](https://huggingface.co/taobao-mnn/gemma-4-E2B-it-MNN)
+- ModelScope: [`MNN/gemma-4-E2B-it-MNN`](https://modelscope.cn/models/MNN/gemma-4-E2B-it-MNN)
+- ModelScope: [`MNN/MiniCPM5-1B-MNN`](https://modelscope.cn/models/MNN/MiniCPM5-1B-MNN)
 - 模型类型：Gemma 4 E2B instruction，MNN 4-bit 量化导出
 - 主要入口文件：`config.json`
 
@@ -72,7 +73,19 @@ gemma-4-E2B-it-MNN/
   audio.mnn.weight
 ```
 
-MiniCPM5-1B 需要准备为同样的 MNN 目录结构，并放到 App files 目录的 `MiniCPM5-1B-MNN/` 下。官方 BF16、GGUF、MLX 权重不能被当前原生 MNN 推理层直接读取。
+MiniCPM5-1B 的内置目录需要包含：
+
+```text
+MiniCPM5-1B-MNN/
+  config.json
+  llm_config.json
+  tokenizer.mtok
+  llm.mnn
+  llm.mnn.weight
+  embeddings_int4.bin
+```
+
+官方 BF16、GGUF、MLX 权重不能被当前原生 MNN 推理层直接读取。
 
 如果你手里是 GGUF，需要先走转换或另接 llama.cpp 鸿蒙移植层；这个仓库当前没有直接读取 GGUF。
 
@@ -88,13 +101,13 @@ Release 会附带可安装的 HAP：
 hdc install -r turbo-ai-chat-harmonyos-v0.1.0-signed.hap
 ```
 
-HAP 不内置 5GB+ 模型文件。安装 App 后，还需要把模型目录放到 App 文件目录。
+HAP 不内置模型权重。Gemma 4 E2B 约 3.7 GB，MiniCPM5-1B 约 625 MB；安装 App 后，如果内置模型目录缺失，App 会在加载模型前提示从 ModelScope 下载并安装到 App 沙箱目录。
 
 说明：Release 中的 HAP 是调试签名包。如果你的设备不在签名 profile 内，安装可能失败；这种情况下请从源码打开项目，并在 DevEco Studio 中使用自己的账号开启自动签名后重新构建。
 
 ## 下载模型
 
-仓库提供了 Hugging Face 下载脚本：
+安装 App 后，直接进入 App 按提示下载内置模型即可。仓库也保留了 PC 侧备用下载脚本：
 
 ```sh
 ./scripts/download_gemma4_e2b_mnn.sh
@@ -112,21 +125,21 @@ models/gemma-4-E2B-it-MNN/
 ./scripts/download_gemma4_e2b_mnn.sh /path/to/gemma-4-E2B-it-MNN
 ```
 
-MiniCPM5-1B 暂未提供内置下载脚本；请先自行准备 MNN 导出目录，例如：
+MiniCPM5-1B 可在 App 内从 ModelScope 下载；也可以手动准备 MNN 目录，例如：
 
 ```text
 models/MiniCPM5-1B-MNN/
 ```
 
-如果没有 `huggingface-cli`，脚本会使用 Python 的 `huggingface_hub`。缺依赖时先安装：
+脚本默认从 ModelScope 下载 Gemma 4 E2B。如果没有 `modelscope` CLI，脚本会使用 Python 的 `modelscope` 包。缺依赖时先安装：
 
 ```sh
-python3 -m pip install huggingface_hub
+python3 -m pip install modelscope
 ```
 
 ## 模型放到手机哪里
 
-App 默认读取这个路径：
+App 默认读取这个路径。正常情况下，App 内下载会自动写入这些目录；下面的 `hdc` 推送方式只作为调试备用。
 
 ```text
 /data/storage/el2/base/haps/entry/files/gemma-4-E2B-it-MNN/config.json
@@ -235,8 +248,6 @@ entry.isLoaded(): boolean
 ```
 
 ## Roadmap
-
-- 内置模型下载管理器
 - 图片输入接入 Gemma 4 多模态能力
 - 更细的 token / 首字延迟 / tokens per second 指标
 - release 构建流水线

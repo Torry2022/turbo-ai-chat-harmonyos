@@ -6,7 +6,7 @@
 
 **Turbo AI Chat** is a HarmonyOS NEXT native local LLM chat demo. The app uses ArkTS for the UI, calls a C++ inference layer through N-API, and runs **Gemma 4** locally on a HarmonyOS device with the MNN Runtime.
 
-Keywords: HarmonyOS NEXT, HarmonyOS native LLM, ArkTS, N-API, MNN, Gemma 4, on-device AI, local LLM, mobile inference, Hugging Face model.
+Keywords: HarmonyOS NEXT, HarmonyOS native LLM, ArkTS, N-API, MNN, Gemma 4, MiniCPM5, on-device AI, local LLM, mobile inference, ModelScope model.
 
 ## Background
 
@@ -23,12 +23,12 @@ This is not a cloud-chat wrapper and not a WebView shell. Model files live on th
 - Native HarmonyOS NEXT ArkTS UI
 - C++ / N-API inference bridge
 - On-device inference with MNN LLM Runtime
-- Gemma 4 MNN model loading
+- Gemma 4 / MiniCPM5 MNN model switching and loading
 - Streaming generation
 - Multi-turn conversation context
 - Image picker entry
 - CPU / memory status panel
-- Automatic model-loading dialog on app launch
+- Startup built-in model check with one-click download guidance
 - Chinese UI, immersive layout, bottom tabs
 
 ## Screenshots
@@ -50,9 +50,10 @@ Built-in selectable models:
 
 The app reads `config.json` from the selected model directory. Switching models only changes the selected config path and prompt behavior; the previous model is released and the new model is loaded only after tapping "Load model".
 
-Recommended Gemma 4 model:
+Recommended built-in model sources:
 
-- Hugging Face: [`taobao-mnn/gemma-4-E2B-it-MNN`](https://huggingface.co/taobao-mnn/gemma-4-E2B-it-MNN)
+- ModelScope: [`MNN/gemma-4-E2B-it-MNN`](https://modelscope.cn/models/MNN/gemma-4-E2B-it-MNN)
+- ModelScope: [`MNN/MiniCPM5-1B-MNN`](https://modelscope.cn/models/MNN/MiniCPM5-1B-MNN)
 - Model type: Gemma 4 E2B instruction, MNN 4-bit quantized export
 - Entry file: `config.json`
 
@@ -72,7 +73,19 @@ gemma-4-E2B-it-MNN/
   audio.mnn.weight
 ```
 
-MiniCPM5-1B must be prepared as the same kind of MNN model directory and placed under `MiniCPM5-1B-MNN/` in the app files directory. The official BF16, GGUF, and MLX weights cannot be loaded directly by the current native MNN inference layer.
+MiniCPM5-1B must include:
+
+```text
+MiniCPM5-1B-MNN/
+  config.json
+  llm_config.json
+  tokenizer.mtok
+  llm.mnn
+  llm.mnn.weight
+  embeddings_int4.bin
+```
+
+The official BF16, GGUF, and MLX weights cannot be loaded directly by the current native MNN inference layer.
 
 If you have a GGUF model, you need a conversion path or a separate llama.cpp HarmonyOS port. This repository does not directly read GGUF yet.
 
@@ -88,13 +101,13 @@ Install example:
 hdc install -r turbo-ai-chat-harmonyos-v0.1.0-signed.hap
 ```
 
-The HAP does not bundle the 5GB+ model weights. After installing the app, push the model directory into the app files directory.
+The HAP does not bundle model weights. Gemma 4 E2B is about 3.7 GB, and MiniCPM5-1B is about 625 MB. After installing the app, if a built-in model directory is missing, the app prompts you to download and install it from ModelScope into the app sandbox.
 
 Note: the Release HAP is debug-signed. If your device is not covered by the debug profile, installation may fail. In that case, open the project from source and rebuild it with DevEco Studio automatic signing using your own Huawei developer account.
 
 ## Download Model
 
-The repository includes a Hugging Face download script:
+After installation, you can follow the in-app prompt to download built-in models. The repository also keeps a PC-side fallback download script:
 
 ```sh
 ./scripts/download_gemma4_e2b_mnn.sh
@@ -112,21 +125,21 @@ You can also choose a custom directory:
 ./scripts/download_gemma4_e2b_mnn.sh /path/to/gemma-4-E2B-it-MNN
 ```
 
-MiniCPM5-1B does not have a built-in download script yet. Prepare an MNN export directory yourself, for example:
+MiniCPM5-1B can be downloaded in the app from ModelScope. You can also prepare an MNN directory manually, for example:
 
 ```text
 models/MiniCPM5-1B-MNN/
 ```
 
-If `huggingface-cli` is not available, the script falls back to Python `huggingface_hub`. Install it first if needed:
+The script downloads Gemma 4 E2B from ModelScope by default. If the `modelscope` CLI is not available, it falls back to the Python `modelscope` package. Install it first if needed:
 
 ```sh
-python3 -m pip install huggingface_hub
+python3 -m pip install modelscope
 ```
 
 ## Model Location On Device
 
-The app reads this path by default:
+The app reads this path by default. Normally the in-app downloader writes these directories automatically; the `hdc` workflow is kept as a debugging fallback.
 
 ```text
 /data/storage/el2/base/haps/entry/files/gemma-4-E2B-it-MNN/config.json
@@ -235,8 +248,6 @@ entry.isLoaded(): boolean
 ```
 
 ## Roadmap
-
-- Built-in model download manager
 - Gemma 4 multimodal image input
 - More detailed token / first-token latency / tokens-per-second metrics
 - Release build pipeline

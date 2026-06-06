@@ -1,6 +1,8 @@
 import { common } from '@kit.AbilityKit';
+import fs from '@ohos.file.fs';
 import { ChatMessage, ChatTurn, GenerationResult, GenerationSettings } from '../models/ChatTypes';
 import { ImportedModelDraft } from '../models/ImportedModelTypes';
+import { BuiltinModelDownloadSpec, BuiltinModelInstallProgress } from '../models/BuiltinModelDownloadTypes';
 import {
   CHAT_FORMAT_MNN_AUTO,
   CHAT_FORMAT_QWEN_IM,
@@ -16,6 +18,7 @@ import {
 } from '../models/ModelProfile';
 import { EMPTY_RUNTIME_STATS, RuntimeStats } from '../models/RuntimeStats';
 import { ImagePayloadService } from '../services/ImagePayloadService';
+import { BuiltinModelInstallService } from '../services/BuiltinModelInstallService';
 import { ModelImportService } from '../services/ModelImportService';
 import { NativeInferenceService } from '../services/NativeInferenceService';
 import { RuntimeStatsService } from '../services/RuntimeStatsService';
@@ -26,7 +29,8 @@ import { ModelManager } from './ModelManager';
 
 @Observed
 export class ChatViewModel {
-  inputText: string = '用一段话介绍鸿蒙 NEXT。';
+  messages: ChatMessage[] = [];
+  inputText: string = '请用一段话介绍鸿蒙系统。';
   selectedImageUri: string = '';
   busy: boolean = false;
   loaded: boolean = false;
@@ -42,6 +46,16 @@ export class ChatViewModel {
   modelLoading: boolean = false;
   modelLoadProgress: number = 0;
   modelLoadMessage: string = '准备加载本地模型';
+  showBuiltinModelInstallDialog: boolean = false;
+  builtinModelInstalling: boolean = false;
+  builtinModelInstallProgress: number = 0;
+  builtinModelInstallMessage: string = '内置模型目录缺失，请先下载模型文件。';
+  builtinModelInstallFileName: string = '';
+  builtinModelInstallModelName: string = '';
+  builtinModelInstallSourceName: string = 'ModelScope';
+  builtinModelInstallDownloadedBytes: number = 0;
+  builtinModelInstallTotalBytes: number = 0;
+  builtinModelInstallError: string = '';
   modelImporting: boolean = false;
   modelImportMessage: string = '可导入 MNN 模型 zip 包';
   editingImportedModelId: string = '';
@@ -65,12 +79,9 @@ export class ChatViewModel {
   private modelManager: ModelManager = new ModelManager();
   private nativeService: NativeInferenceService = new NativeInferenceService();
   private imageService: ImagePayloadService = new ImagePayloadService();
+  private builtinModelInstallService: BuiltinModelInstallService = new BuiltinModelInstallService();
   private modelImportService: ModelImportService = new ModelImportService();
   private statsService: RuntimeStatsService = new RuntimeStatsService();
-
-  get messages(): ChatMessage[] {
-    return this.session.messages;
-  }
 
   get modelPath(): string {
     return this.modelManager.modelPath;
@@ -93,6 +104,7 @@ export class ChatViewModel {
     this.filesDir = context.filesDir;
     this.modelManager.initialize(this.filesDir);
     this.session.initializeWelcome(this.currentModel().shortName);
+    this.syncMessages();
     this.refreshStats();
     this.notify();
     this.modelImportService.loadImportedProfiles(this.filesDir).then((profiles: ModelProfile[]) => {
@@ -130,6 +142,7 @@ export class ChatViewModel {
     this.inputText = '';
     this.selectedImageUri = '';
     this.session.resetForModelSwitch(model.shortName);
+    this.syncMessages();
     this.resetLoadedModel(`已切换至 ${model.shortName}，请加载模型。`);
     this.notifyAndScroll();
   }
@@ -189,13 +202,15 @@ export class ChatViewModel {
     }
   }
 
-  resetGenerationSettings(): void {
+  resetGenerationSettings(notify: boolean = true): void {
     this.maxNewTokens = DEFAULT_MAX_NEW_TOKENS;
     this.temperature = DEFAULT_TEMPERATURE;
     this.topP = DEFAULT_TOP_P;
     this.topK = DEFAULT_TOP_K;
     this.repetitionPenalty = DEFAULT_REPETITION_PENALTY;
-    this.notify();
+    if (notify) {
+      this.notify();
+    }
   }
 
   toggleAdvancedModelSettings(): void {
@@ -405,11 +420,13 @@ export class ChatViewModel {
 
   toggleMessageThinking(messageId: number): void {
     this.session.toggleThinkingExpanded(messageId);
+    this.syncMessages();
     this.notify();
   }
 
   newChat(): void {
     this.session.newChat(this.loaded, this.currentModel().shortName);
+    this.syncMessages();
     this.inputText = '';
     this.selectedImageUri = '';
     this.status = this.loaded ? `${this.currentModel().shortName} 已加载` : '模型未加载';
@@ -422,17 +439,25 @@ export class ChatViewModel {
   }
 
   openModelLoadDialog(autoStart: boolean = false): void {
-    this.showModelLoadDialog = true;
-    this.modelLoadProgress = this.loaded ? 100 : 0;
-    this.modelLoadMessage = this.loaded ? `${this.currentModel().shortName} 已加载，可以开始聊天。` : `正在准备加载 ${this.currentModel().shortName} 本地模型...`;
-    this.notify();
-    if (autoStart) {
-      setTimeout(() => {
-        if (this.showModelLoadDialog && !this.loaded && !this.modelLoading) {
-          this.startModelLoad();
-        }
-      }, 350);
-    }
+    this.ensureCurrentModelInstalled().then((installed: boolean) => {
+      if (!installed) {
+        return;
+      }
+      this.showModelLoadDialog = true;
+      this.modelLoadProgress = this.loaded ? 100 : 0;
+      this.modelLoadMessage = this.loaded ? `${this.currentModel().shortName} 已加载，可以开始聊天。` : `正在准备加载 ${this.currentModel().shortName} 本地模型...`;
+      this.notify();
+      if (autoStart) {
+        setTimeout(() => {
+          if (this.showModelLoadDialog && !this.loaded && !this.modelLoading) {
+            this.startModelLoad();
+          }
+        }, 350);
+      }
+    }).catch((err: Error) => {
+      this.status = `检查模型失败：${formatError(err as Object)}`;
+      this.notify();
+    });
   }
 
   closeModelLoadDialog(): void {
@@ -441,12 +466,23 @@ export class ChatViewModel {
   }
 
   loadModel(): void {
-    this.openModelLoadDialog(false);
-    this.startModelLoad();
+    this.ensureCurrentModelInstalled().then((installed: boolean) => {
+      if (!installed) {
+        return;
+      }
+      this.openModelLoadDialog(false);
+      this.startModelLoad();
+    }).catch((err: Error) => {
+      this.status = `检查模型失败：${formatError(err as Object)}`;
+      this.notify();
+    });
   }
 
   startModelLoad(): void {
     if (this.modelLoading) {
+      return;
+    }
+    if (this.showBuiltinModelInstallDialog) {
       return;
     }
     this.busy = true;
@@ -469,6 +505,7 @@ export class ChatViewModel {
       this.stopModelLoadProgress();
       this.modelLoadProgress = 100;
       this.session.appendMessage('assistant', `${this.currentModel().shortName} 加载完成，现在可以开始提问。`, '', false);
+      this.syncMessages();
       this.busy = false;
       this.modelLoading = false;
       this.refreshStats();
@@ -483,11 +520,76 @@ export class ChatViewModel {
       this.stopModelLoadProgress();
       this.modelLoadProgress = 0;
       this.session.appendMessage('assistant', this.status, '', false);
+      this.syncMessages();
       this.loaded = false;
       this.busy = false;
       this.modelLoading = false;
       this.refreshStats();
       this.notifyAndScroll();
+    });
+  }
+
+  closeBuiltinModelInstallDialog(): void {
+    if (this.builtinModelInstalling) {
+      return;
+    }
+    this.showBuiltinModelInstallDialog = false;
+    this.notify();
+  }
+
+  startBuiltinModelInstall(): void {
+    if (this.builtinModelInstalling || this.context === undefined) {
+      return;
+    }
+    const model = this.currentModel();
+    const spec = this.builtinModelInstallService.getDownloadSpec(model);
+    if (spec === undefined) {
+      this.showBuiltinModelInstallDialog = false;
+      this.loadModel();
+      return;
+    }
+
+    this.busy = true;
+    this.builtinModelInstalling = true;
+    this.showBuiltinModelInstallDialog = true;
+    this.builtinModelInstallError = '';
+    this.builtinModelInstallProgress = 0;
+    this.builtinModelInstallDownloadedBytes = 0;
+    this.builtinModelInstallTotalBytes = spec.totalBytes;
+    this.builtinModelInstallFileName = '';
+    this.builtinModelInstallModelName = spec.displayName;
+    this.builtinModelInstallSourceName = spec.sourceName;
+    this.builtinModelInstallMessage = `正在从 ${spec.sourceName} 下载 ${spec.displayName}。请保持 App 在前台。`;
+    this.status = `正在安装 ${spec.displayName}...`;
+    this.notify();
+
+    this.builtinModelInstallService.install(this.context, model, (progress: BuiltinModelInstallProgress) => {
+      this.builtinModelInstallProgress = progress.progress;
+      this.builtinModelInstallDownloadedBytes = progress.downloadedBytes;
+      this.builtinModelInstallTotalBytes = progress.totalBytes;
+      this.builtinModelInstallFileName = progress.fileName;
+      this.builtinModelInstallMessage = `${progress.message}：${progress.fileName}`;
+      this.status = `正在安装 ${progress.modelName}... ${Math.round(progress.progress)}%`;
+      this.notify();
+    }).then(() => {
+      this.builtinModelInstalling = false;
+      this.busy = false;
+      this.builtinModelInstallProgress = 100;
+      this.builtinModelInstallMessage = `${spec.displayName} 安装完成，正在加载模型。`;
+      this.status = `${spec.displayName} 安装完成`;
+      this.notify();
+      setTimeout(() => {
+        this.showBuiltinModelInstallDialog = false;
+        this.openModelLoadDialog(false);
+        this.startModelLoad();
+      }, 350);
+    }).catch((err: Error) => {
+      this.builtinModelInstalling = false;
+      this.busy = false;
+      this.builtinModelInstallError = `安装失败：${formatError(err as Object)}`;
+      this.builtinModelInstallMessage = `${spec.displayName} 未安装完成，可以重试。`;
+      this.status = this.builtinModelInstallError;
+      this.notify();
     });
   }
 
@@ -530,6 +632,7 @@ export class ChatViewModel {
 
     this.session.appendMessage('user', text, attachedImage);
     const assistantId = this.session.appendMessage('assistant', '', '');
+    this.syncMessages();
     this.inputText = '';
     this.selectedImageUri = '';
     this.busy = true;
@@ -540,7 +643,6 @@ export class ChatViewModel {
     let streamedChars = 0;
     let streamedText = '';
     let generation: Promise<GenerationResult>;
-    const assistantOutputPrefix = this.expectedAssistantOutputPrefixForCurrentModel();
     if (attachedImage.length > 0) {
       this.status = '正在读取图片...';
       this.notify();
@@ -554,25 +656,26 @@ export class ChatViewModel {
           this.currentGenerationSettings(),
           (chunk: string) => {
             streamedText += chunk;
-            streamedChars = this.handleStreamText(assistantId, streamedText, assistantOutputPrefix);
+            streamedChars = this.handleStreamText(assistantId, streamedText);
           }
         );
       });
     } else {
       generation = this.generateTextForCurrentModel(chatTurns, (chunk: string) => {
         streamedText += chunk;
-        streamedChars = this.handleStreamText(assistantId, streamedText, assistantOutputPrefix);
+        streamedChars = this.handleStreamText(assistantId, streamedText);
       });
     }
 
     generation.then((result: GenerationResult) => {
       const cleanedText = this.session.sanitizeAssistantText(
-        this.applyExpectedAssistantOutputPrefix(result.text, assistantOutputPrefix),
+        result.text,
         this.shouldStripLeadingAssistantSeparator()
       );
       const answer = cleanedText.length > 0 ? cleanedText : '（原生层返回空内容）';
       const includeInContext = this.shouldIncludeAssistantInContext(answer, result);
       this.session.updateMessage(assistantId, answer, includeInContext);
+      this.syncMessages();
       this.status = this.formatGenerationStatus(answer, includeInContext, result);
       this.busy = false;
       this.refreshStats();
@@ -580,6 +683,7 @@ export class ChatViewModel {
     }).catch((err: Error) => {
       const message = `生成失败：${formatError(err as Object)}`;
       this.session.updateMessage(assistantId, message, false);
+      this.syncMessages();
       this.status = message;
       this.busy = false;
       this.refreshStats();
@@ -619,8 +723,62 @@ export class ChatViewModel {
     this.modelLoadMessage = status;
   }
 
+  private ensureCurrentModelInstalled(): Promise<boolean> {
+    const model = this.currentModel();
+    const spec = this.builtinModelInstallService.getDownloadSpec(model);
+    if (spec === undefined) {
+      return Promise.resolve(true);
+    }
+    return this.currentModelConfigExists().then((customPathExists: boolean) => {
+      if (customPathExists && this.modelPath !== `${this.filesDir}/${model.directoryName}/config.json`) {
+        return true;
+      }
+      return this.builtinModelInstallService.isInstalled(this.filesDir, model);
+    }).then((installed: boolean) => {
+      if (installed) {
+        return true;
+      }
+      this.openBuiltinModelInstallDialog(spec);
+      return false;
+    });
+  }
+
+  private openBuiltinModelInstallDialog(spec: BuiltinModelDownloadSpec): void {
+    this.showModelLoadDialog = false;
+    this.stopModelLoadProgress();
+    this.modelLoadProgress = 0;
+    this.showBuiltinModelInstallDialog = true;
+    this.builtinModelInstalling = false;
+    this.builtinModelInstallProgress = 0;
+    this.builtinModelInstallDownloadedBytes = 0;
+    this.builtinModelInstallTotalBytes = spec.totalBytes;
+    this.builtinModelInstallFileName = '';
+    this.builtinModelInstallModelName = spec.displayName;
+    this.builtinModelInstallSourceName = spec.sourceName;
+    this.builtinModelInstallError = '';
+    this.builtinModelInstallMessage = `${spec.displayName} 内置模型目录缺失或不完整，请先下载模型文件。`;
+    this.status = `${spec.displayName} 未安装`;
+    this.notify();
+  }
+
+  private async currentModelConfigExists(): Promise<boolean> {
+    if (this.modelPath.length <= 0) {
+      return false;
+    }
+    try {
+      const stat = await fs.stat(this.modelPath);
+      return stat.isFile();
+    } catch (_) {
+      return false;
+    }
+  }
+
   private composeChatTurns(text: string): ChatTurn[] {
     return this.session.composeChatTurns(this.currentModel().systemPrompt, text);
+  }
+
+  private syncMessages(): void {
+    this.messages = this.session.messages;
   }
 
   private shouldStripLeadingAssistantSeparator(): boolean {
@@ -631,15 +789,6 @@ export class ChatViewModel {
   private generateTextForCurrentModel(turns: ChatTurn[], onChunk: (chunk: string) => void): Promise<GenerationResult> {
     const model = this.currentModel();
     const chatFormat = model.chatFormat ?? CHAT_FORMAT_MNN_AUTO;
-    if (model.id === 'minicpm5-1b') {
-      return this.nativeService.generateRawPrompt(
-        this.composeMiniCpmThinkingPrompt(turns),
-        this.maxNewTokens,
-        '<|im_end|>',
-        this.currentGenerationSettings(),
-        onChunk
-      );
-    }
     if (chatFormat === CHAT_FORMAT_QWEN_IM) {
       return this.nativeService.generateRawPrompt(
         this.composeQwenPrompt(turns),
@@ -659,25 +808,6 @@ export class ChatViewModel {
       );
     }
     return this.nativeService.generateText(turns, this.maxNewTokens, this.currentGenerationSettings(), onChunk);
-  }
-
-  private expectedAssistantOutputPrefixForCurrentModel(): string {
-    const model = this.currentModel();
-    if (model.id === 'minicpm5-1b') {
-      return '<think>\n';
-    }
-    return '';
-  }
-
-  private applyExpectedAssistantOutputPrefix(text: string, prefix: string): string {
-    if (prefix.length <= 0 || text.length <= 0) {
-      return text;
-    }
-    const trimmedStart = text.trimStart();
-    if (trimmedStart.startsWith('<think>') || '<think>'.startsWith(trimmedStart)) {
-      return text;
-    }
-    return `${prefix}${text}`;
   }
 
   private currentGenerationSettings(): GenerationSettings {
@@ -769,20 +899,6 @@ export class ChatViewModel {
     return prompt;
   }
 
-  private composeMiniCpmThinkingPrompt(turns: ChatTurn[]): string {
-    let prompt = '<s>';
-    turns.forEach((turn: ChatTurn) => {
-      const role = turn.role === 'assistant' ? 'assistant' : turn.role === 'system' ? 'system' : 'user';
-      const content = turn.content.trim();
-      if (content.length <= 0) {
-        return;
-      }
-      prompt += `<|im_start|>${role}\n${content}<|im_end|>\n`;
-    });
-    prompt += '<|im_start|>assistant\n<think>\n';
-    return prompt;
-  }
-
   private composeRawTemplatePrompt(turns: ChatTurn[], promptTemplate: string, model: ModelProfile): string {
     const conversation = this.composeRawTemplateUserText(turns, model);
     if (promptTemplate.indexOf('%s') >= 0) {
@@ -843,17 +959,18 @@ export class ChatViewModel {
     return undefined;
   }
 
-  private handleStreamText(assistantId: number, streamedText: string, assistantOutputPrefix: string = ''): number {
+  private handleStreamText(assistantId: number, streamedText: string): number {
     if (streamedText.length <= 0) {
       return 0;
     }
     const displayText = this.session.sanitizeStreamingAssistantText(
-      this.applyExpectedAssistantOutputPrefix(streamedText, assistantOutputPrefix),
+      streamedText,
       this.shouldStripLeadingAssistantSeparator()
     );
     const nextStreamedChars = displayText.length;
     this.status = `正在生成... ${nextStreamedChars} 字符`;
     this.session.updateMessage(assistantId, displayText);
+    this.syncMessages();
     this.notifyAndScroll();
     return nextStreamedChars;
   }

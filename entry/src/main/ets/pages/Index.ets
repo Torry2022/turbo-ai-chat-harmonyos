@@ -1,6 +1,7 @@
 import { common } from '@kit.AbilityKit';
 import { AppHeader } from '../components/AppHeader';
 import { BottomTabs } from '../components/BottomTabs';
+import { BuiltinModelInstallDialog } from '../components/BuiltinModelInstallDialog';
 import { ChatTab } from '../components/ChatTab';
 import { DeleteImportedModelDialog } from '../components/DeleteImportedModelDialog';
 import { LaunchScreen } from '../components/LaunchScreen';
@@ -16,7 +17,6 @@ struct Index {
   @State private showLaunch: boolean = true;
   @State private activeTab: number = 0;
   @State private stateVersion: number = 0;
-  private monitorTimer: number = -1;
 
   aboutToAppear(): void {
     this.viewModel.bindNotify(() => {
@@ -33,44 +33,19 @@ struct Index {
   }
 
   aboutToDisappear(): void {
-    this.stopMonitorTimer();
     this.viewModel.dispose();
   }
 
   private changeTab(index: number): void {
     this.activeTab = index;
     if (index === 0) {
-      this.stopMonitorTimer();
       this.viewModel.scrollToBottom();
-    } else if (index === 2) {
-      this.viewModel.refreshStats();
-      this.startMonitorTimer();
-    } else {
-      this.stopMonitorTimer();
     }
   }
 
   private newChat(): void {
     this.viewModel.newChat();
     this.activeTab = 0;
-    this.stopMonitorTimer();
-  }
-
-  private startMonitorTimer(): void {
-    if (this.monitorTimer >= 0) {
-      return;
-    }
-    this.monitorTimer = setInterval(() => {
-      this.viewModel.refreshStats();
-    }, 1500);
-  }
-
-  private stopMonitorTimer(): void {
-    if (this.monitorTimer < 0) {
-      return;
-    }
-    clearInterval(this.monitorTimer);
-    this.monitorTimer = -1;
   }
 
   @Builder
@@ -78,7 +53,9 @@ struct Index {
     Stack() {
       Column({ space: 10 }) {
         AppHeader({
-          viewModel: this.viewModel,
+          status: this.viewModel.status,
+          loaded: this.viewModel.loaded,
+          busy: this.viewModel.busy,
           onNewChat: () => {
             this.newChat();
           }
@@ -110,6 +87,11 @@ struct Index {
 
       if (this.viewModel.showModelLoadDialog) {
         ModelLoadDialog({
+          viewModel: this.viewModel
+        });
+      }
+      if (this.viewModel.showBuiltinModelInstallDialog) {
+        BuiltinModelInstallDialog({
           viewModel: this.viewModel
         });
       }

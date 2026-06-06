@@ -1,5 +1,6 @@
 #include "gemma_runner.h"
 
+#include <algorithm>
 #include <fstream>
 #include <functional>
 #include <ostream>
@@ -179,6 +180,7 @@ std::string BuildSamplingConfigProperties(const GemmaRunner::SamplingConfig& sam
 }
 
 std::string BuildRuntimeConfig(int threadNum, const GemmaRunner::SamplingConfig& sampling) {
+    const int maxAllTokens = std::max(2048, sampling.maxNewTokens + 2048);
     std::ostringstream config;
     config << "{"
            << "\"tmp_path\":\"tmp\","
@@ -187,7 +189,7 @@ std::string BuildRuntimeConfig(int threadNum, const GemmaRunner::SamplingConfig&
            << "\"precision\":\"low\","
            << "\"memory\":\"low\","
            << BuildSamplingConfigProperties(sampling) << ","
-           << "\"max_all_tokens\":2048,"
+           << "\"max_all_tokens\":" << maxAllTokens << ","
            << "\"prompt_cache\":false"
            << "}";
     return config.str();

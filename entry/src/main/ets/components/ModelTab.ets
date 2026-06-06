@@ -39,7 +39,7 @@ export struct ModelTab {
     this.sliderTopP = DEFAULT_TOP_P;
     this.sliderTopK = DEFAULT_TOP_K;
     this.sliderRepetitionPenalty = DEFAULT_REPETITION_PENALTY;
-    this.viewModel.resetGenerationSettings();
+    this.viewModel.resetGenerationSettings(false);
   }
 
   @Builder
@@ -149,7 +149,7 @@ export struct ModelTab {
           .fontColor('#EAF4FF');
       }
       .width('100%');
-      Slider({ value: this.sliderMaxNewTokens, min: 16, max: this.viewModel.maxGenerationTokens, step: 16 })
+      Slider({ value: this.sliderMaxNewTokens, min: 64, max: this.viewModel.maxGenerationTokens, step: 64 })
         .onChange((value: number, _mode: SliderChangeMode) => {
           this.sliderMaxNewTokens = Math.round(value);
           this.viewModel.updateMaxNewTokens(this.sliderMaxNewTokens, false);

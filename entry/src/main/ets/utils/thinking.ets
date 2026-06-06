@@ -5,6 +5,13 @@ export interface AssistantTextParts {
   thinkingClosed: boolean;
 }
 
+function stripThinkTags(text: string): string {
+  return text
+    .replace(/<think>/g, '')
+    .replace(/<\/think>/g, '')
+    .trim();
+}
+
 export function stripModelSpecialTokens(content: string): string {
   let text = content
     .replace(/<s>/g, '')
@@ -53,8 +60,8 @@ export function parseAssistantText(content: string): AssistantTextParts {
   }
 
   const thinking = afterOpen.substring(0, closeIndex).trim();
-  const afterClose = afterOpen.substring(closeIndex + closeTag.length).trim();
-  let answer = before;
+  const afterClose = stripThinkTags(afterOpen.substring(closeIndex + closeTag.length));
+  let answer = stripThinkTags(before);
   if (answer.length > 0 && afterClose.length > 0) {
     answer = `${answer}\n${afterClose}`;
   } else if (afterClose.length > 0) {

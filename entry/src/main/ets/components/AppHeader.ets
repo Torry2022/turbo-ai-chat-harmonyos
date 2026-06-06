@@ -1,8 +1,8 @@
-import { ChatViewModel } from '../state/ChatViewModel';
-
 @Component
 export struct AppHeader {
-  @ObjectLink viewModel: ChatViewModel;
+  @Prop status: string = '';
+  @Prop loaded: boolean = false;
+  @Prop busy: boolean = false;
   onNewChat: () => void = () => {};
 
   build() {
@@ -21,10 +21,10 @@ export struct AppHeader {
           step: 4,
           loop: -1,
           fromStart: true,
-          src: this.viewModel.status
+          src: this.status
         })
           .fontSize(12)
-          .fontColor(this.viewModel.loaded ? '#45D6A4' : '#F2B35D')
+          .fontColor(this.loaded ? '#45D6A4' : '#F2B35D')
           .width('100%')
           .height(18);
       }
@@ -32,7 +32,7 @@ export struct AppHeader {
       .alignItems(HorizontalAlign.Start);
 
       Button('新对话')
-        .enabled(!this.viewModel.busy)
+        .enabled(!this.busy)
         .height(34)
         .onClick(() => {
           this.onNewChat();

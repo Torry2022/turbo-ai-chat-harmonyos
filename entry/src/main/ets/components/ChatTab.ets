@@ -19,7 +19,12 @@ export struct ChatTab {
               }
             });
           }
-        }, (message: ChatMessage) => `${this.renderVersion}-${message.id}-${message.content.length}`);
+        }, (message: ChatMessage) => {
+          if (message.role === 'assistant') {
+            return `${message.id}-${message.content.length}-${message.thinkingExpanded ? 1 : 0}`;
+          }
+          return `${message.id}`;
+        });
       }
       .layoutWeight(1)
       .width('100%')
