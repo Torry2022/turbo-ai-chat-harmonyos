@@ -107,12 +107,13 @@ export class ChatSession {
     });
   }
 
-  composeChatTurns(systemPrompt: string, text: string): ChatTurn[] {
+  composeChatTurns(systemPrompt: string, text: string, contextMessageLimit: number = CONTEXT_MESSAGE_LIMIT): ChatTurn[] {
     const turns: ChatTurn[] = [{
       role: 'system',
       content: systemPrompt
     }];
-    const contextTurns = this.composeCompleteContextTurns().slice(-CONTEXT_MESSAGE_LIMIT);
+    const safeContextLimit = Math.max(0, Math.round(contextMessageLimit));
+    const contextTurns = safeContextLimit > 0 ? this.composeCompleteContextTurns().slice(-safeContextLimit) : [];
     contextTurns.forEach((turn: ChatTurn) => {
       turns.push(turn);
     });

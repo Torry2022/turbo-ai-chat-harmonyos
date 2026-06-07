@@ -25,7 +25,10 @@ export function stripModelSpecialTokens(content: string): string {
     .replace(/<\|User\|>/g, '')
     .replace(/<\|Assistant\|>/g, '')
     .replace(/<\|begin_of_text\|>/g, '')
-    .replace(/<\|end_of_text\|>/g, '');
+    .replace(/<\|end_of_text\|>/g, '')
+    .replace(/<bos>/g, '')
+    .replace(/<\|turn>/g, '')
+    .replace(/<turn\|>/g, '');
 
   if (text.indexOf('<think>') < 0) {
     text = text.replace(/<\/think>/g, '');
@@ -90,6 +93,34 @@ export function answerTextForContext(content: string): string {
     return stripModelSpecialTokens(content).trim();
   }
   return parts.answer.trim();
+}
+
+export function trimLikelyIncompleteTrailingFragment(content: string): string {
+  const text = content.trim();
+  if (text.length <= 0 || /[。！？!?\.…」』”'")）】》]$/.test(text)) {
+    return text;
+  }
+
+  const lines = text.split('\n');
+  if (lines.length <= 1) {
+    return text;
+  }
+
+  const lastLine = lines[lines.length - 1].trim();
+  const previousText = lines.slice(0, lines.length - 1).join('\n').trim();
+  if (previousText.length <= 0 || lastLine.length <= 0) {
+    return text;
+  }
+
+  if (lastLine.length <= 2 && /[\u4e00-\u9fff]+/.test(lastLine) && /[。！？!?\.…」』”'")）】》]$/.test(previousText)) {
+    return previousText;
+  }
+
+  if (lastLine.length <= 4 && /^[，、；：,;:\-—]+[\u4e00-\u9fff]*$/.test(lastLine)) {
+    return previousText;
+  }
+
+  return text;
 }
 
 export function isLikelyIncompleteAssistantText(content: string): boolean {

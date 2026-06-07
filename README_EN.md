@@ -4,7 +4,7 @@
 
 ![Turbo AI Chat hero](docs/images/hero.png)
 
-**Turbo AI Chat** is a HarmonyOS NEXT native local LLM chat demo. The app uses ArkTS for the UI, calls a C++ inference layer through N-API, and runs **Gemma 4** locally on a HarmonyOS device with the MNN Runtime.
+**Turbo AI Chat** is a HarmonyOS NEXT native local LLM chat demo. The app uses ArkTS for the UI, calls a C++ inference layer through N-API, and runs MNN models such as **Gemma 4 E2B** and **MiniCPM5-1B** locally on a HarmonyOS device with the MNN Runtime.
 
 Keywords: HarmonyOS NEXT, HarmonyOS native LLM, ArkTS, N-API, MNN, Gemma 4, MiniCPM5, on-device AI, local LLM, mobile inference, ModelScope model.
 
@@ -17,6 +17,70 @@ The early direction was to look for GGUF / llama.cpp examples on HarmonyOS. In p
 > Load a local Gemma 4 model on a real HarmonyOS NEXT device and provide an interactive streaming chat UI.
 
 This is not a cloud-chat wrapper and not a WebView shell. Model files live on the device, and inference runs inside the app's native layer.
+
+## Quick Start: Clone, Run, Install Built-in Models
+
+The recommended flow is: **build and install the app from source, then let the app download the built-in model files**. New users no longer need to download model directories on a PC first and push them into the app sandbox with `hdc file send`.
+
+### 1. Clone the repository
+
+```sh
+git clone https://github.com/Torry2022/turbo-ai-chat-harmonyos.git
+cd turbo-ai-chat-harmonyos
+```
+
+You can also start from the upstream repository:
+
+```sh
+git clone https://github.com/Turbo1123/turbo-ai-chat-harmonyos.git
+cd turbo-ai-chat-harmonyos
+```
+
+### 2. Open with DevEco Studio and configure signing
+
+1. Open the project root in DevEco Studio.
+2. Log in to your Huawei developer account.
+3. Go to `File > Project Structure > Signing Configs`.
+4. Enable automatic signing for the default product.
+5. Make sure your physical device has Developer options and USB debugging enabled.
+
+`build-profile.json5` keeps only the default product's `signingConfig` binding. Real certificates, profiles, private key paths, and passwords should not be committed to the repository.
+
+### 3. Build and install on a physical device
+
+You can run the project directly from DevEco Studio, or use the command line:
+
+```sh
+hvigor assembleHap --no-daemon
+hdc list targets
+hdc install -r entry/build/default/outputs/default/entry-default-signed.hap
+```
+
+If `hvigor` is not available globally, run it through the project dependency:
+
+```sh
+node ./node_modules/@ohos/hvigor/bin/hvigor.js assembleHap --no-daemon
+```
+
+### 4. Install built-in models in the app
+
+The repository and the HAP do **not** include model weights. After installing the app:
+
+1. Open the Model tab.
+2. Select `Gemma 4 E2B` or `MiniCPM5-1B`.
+3. Tap "Load model".
+4. If the selected built-in model directory is missing or incomplete, the app opens the "Install built-in model" dialog.
+5. Tap "Download and install" and keep the app in the foreground.
+6. After download completion, the app continues loading the model. Go back to the Chat tab and start chatting.
+
+Built-in models are downloaded into the app sandbox:
+
+```text
+/data/storage/el2/base/haps/entry/files/gemma-4-E2B-it-MNN/
+/data/storage/el2/base/haps/entry/files/MiniCPM5-1B-MNN/
+```
+
+Approximate model sizes: Gemma 4 E2B `3.7 GB`, MiniCPM5-1B `625 MB`. Make sure the device has enough storage and a stable network connection.
 
 ## Features
 
@@ -48,7 +112,7 @@ Built-in selectable models:
 | Gemma 4 E2B | `gemma-4-E2B-it-MNN/` | Text, image |
 | MiniCPM5-1B | `MiniCPM5-1B-MNN/` | Text |
 
-The app reads `config.json` from the selected model directory. Switching models only changes the selected config path and prompt behavior; the previous model is released and the new model is loaded only after tapping "Load model".
+The app reads `config.json` from the selected model directory. Switching models only changes the selected item; the previous model is released and the new model is loaded only after tapping "Load model". Chat templates are delegated to MNN through each model's `llm_config.json` by default, instead of being hard-coded by the app.
 
 Recommended built-in model sources:
 
@@ -105,9 +169,9 @@ The HAP does not bundle model weights. Gemma 4 E2B is about 3.7 GB, and MiniCPM5
 
 Note: the Release HAP is debug-signed. If your device is not covered by the debug profile, installation may fail. In that case, open the project from source and rebuild it with DevEco Studio automatic signing using your own Huawei developer account.
 
-## Download Model
+## Fallback: Download Models On PC
 
-After installation, you can follow the in-app prompt to download built-in models. The repository also keeps a PC-side fallback download script:
+Normally, install the app and follow the in-app prompt to download built-in models. The PC-side workflow below is kept for debugging, offline preparation, or restricted network environments.
 
 ```sh
 ./scripts/download_gemma4_e2b_mnn.sh
@@ -125,7 +189,7 @@ You can also choose a custom directory:
 ./scripts/download_gemma4_e2b_mnn.sh /path/to/gemma-4-E2B-it-MNN
 ```
 
-MiniCPM5-1B can be downloaded in the app from ModelScope. You can also prepare an MNN directory manually, for example:
+MiniCPM5-1B is best downloaded in the app from ModelScope. You can also prepare an MNN directory manually, for example:
 
 ```text
 models/MiniCPM5-1B-MNN/
@@ -137,9 +201,9 @@ The script downloads Gemma 4 E2B from ModelScope by default. If the `modelscope`
 python3 -m pip install modelscope
 ```
 
-## Model Location On Device
+## Fallback: Push Models Manually
 
-The app reads this path by default. Normally the in-app downloader writes these directories automatically; the `hdc` workflow is kept as a debugging fallback.
+The app reads the sandbox paths below by default. Normally the in-app downloader writes these directories automatically; the `hdc` workflow is kept as a debugging fallback.
 
 ```text
 /data/storage/el2/base/haps/entry/files/gemma-4-E2B-it-MNN/config.json
@@ -178,7 +242,7 @@ hdc shell "mkdir -p /data/app/el2/100/base/com.example.gemma4mnn/haps/entry/file
 hdc file send models/gemma-4-E2B-it-MNN /data/app/el2/100/base/com.example.gemma4mnn/haps/entry/files/
 ```
 
-## Build From Source
+## Build From Source Details
 
 Requirements:
 
@@ -188,10 +252,10 @@ Requirements:
 - Huawei developer account for automatic signing
 - `hdc` and `hvigor` available in `PATH`
 
-Build:
+Build HAP:
 
 ```sh
-hvigor assembleApp --no-daemon
+hvigor assembleHap --no-daemon
 ```
 
 Install:

@@ -4,7 +4,7 @@
 
 ![Turbo AI Chat hero](docs/images/hero.png)
 
-**Turbo AI Chat** 是一个 HarmonyOS NEXT 原生本地大模型聊天 Demo。它用 ArkTS 构建界面，通过 N-API 调用 C++ 原生推理层，并使用 MNN Runtime 在鸿蒙设备端加载 **Gemma 4** MNN 模型完成离线对话。
+**Turbo AI Chat** 是一个 HarmonyOS NEXT 原生本地大模型聊天 Demo。它用 ArkTS 构建界面，通过 N-API 调用 C++ 原生推理层，并使用 MNN Runtime 在鸿蒙设备端加载 **Gemma 4 E2B**、**MiniCPM5-1B** 等 MNN 模型完成离线对话。
 
 关键词：HarmonyOS NEXT, HarmonyOS native LLM, ArkTS, N-API, MNN, Gemma 4, MiniCPM5, on-device AI, local LLM, mobile inference, ModelScope model.
 
@@ -17,6 +17,70 @@
 > 在 HarmonyOS NEXT 真机上，用原生 App 加载本地 Gemma 4 模型，并完成可交互、可流式输出的聊天。
 
 当前版本不是云端聊天壳子，也不是 WebView；模型文件在设备本地，推理由 App 内的原生层完成。
+
+## 快速开始：从克隆到跑起内置模型
+
+当前推荐流程是：**源码构建安装 App，然后在 App 内按提示下载内置模型**。不再要求新用户先在 PC 上下载模型目录、再用 `hdc file send` 推进沙箱。
+
+### 1. 克隆仓库
+
+```sh
+git clone https://github.com/Torry2022/turbo-ai-chat-harmonyos.git
+cd turbo-ai-chat-harmonyos
+```
+
+如果你想基于原作者仓库开始，也可以替换为上游地址：
+
+```sh
+git clone https://github.com/Turbo1123/turbo-ai-chat-harmonyos.git
+cd turbo-ai-chat-harmonyos
+```
+
+### 2. 用 DevEco Studio 打开并配置签名
+
+1. 使用 DevEco Studio 打开项目根目录。
+2. 登录 Huawei 开发者账号。
+3. 进入 `File > Project Structure > Signing Configs`。
+4. 为默认产品开启自动签名。
+5. 确认真机已开启开发者选项和 USB 调试。
+
+`build-profile.json5` 中只保留默认产品使用 `signingConfig` 的绑定；真实证书、profile、私钥路径和密码不应提交到仓库。
+
+### 3. 构建并安装到真机
+
+可以直接在 DevEco Studio 中运行项目，也可以使用命令行：
+
+```sh
+hvigor assembleHap --no-daemon
+hdc list targets
+hdc install -r entry/build/default/outputs/default/entry-default-signed.hap
+```
+
+如果本机没有全局 `hvigor`，也可以通过项目依赖运行：
+
+```sh
+node ./node_modules/@ohos/hvigor/bin/hvigor.js assembleHap --no-daemon
+```
+
+### 4. 在 App 内安装内置模型
+
+首次安装后，仓库和 HAP 都**不包含模型权重**。进入 App 后：
+
+1. 打开“模型”页。
+2. 选择 `Gemma 4 E2B` 或 `MiniCPM5-1B`。
+3. 点击“加载模型”。
+4. 如果 App 检测到内置模型目录缺失或不完整，会弹出“安装内置模型”。
+5. 点击“下载并安装”，保持 App 在前台等待下载完成。
+6. 下载完成后 App 会继续加载模型，回到“聊天”页即可提问。
+
+内置模型会下载到 App 沙箱目录：
+
+```text
+/data/storage/el2/base/haps/entry/files/gemma-4-E2B-it-MNN/
+/data/storage/el2/base/haps/entry/files/MiniCPM5-1B-MNN/
+```
+
+模型大小约为：Gemma 4 E2B `3.7 GB`，MiniCPM5-1B `625 MB`。请确保设备有足够存储空间和稳定网络。
 
 ## 功能
 
@@ -48,7 +112,7 @@
 | Gemma 4 E2B | `gemma-4-E2B-it-MNN/` | 文本、图片 |
 | MiniCPM5-1B | `MiniCPM5-1B-MNN/` | 文本 |
 
-App 会读取所选模型目录下的 `config.json`。切换模型只会切换配置路径和提示词，点击“加载模型”后才会真正释放旧模型并加载新模型。
+App 会读取所选模型目录下的 `config.json`。切换模型只会切换当前选中项；点击“加载模型”后才会真正释放旧模型并加载新模型。模型对话模板优先交给 MNN 根据 `llm_config.json` 处理，App 不再默认手写各模型的 Prompt 模板。
 
 推荐内置模型来源：
 
@@ -105,9 +169,9 @@ HAP 不内置模型权重。Gemma 4 E2B 约 3.7 GB，MiniCPM5-1B 约 625 MB；�
 
 说明：Release 中的 HAP 是调试签名包。如果你的设备不在签名 profile 内，安装可能失败；这种情况下请从源码打开项目，并在 DevEco Studio 中使用自己的账号开启自动签名后重新构建。
 
-## 下载模型
+## 备用：PC 侧下载模型
 
-安装 App 后，直接进入 App 按提示下载内置模型即可。仓库也保留了 PC 侧备用下载脚本：
+正常情况下，安装 App 后直接按 App 内提示下载内置模型即可。下面的 PC 侧下载方式主要用于调试、离线准备或网络受限场景。
 
 ```sh
 ./scripts/download_gemma4_e2b_mnn.sh
@@ -125,7 +189,7 @@ models/gemma-4-E2B-it-MNN/
 ./scripts/download_gemma4_e2b_mnn.sh /path/to/gemma-4-E2B-it-MNN
 ```
 
-MiniCPM5-1B 可在 App 内从 ModelScope 下载；也可以手动准备 MNN 目录，例如：
+MiniCPM5-1B 推荐在 App 内从 ModelScope 下载；也可以手动准备 MNN 目录，例如：
 
 ```text
 models/MiniCPM5-1B-MNN/
@@ -137,9 +201,9 @@ models/MiniCPM5-1B-MNN/
 python3 -m pip install modelscope
 ```
 
-## 模型放到手机哪里
+## 备用：手动推送模型到手机
 
-App 默认读取这个路径。正常情况下，App 内下载会自动写入这些目录；下面的 `hdc` 推送方式只作为调试备用。
+App 默认读取下面的沙箱路径。正常情况下，App 内下载会自动写入这些目录；下面的 `hdc` 推送方式只作为调试备用。
 
 ```text
 /data/storage/el2/base/haps/entry/files/gemma-4-E2B-it-MNN/config.json
@@ -178,7 +242,7 @@ hdc shell "mkdir -p /data/app/el2/100/base/com.example.gemma4mnn/haps/entry/file
 hdc file send models/gemma-4-E2B-it-MNN /data/app/el2/100/base/com.example.gemma4mnn/haps/entry/files/
 ```
 
-## 从源码构建
+## 从源码构建细节
 
 环境要求：
 
@@ -188,10 +252,10 @@ hdc file send models/gemma-4-E2B-it-MNN /data/app/el2/100/base/com.example.gemma
 - Huawei 开发者账号，用于自动签名
 - `hdc` 和 `hvigor` 在 `PATH` 中
 
-构建：
+构建 HAP：
 
 ```sh
-hvigor assembleApp --no-daemon
+hvigor assembleHap --no-daemon
 ```
 
 安装：

@@ -1,5 +1,6 @@
-import { CONTEXT_MESSAGE_LIMIT } from '../models/ChatTypes';
 import {
+  CHAT_FORMAT_GEMMA_TURN,
+  CHAT_FORMAT_MINICPM_THINKING,
   CHAT_FORMAT_MNN_AUTO,
   CHAT_FORMAT_QWEN_IM,
   CHAT_FORMAT_RAW_TEMPLATE,
@@ -109,7 +110,21 @@ export struct ModelTab {
     if (this.viewModel.importedModelChatFormatInput === CHAT_FORMAT_QWEN_IM) {
       return 'Qwen IM';
     }
+    if (this.viewModel.importedModelChatFormatInput === CHAT_FORMAT_GEMMA_TURN) {
+      return 'Gemma Turn';
+    }
+    if (this.viewModel.importedModelChatFormatInput === CHAT_FORMAT_MINICPM_THINKING) {
+      return 'MiniCPM Thinking';
+    }
     return '自动';
+  }
+
+  private contextDescription(): string {
+    const limit = this.viewModel.currentContextMessageLimit();
+    if (limit <= 0) {
+      return '当前模型默认使用单轮对话，不会把上一轮问答继续带入推理。';
+    }
+    return `当前模型每轮会带上最近 ${limit} 条可记忆消息。`;
   }
 
   @Builder
@@ -453,11 +468,9 @@ export struct ModelTab {
   @Builder
   private ContextCard() {
     Column({ space: 6 }) {
-      Text('上下文')
-        .fontSize(16)
-        .fontWeight(FontWeight.Medium)
-        .fontColor('#F4FBFF');
-      Text(`每轮会带上最近 ${CONTEXT_MESSAGE_LIMIT} 条可记忆消息，系统提示会按当前模型生成，并固定要求使用中文简洁回答。`)
+      this.SectionTitle('上下文');
+      Text(this.contextDescription())
+        .width('100%')
         .fontSize(13)
         .lineHeight(20)
         .fontColor('#8CA2B8');
@@ -472,11 +485,11 @@ export struct ModelTab {
     Scroll() {
       Column({ space: 12 }) {
         this.ModelListCard();
+        this.ContextCard();
         this.ImportedModelConfigCard();
         this.GenerationSettingsCard();
         this.RuntimeSettingsCard();
         this.ModelManagementCard();
-        this.ContextCard();
       }
       .width('100%');
     }

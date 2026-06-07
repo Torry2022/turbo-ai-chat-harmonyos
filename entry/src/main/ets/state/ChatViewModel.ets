@@ -4,6 +4,8 @@ import { ChatMessage, ChatTurn, GenerationResult, GenerationSettings } from '../
 import { ImportedModelDraft } from '../models/ImportedModelTypes';
 import { BuiltinModelDownloadSpec, BuiltinModelInstallProgress } from '../models/BuiltinModelDownloadTypes';
 import {
+  CHAT_FORMAT_GEMMA_TURN,
+  CHAT_FORMAT_MINICPM_THINKING,
   CHAT_FORMAT_MNN_AUTO,
   CHAT_FORMAT_QWEN_IM,
   CHAT_FORMAT_RAW_TEMPLATE,
@@ -23,7 +25,7 @@ import { ModelImportService } from '../services/ModelImportService';
 import { NativeInferenceService } from '../services/NativeInferenceService';
 import { RuntimeStatsService } from '../services/RuntimeStatsService';
 import { formatError } from '../utils/formatters';
-import { isLikelyIncompleteAssistantText } from '../utils/thinking';
+import { isLikelyIncompleteAssistantText, trimLikelyIncompleteTrailingFragment } from '../utils/thinking';
 import { ChatSession } from './ChatSession';
 import { ModelManager } from './ModelManager';
 
@@ -312,6 +314,12 @@ export class ChatViewModel {
       this.importedModelChatFormatInput = CHAT_FORMAT_RAW_TEMPLATE;
     } else if (this.importedModelChatFormatInput === CHAT_FORMAT_RAW_TEMPLATE) {
       this.importedModelChatFormatInput = CHAT_FORMAT_QWEN_IM;
+    } else if (this.importedModelChatFormatInput === CHAT_FORMAT_QWEN_IM) {
+      this.importedModelChatFormatInput = CHAT_FORMAT_MINICPM_THINKING;
+    } else if (this.importedModelChatFormatInput === CHAT_FORMAT_MINICPM_THINKING) {
+      this.importedModelChatFormatInput = CHAT_FORMAT_GEMMA_TURN;
+    } else if (this.importedModelChatFormatInput === CHAT_FORMAT_GEMMA_TURN) {
+      this.importedModelChatFormatInput = CHAT_FORMAT_MNN_AUTO;
     } else {
       this.importedModelChatFormatInput = CHAT_FORMAT_MNN_AUTO;
     }
@@ -643,6 +651,7 @@ export class ChatViewModel {
     let streamedChars = 0;
     let streamedText = '';
     let generation: Promise<GenerationResult>;
+    const assistantOutputPrefix = this.expectedAssistantOutputPrefixForCurrentModel();
     if (attachedImage.length > 0) {
       this.status = '正在读取图片...';
       this.notify();
@@ -656,22 +665,22 @@ export class ChatViewModel {
           this.currentGenerationSettings(),
           (chunk: string) => {
             streamedText += chunk;
-            streamedChars = this.handleStreamText(assistantId, streamedText);
+            streamedChars = this.handleStreamText(assistantId, streamedText, assistantOutputPrefix);
           }
         );
       });
     } else {
       generation = this.generateTextForCurrentModel(chatTurns, (chunk: string) => {
         streamedText += chunk;
-        streamedChars = this.handleStreamText(assistantId, streamedText);
+        streamedChars = this.handleStreamText(assistantId, streamedText, assistantOutputPrefix);
       });
     }
 
     generation.then((result: GenerationResult) => {
-      const cleanedText = this.session.sanitizeAssistantText(
-        result.text,
+      const cleanedText = trimLikelyIncompleteTrailingFragment(this.session.sanitizeAssistantText(
+        this.applyExpectedAssistantOutputPrefix(result.text, assistantOutputPrefix),
         this.shouldStripLeadingAssistantSeparator()
-      );
+      ));
       const answer = cleanedText.length > 0 ? cleanedText : '（原生层返回空内容）';
       const includeInContext = this.shouldIncludeAssistantInContext(answer, result);
       this.session.updateMessage(assistantId, answer, includeInContext);
@@ -774,7 +783,18 @@ export class ChatViewModel {
   }
 
   private composeChatTurns(text: string): ChatTurn[] {
-    return this.session.composeChatTurns(this.currentModel().systemPrompt, text);
+    return this.session.composeChatTurns(this.currentModel().systemPrompt, text, this.currentContextMessageLimit());
+  }
+
+  currentContextMessageLimit(): number {
+    const model = this.currentModel();
+    if (model.contextMessageLimit !== undefined) {
+      return Math.max(0, Math.round(model.contextMessageLimit));
+    }
+    if (model.source === 'imported') {
+      return 0;
+    }
+    return 6;
   }
 
   private syncMessages(): void {
@@ -789,6 +809,24 @@ export class ChatViewModel {
   private generateTextForCurrentModel(turns: ChatTurn[], onChunk: (chunk: string) => void): Promise<GenerationResult> {
     const model = this.currentModel();
     const chatFormat = model.chatFormat ?? CHAT_FORMAT_MNN_AUTO;
+    if (chatFormat === CHAT_FORMAT_MINICPM_THINKING) {
+      return this.nativeService.generateRawPrompt(
+        this.composeMiniCpmThinkingPrompt(turns),
+        this.maxNewTokens,
+        model.stopSequence ?? '</s>',
+        this.currentGenerationSettings(),
+        onChunk
+      );
+    }
+    if (chatFormat === CHAT_FORMAT_GEMMA_TURN) {
+      return this.nativeService.generateRawPrompt(
+        this.composeGemmaTurnPrompt(turns),
+        this.maxNewTokens,
+        model.stopSequence ?? '<turn|>',
+        this.currentGenerationSettings(),
+        onChunk
+      );
+    }
     if (chatFormat === CHAT_FORMAT_QWEN_IM) {
       return this.nativeService.generateRawPrompt(
         this.composeQwenPrompt(turns),
@@ -808,6 +846,25 @@ export class ChatViewModel {
       );
     }
     return this.nativeService.generateText(turns, this.maxNewTokens, this.currentGenerationSettings(), onChunk);
+  }
+
+  private expectedAssistantOutputPrefixForCurrentModel(): string {
+    const model = this.currentModel();
+    if ((model.chatFormat ?? CHAT_FORMAT_MNN_AUTO) === CHAT_FORMAT_MINICPM_THINKING) {
+      return '<think>\n';
+    }
+    return '';
+  }
+
+  private applyExpectedAssistantOutputPrefix(text: string, prefix: string): string {
+    if (prefix.length <= 0 || text.length <= 0) {
+      return text;
+    }
+    const trimmedStart = text.trimStart();
+    if (trimmedStart.startsWith('<think>') || '<think>'.startsWith(trimmedStart)) {
+      return text;
+    }
+    return `${prefix}${text}`;
   }
 
   private currentGenerationSettings(): GenerationSettings {
@@ -832,6 +889,16 @@ export class ChatViewModel {
       this.importedModelStopSequenceInput = '<|im_end|>';
       return;
     }
+    if (this.importedModelChatFormatInput === CHAT_FORMAT_MINICPM_THINKING) {
+      this.importedModelPromptTemplateInput = '';
+      this.importedModelStopSequenceInput = '</s>';
+      return;
+    }
+    if (this.importedModelChatFormatInput === CHAT_FORMAT_GEMMA_TURN) {
+      this.importedModelPromptTemplateInput = '';
+      this.importedModelStopSequenceInput = '<turn|>';
+      return;
+    }
     this.importedModelPromptTemplateInput = originalTemplate;
     this.importedModelStopSequenceInput = this.inferStopSequenceForTemplate(originalTemplate, profile?.name ?? '');
   }
@@ -847,12 +914,21 @@ export class ChatViewModel {
     if (this.importedModelChatFormatInput === CHAT_FORMAT_QWEN_IM) {
       return '';
     }
+    if (this.importedModelChatFormatInput === CHAT_FORMAT_MINICPM_THINKING) {
+      return '';
+    }
     return '';
   }
 
   private stopSequenceForImportedProfile(profile: ModelProfile): string {
     if (this.importedModelChatFormatInput === CHAT_FORMAT_QWEN_IM) {
       return '<|im_end|>';
+    }
+    if (this.importedModelChatFormatInput === CHAT_FORMAT_MINICPM_THINKING) {
+      return '</s>';
+    }
+    if (this.importedModelChatFormatInput === CHAT_FORMAT_GEMMA_TURN) {
+      return '<turn|>';
     }
     if (this.importedModelChatFormatInput === CHAT_FORMAT_RAW_TEMPLATE) {
       const template = this.promptTemplateForImportedProfile(profile);
@@ -896,6 +972,34 @@ export class ChatViewModel {
       prompt += `<|im_start|>${role}\n${content}<|im_end|>\n`;
     });
     prompt += '<|im_start|>assistant\n';
+    return prompt;
+  }
+
+  private composeGemmaTurnPrompt(turns: ChatTurn[]): string {
+    let prompt = '<bos>';
+    turns.forEach((turn: ChatTurn) => {
+      const role = turn.role === 'assistant' ? 'model' : turn.role === 'system' ? 'system' : 'user';
+      const content = turn.content.trim();
+      if (content.length <= 0) {
+        return;
+      }
+      prompt += `<|turn>${role}\n${content}<turn|>\n`;
+    });
+    prompt += '<|turn>model\n';
+    return prompt;
+  }
+
+  private composeMiniCpmThinkingPrompt(turns: ChatTurn[]): string {
+    let prompt = '<s>';
+    turns.forEach((turn: ChatTurn) => {
+      const role = turn.role === 'assistant' ? 'assistant' : turn.role === 'system' ? 'system' : 'user';
+      const content = turn.content.trim();
+      if (content.length <= 0) {
+        return;
+      }
+      prompt += `<|im_start|>${role}\n${content}<|im_end|>\n`;
+    });
+    prompt += '<|im_start|>assistant\n<think>\n';
     return prompt;
   }
 
@@ -959,12 +1063,12 @@ export class ChatViewModel {
     return undefined;
   }
 
-  private handleStreamText(assistantId: number, streamedText: string): number {
+  private handleStreamText(assistantId: number, streamedText: string, assistantOutputPrefix: string = ''): number {
     if (streamedText.length <= 0) {
       return 0;
     }
     const displayText = this.session.sanitizeStreamingAssistantText(
-      streamedText,
+      this.applyExpectedAssistantOutputPrefix(streamedText, assistantOutputPrefix),
       this.shouldStripLeadingAssistantSeparator()
     );
     const nextStreamedChars = displayText.length;

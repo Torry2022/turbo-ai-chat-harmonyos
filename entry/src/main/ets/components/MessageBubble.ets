@@ -1,4 +1,5 @@
 import { ChatMessage } from '../models/ChatTypes';
+import { MarkdownBlock, MarkdownSpan, parseInlineMarkdown, parseLightMarkdown } from '../utils/markdown';
 import { parseAssistantText } from '../utils/thinking';
 
 @Component
@@ -31,6 +32,87 @@ export struct MessageBubble {
 
   private thinkingClosed(): boolean {
     return parseAssistantText(this.message.content).thinkingClosed;
+  }
+
+  @Builder
+  private MarkdownLine(text: string, color: ResourceColor = '#EAF4FF') {
+    Text() {
+      ForEach(parseInlineMarkdown(text), (span: MarkdownSpan, index: number) => {
+        Span(span.text)
+          .fontWeight(span.bold ? FontWeight.Bold : FontWeight.Normal)
+          .fontColor(color);
+      }, (_span: MarkdownSpan, index: number) => `${index}`);
+    }
+    .width('100%')
+    .fontSize(15)
+    .lineHeight(22)
+    .textAlign(TextAlign.Start);
+  }
+
+  @Builder
+  private MarkdownBlock(block: MarkdownBlock, blockIndex: number) {
+    if (block.type === 'heading') {
+      Text() {
+        ForEach(parseInlineMarkdown(block.text), (span: MarkdownSpan, index: number) => {
+          Span(span.text)
+            .fontWeight(FontWeight.Bold)
+            .fontColor('#F4FBFF');
+        }, (_span: MarkdownSpan, index: number) => `${blockIndex}-${index}`);
+      }
+      .width('100%')
+      .fontSize(15)
+      .lineHeight(22)
+      .textAlign(TextAlign.Start);
+    } else if (block.type === 'code') {
+      Text(block.text)
+        .width('100%')
+        .fontSize(13)
+        .lineHeight(19)
+        .fontColor('#D7E8F7')
+        .fontFamily('monospace')
+        .padding(8)
+        .backgroundColor('#0B1724')
+        .borderRadius(6);
+    } else if (block.type === 'ordered-list' || block.type === 'unordered-list') {
+      Column({ space: 4 }) {
+        ForEach(block.items, (item: string, itemIndex: number) => {
+          Row({ space: 6 }) {
+            Text(block.type === 'ordered-list' ? `${itemIndex + 1}.` : '•')
+              .width(20)
+              .fontSize(15)
+              .lineHeight(22)
+              .fontColor('#9FBDD5')
+              .textAlign(TextAlign.End);
+            Text() {
+              ForEach(parseInlineMarkdown(item), (span: MarkdownSpan, spanIndex: number) => {
+                Span(span.text)
+                  .fontWeight(span.bold ? FontWeight.Bold : FontWeight.Normal)
+                  .fontColor('#EAF4FF');
+              }, (_span: MarkdownSpan, spanIndex: number) => `${blockIndex}-${itemIndex}-${spanIndex}`);
+            }
+            .fontSize(15)
+            .lineHeight(22)
+            .layoutWeight(1)
+            .textAlign(TextAlign.Start);
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Top);
+        }, (_item: string, itemIndex: number) => `${blockIndex}-${itemIndex}`);
+      }
+      .width('100%');
+    } else {
+      this.MarkdownLine(block.text);
+    }
+  }
+
+  @Builder
+  private MarkdownContent(content: string) {
+    Column({ space: 8 }) {
+      ForEach(parseLightMarkdown(content), (block: MarkdownBlock, blockIndex: number) => {
+        this.MarkdownBlock(block, blockIndex);
+      }, (_block: MarkdownBlock, blockIndex: number) => `${blockIndex}`);
+    }
+    .width('100%');
   }
 
   @Builder
@@ -93,12 +175,16 @@ export struct MessageBubble {
           this.ThinkingBlock();
         }
         if (this.answerText().length > 0 || !this.hasThinking()) {
-          Text(this.answerText().length > 0 ? this.answerText() : '...')
-            .width('100%')
-            .fontSize(15)
-            .lineHeight(22)
-            .textAlign(TextAlign.Start)
-            .fontColor(this.message.role === 'user' ? Color.White : '#EAF4FF');
+          if (this.message.role === 'assistant') {
+            this.MarkdownContent(this.answerText().length > 0 ? this.answerText() : '...');
+          } else {
+            Text(this.answerText().length > 0 ? this.answerText() : '...')
+              .width('100%')
+              .fontSize(15)
+              .lineHeight(22)
+              .textAlign(TextAlign.Start)
+              .fontColor(Color.White);
+          }
         }
       }
       .padding({ left: 12, right: 12, top: 10, bottom: 10 })

@@ -13,10 +13,30 @@ import {
   ModelImportResult
 } from '../models/ImportedModelTypes';
 import {
+  CHAT_FORMAT_GEMMA_TURN,
+  CHAT_FORMAT_MINICPM_THINKING,
   CHAT_FORMAT_MNN_AUTO,
+  CHAT_FORMAT_QWEN_IM,
+  CHAT_FORMAT_RAW_TEMPLATE,
   ModelProfile
 } from '../models/ModelProfile';
 import { formatError } from '../utils/formatters';
+
+interface MnnLlmConfig {
+  prompt_template?: string;
+  jinja?: MnnJinjaConfig;
+}
+
+interface MnnJinjaConfig {
+  chat_template?: string;
+  eos?: string;
+}
+
+interface PromptTemplateProfile {
+  chatFormat: string;
+  promptTemplate: string;
+  stopSequence: string;
+}
 
 export class ModelImportService {
   async pickAndImport(context: common.UIAbilityContext, existingProfiles: ModelProfile[]): Promise<ModelImportResult | undefined> {
@@ -54,6 +74,7 @@ export class ModelImportService {
 
       const inferredName = this.uniqueProfileName(this.inferName(zipUri, configPath, targetDir), existingProfiles);
       const inferredShortName = this.uniqueProfileShortName(this.toShortName(inferredName), existingProfiles);
+      const promptConfig = await this.readPromptTemplateProfile(configPath, inferredName);
       const profile: ModelProfile = {
         id: modelId,
         name: inferredName,
@@ -64,9 +85,9 @@ export class ModelImportService {
         systemPrompt: DEFAULT_IMPORTED_MODEL_PROMPT,
         source: IMPORTED_MODEL_SOURCE,
         configPath,
-        chatFormat: CHAT_FORMAT_MNN_AUTO,
-        promptTemplate: '',
-        stopSequence: '',
+        chatFormat: promptConfig.chatFormat,
+        promptTemplate: promptConfig.promptTemplate,
+        stopSequence: promptConfig.stopSequence,
         templateOverride: false,
         editable: true,
         removable: true
@@ -390,9 +411,12 @@ export class ModelImportService {
       profile.shortName === normalizedName ||
       profile.shortName === profile.name;
     const hasTemplateOverride = profile.templateOverride === true;
-    const normalizedChatFormat = hasTemplateOverride ? profile.chatFormat ?? CHAT_FORMAT_MNN_AUTO : CHAT_FORMAT_MNN_AUTO;
-    const normalizedPromptTemplate = hasTemplateOverride ? profile.promptTemplate ?? '' : '';
-    const normalizedStopSequence = hasTemplateOverride ? profile.stopSequence ?? '' : '';
+    const inferredPromptConfig = profile.configPath === undefined || profile.configPath.length <= 0 ?
+      this.defaultPromptTemplateProfile(profile.name) :
+      await this.readPromptTemplateProfile(profile.configPath, profile.name);
+    const normalizedChatFormat = hasTemplateOverride ? profile.chatFormat ?? inferredPromptConfig.chatFormat : inferredPromptConfig.chatFormat;
+    const normalizedPromptTemplate = hasTemplateOverride ? profile.promptTemplate ?? inferredPromptConfig.promptTemplate : inferredPromptConfig.promptTemplate;
+    const normalizedStopSequence = hasTemplateOverride ? profile.stopSequence ?? inferredPromptConfig.stopSequence : inferredPromptConfig.stopSequence;
     if (
       normalizedName !== profile.name ||
       normalizedSystemPrompt !== profile.systemPrompt ||
@@ -434,6 +458,97 @@ export class ModelImportService {
       return false;
     }
     return profile.configPath.startsWith(`${importRoot}/`);
+  }
+
+  private async readPromptTemplateProfile(configPath: string, modelName: string): Promise<PromptTemplateProfile> {
+    const llmConfigPath = this.llmConfigPath(configPath);
+    if (llmConfigPath.length <= 0 || !await this.exists(llmConfigPath)) {
+      return this.defaultPromptTemplateProfile(modelName);
+    }
+    try {
+      const text = await fs.readText(llmConfigPath);
+      const llmConfig = JSON.parse(text.replace(/^\uFEFF/, '')) as MnnLlmConfig;
+      return this.inferPromptTemplateProfile(
+        llmConfig.prompt_template ?? llmConfig.jinja?.chat_template ?? '',
+        modelName,
+        llmConfig.jinja?.eos ?? ''
+      );
+    } catch (_) {
+      return this.defaultPromptTemplateProfile(modelName);
+    }
+  }
+
+  private llmConfigPath(configPath: string): string {
+    const lowerPath = configPath.toLowerCase();
+    if (!lowerPath.endsWith('/config.json')) {
+      return '';
+    }
+    return `${configPath.substring(0, configPath.length - '/config.json'.length)}/llm_config.json`;
+  }
+
+  private defaultPromptTemplateProfile(modelName: string): PromptTemplateProfile {
+    return this.inferPromptTemplateProfile('', modelName, '');
+  }
+
+  private inferPromptTemplateProfile(promptTemplate: string, modelName: string, eos: string): PromptTemplateProfile {
+    const template = promptTemplate.trim();
+    const lowerTemplate = template.toLowerCase();
+    const lowerName = modelName.toLowerCase();
+    if (lowerTemplate.indexOf('<|im_start|>') >= 0 && lowerTemplate.indexOf('<|im_end|>') >= 0) {
+      if (lowerName.indexOf('minicpm') >= 0) {
+        return {
+          chatFormat: CHAT_FORMAT_MINICPM_THINKING,
+          promptTemplate: template,
+          stopSequence: eos.length > 0 ? eos : '</s>'
+        };
+      }
+      return {
+        chatFormat: CHAT_FORMAT_QWEN_IM,
+        promptTemplate: template,
+        stopSequence: '<|im_end|>'
+      };
+    }
+    if (lowerTemplate.indexOf('<|turn>') >= 0 && lowerTemplate.indexOf('<turn|>') >= 0) {
+      return {
+        chatFormat: CHAT_FORMAT_GEMMA_TURN,
+        promptTemplate: template,
+        stopSequence: '<turn|>'
+      };
+    }
+    if (template.indexOf('%s') >= 0) {
+      return {
+        chatFormat: CHAT_FORMAT_RAW_TEMPLATE,
+        promptTemplate: template,
+        stopSequence: this.inferStopSequence(template, lowerName, eos)
+      };
+    }
+    return {
+      chatFormat: CHAT_FORMAT_MNN_AUTO,
+      promptTemplate: template,
+      stopSequence: this.inferStopSequence(template, lowerName, eos)
+    };
+  }
+
+  private inferStopSequence(promptTemplate: string, lowerName: string, eos: string): string {
+    if (promptTemplate.indexOf('<|im_end|>') >= 0) {
+      return '<|im_end|>';
+    }
+    if (promptTemplate.indexOf('<|end_of_sentence|>') >= 0) {
+      return '<|end_of_sentence|>';
+    }
+    if (promptTemplate.indexOf('<|end_of_text|>') >= 0) {
+      return '<|end_of_text|>';
+    }
+    if (eos.length > 0) {
+      return eos;
+    }
+    if (lowerName.indexOf('deepseek') >= 0) {
+      return '<|end_of_sentence|>';
+    }
+    if (lowerName.indexOf('qwen') >= 0 && lowerName.indexOf('deepseek') < 0) {
+      return '<|im_end|>';
+    }
+    return '';
   }
 
   private async deletePathRecursive(path: string): Promise<void> {

@@ -460,7 +460,7 @@ GemmaRunner::GenerationResult GemmaRunner::generateImageChatStreaming(
     llm_->reset();
     const auto* contextBefore = llm_->getContext();
     const auto visionUsBefore = contextBefore == nullptr ? 0 : contextBefore->vision_us;
-    llm_->response(prompt, &output, nullptr, sampling.maxNewTokens);
+    llm_->response(prompt, &output, "<turn|>", sampling.maxNewTokens);
     output.flush();
     const auto* contextAfter = llm_->getContext();
     const auto visionUsAfter = contextAfter == nullptr ? 0 : contextAfter->vision_us;
