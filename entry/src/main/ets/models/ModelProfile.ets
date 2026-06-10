@@ -16,6 +16,18 @@ export interface ModelProfile {
   downloadId?: string;
   editable?: boolean;
   removable?: boolean;
+  generationDefaults?: GenerationDefaults;
+}
+
+export interface GenerationDefaults {
+  maxNewTokens?: number;
+  temperature?: number;
+  topP?: number;
+  topK?: number;
+  repetitionPenalty?: number;
+  frequencyPenalty?: number;
+  presencePenalty?: number;
+  penaltyWindow?: number;
 }
 
 export const CHAT_FORMAT_MNN_AUTO: string = 'mnn-auto';
@@ -30,6 +42,9 @@ export const DEFAULT_TEMPERATURE: number = 0.6;
 export const DEFAULT_TOP_P: number = 0.9;
 export const DEFAULT_TOP_K: number = 40;
 export const DEFAULT_REPETITION_PENALTY: number = 1.05;
+export const DEFAULT_FREQUENCY_PENALTY: number = 0.0;
+export const DEFAULT_PRESENCE_PENALTY: number = 0.0;
+export const DEFAULT_PENALTY_WINDOW: number = 256;
 export const DEFAULT_MODEL_ID: string = 'gemma4';
 
 export const MODEL_PROFILES: ModelProfile[] = [
@@ -45,6 +60,15 @@ export const MODEL_PROFILES: ModelProfile[] = [
     chatFormat: CHAT_FORMAT_GEMMA_TURN,
     stopSequence: '<turn|>',
     contextMessageLimit: 6,
+    generationDefaults: {
+      temperature: 0.45,
+      topP: 0.85,
+      topK: 40,
+      repetitionPenalty: 1.12,
+      frequencyPenalty: 0.15,
+      presencePenalty: 0.0,
+      penaltyWindow: 512
+    },
     downloadId: 'gemma4',
     editable: false,
     removable: false
@@ -54,13 +78,22 @@ export const MODEL_PROFILES: ModelProfile[] = [
     name: 'MiniCPM5-1B',
     shortName: 'MiniCPM5-1B',
     directoryName: 'MiniCPM5-1B-MNN',
-    description: '轻量文本模型，适合快速本地对话。',
+    description: 'BF16全精度文本模型，高质量本地对话。',
     supportsImage: false,
     systemPrompt: '你是运行在本地设备上的 MiniCPM5-1B。请始终使用简体中文回答，表达简洁清楚。',
     source: 'builtin',
     chatFormat: CHAT_FORMAT_MINICPM_THINKING,
     stopSequence: '</s>',
     contextMessageLimit: 0,
+    generationDefaults: {
+      temperature: 0.6,
+      topP: 0.9,
+      topK: 40,
+      repetitionPenalty: 1.05,
+      frequencyPenalty: 0.0,
+      presencePenalty: 0.0,
+      penaltyWindow: 256
+    },
     downloadId: 'minicpm5-1b',
     editable: false,
     removable: false

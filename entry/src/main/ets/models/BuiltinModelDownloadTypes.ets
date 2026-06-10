@@ -91,14 +91,14 @@ export const BUILTIN_MODEL_DOWNLOADS: BuiltinModelDownloadSpec[] = [
     'minicpm5-1b',
     'MiniCPM5-1B-MNN',
     'MiniCPM5-1B',
-    'MNN/MiniCPM5-1B-MNN',
+    'TorryJi/MiniCPM5-1B-MNN-BF16',
     [
-      { relativePath: 'config.json', sizeBytes: 317 },
-      { relativePath: 'llm_config.json', sizeBytes: 9824 },
-      { relativePath: 'tokenizer.mtok', sizeBytes: 3536385 },
-      { relativePath: 'llm.mnn', sizeBytes: 419768 },
-      { relativePath: 'llm.mnn.weight', sizeBytes: 495615626 },
-      { relativePath: 'embeddings_int4.bin', sizeBytes: 125337600 }
+      { relativePath: 'config.json', sizeBytes: 547 },
+      { relativePath: 'llm_config.json', sizeBytes: 9617 },
+      { relativePath: 'tokenizer.mtok', sizeBytes: 3536395 },
+      { relativePath: 'llm.mnn', sizeBytes: 419568 },
+      { relativePath: 'llm.mnn.weight', sizeBytes: 1760636928 },
+      { relativePath: 'embeddings_bf16.bin', sizeBytes: 401080320 }
     ]
   )
 ];

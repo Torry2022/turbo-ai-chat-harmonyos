@@ -351,7 +351,22 @@ GemmaRunner::GenerationResult GemmaRunner::generateRawPromptStreaming(
     const char* endWithPtr = endWith.empty() ? nullptr : endWith.c_str();
     llm_->response(inputIds, &output, endWithPtr, sampling.maxNewTokens);
     output.flush();
-    return BuildGenerationResult(llm_.get(), buffer.output(), sampling.maxNewTokens);
+    GenerationResult result = BuildGenerationResult(llm_.get(), buffer.output(), sampling.maxNewTokens);
+
+    {
+        std::ofstream dump("/data/storage/el2/base/haps/entry/files/raw_output_debug.txt",
+                           std::ios::out | std::ios::trunc);
+        if (dump.good()) {
+            dump << "=== PROMPT ===\n" << prompt << "\n\n";
+            dump << "=== RAW OUTPUT (" << result.text.size() << " chars, "
+                 << result.generatedTokens << " tokens, stop=" << result.stopReason << ") ===\n"
+                 << result.text << "\n";
+            dump << "=== END ===\n";
+            dump.close();
+        }
+    }
+
+    return result;
 }
 
 GemmaRunner::GenerationResult GemmaRunner::generateChatStreaming(

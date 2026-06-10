@@ -5,7 +5,7 @@ export struct LaunchScreen {
       Image($r('app.media.launch_art'))
         .width('100%')
         .height('100%')
-        .objectFit(ImageFit.Cover);
+        .objectFit(ImageFit.Cover)
       Column({ space: 12 }) {
         Image($r('app.media.app_icon'))
           .width(92)
@@ -14,14 +14,11 @@ export struct LaunchScreen {
         Text('Turbo AI Chat')
           .fontSize(28)
           .fontWeight(FontWeight.Bold)
-          .fontColor('#F4FBFF');
-        Text('本地智能对话')
-          .fontSize(15)
-          .fontColor('#9FBDD5');
+          .fontColor('#F4FBFF')
       }
       .width('100%')
       .height('100%')
-      .justifyContent(FlexAlign.Center);
+      .justifyContent(FlexAlign.Center)
     }
     .width('100%')
     .height('100%')

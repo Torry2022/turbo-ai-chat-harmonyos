@@ -30,6 +30,9 @@ export interface GenerationSettings {
   topP: number;
   topK: number;
   repetitionPenalty: number;
+  frequencyPenalty: number;
+  presencePenalty: number;
+  penaltyWindow: number;
 }
 
 export const CONTEXT_MESSAGE_LIMIT: number = 6;

@@ -4,7 +4,10 @@ import {
   CHAT_FORMAT_MNN_AUTO,
   CHAT_FORMAT_QWEN_IM,
   CHAT_FORMAT_RAW_TEMPLATE,
+  DEFAULT_FREQUENCY_PENALTY,
   DEFAULT_MAX_NEW_TOKENS,
+  DEFAULT_PENALTY_WINDOW,
+  DEFAULT_PRESENCE_PENALTY,
   DEFAULT_REPETITION_PENALTY,
   DEFAULT_TEMPERATURE,
   DEFAULT_TOP_K,
@@ -21,6 +24,9 @@ export struct ModelTab {
   @State sliderTopP: number = DEFAULT_TOP_P;
   @State sliderTopK: number = DEFAULT_TOP_K;
   @State sliderRepetitionPenalty: number = DEFAULT_REPETITION_PENALTY;
+  @State sliderFrequencyPenalty: number = DEFAULT_FREQUENCY_PENALTY;
+  @State sliderPresencePenalty: number = DEFAULT_PRESENCE_PENALTY;
+  @State sliderPenaltyWindow: number = DEFAULT_PENALTY_WINDOW;
 
   aboutToAppear(): void {
     this.syncGenerationSlidersFromViewModel();
@@ -32,15 +38,14 @@ export struct ModelTab {
     this.sliderTopP = this.viewModel.topP;
     this.sliderTopK = this.viewModel.topK;
     this.sliderRepetitionPenalty = this.viewModel.repetitionPenalty;
+    this.sliderFrequencyPenalty = this.viewModel.frequencyPenalty;
+    this.sliderPresencePenalty = this.viewModel.presencePenalty;
+    this.sliderPenaltyWindow = this.viewModel.penaltyWindow;
   }
 
   private resetGenerationSliders(): void {
-    this.sliderMaxNewTokens = DEFAULT_MAX_NEW_TOKENS;
-    this.sliderTemperature = DEFAULT_TEMPERATURE;
-    this.sliderTopP = DEFAULT_TOP_P;
-    this.sliderTopK = DEFAULT_TOP_K;
-    this.sliderRepetitionPenalty = DEFAULT_REPETITION_PENALTY;
     this.viewModel.resetGenerationSettings(false);
+    this.syncGenerationSlidersFromViewModel();
   }
 
   @Builder
@@ -100,6 +105,7 @@ export struct ModelTab {
     .borderRadius(8)
     .onClick(() => {
       this.viewModel.switchModel(profile.id);
+      this.syncGenerationSlidersFromViewModel();
     });
   }
 
@@ -247,6 +253,63 @@ export struct ModelTab {
         });
     }
     .width('100%');
+
+    Column({ space: 4 }) {
+      Row() {
+        Text('频率惩罚')
+          .fontSize(12)
+          .fontColor('#8CA2B8')
+          .layoutWeight(1);
+        Text(`${this.sliderFrequencyPenalty}`)
+          .fontSize(12)
+          .fontColor('#EAF4FF');
+      }
+      .width('100%');
+      Slider({ value: this.sliderFrequencyPenalty, min: 0, max: 1, step: 0.05 })
+        .onChange((value: number, _mode: SliderChangeMode) => {
+          this.sliderFrequencyPenalty = Math.round(value * 100) / 100;
+          this.viewModel.updateFrequencyPenalty(this.sliderFrequencyPenalty, false);
+        });
+    }
+    .width('100%');
+
+    Column({ space: 4 }) {
+      Row() {
+        Text('存在惩罚')
+          .fontSize(12)
+          .fontColor('#8CA2B8')
+          .layoutWeight(1);
+        Text(`${this.sliderPresencePenalty}`)
+          .fontSize(12)
+          .fontColor('#EAF4FF');
+      }
+      .width('100%');
+      Slider({ value: this.sliderPresencePenalty, min: 0, max: 1, step: 0.05 })
+        .onChange((value: number, _mode: SliderChangeMode) => {
+          this.sliderPresencePenalty = Math.round(value * 100) / 100;
+          this.viewModel.updatePresencePenalty(this.sliderPresencePenalty, false);
+        });
+    }
+    .width('100%');
+
+    Column({ space: 4 }) {
+      Row() {
+        Text('惩罚窗口')
+          .fontSize(12)
+          .fontColor('#8CA2B8')
+          .layoutWeight(1);
+        Text(`${this.sliderPenaltyWindow} tokens`)
+          .fontSize(12)
+          .fontColor('#EAF4FF');
+      }
+      .width('100%');
+      Slider({ value: this.sliderPenaltyWindow, min: 64, max: 2048, step: 64 })
+        .onChange((value: number, _mode: SliderChangeMode) => {
+          this.sliderPenaltyWindow = Math.round(value);
+          this.viewModel.updatePenaltyWindow(this.sliderPenaltyWindow, false);
+        });
+    }
+    .width('100%');
   }
 
   @Builder
@@ -311,6 +374,10 @@ export struct ModelTab {
           .onChange((value: number, _mode: SliderChangeMode) => {
             this.viewModel.updateThreadNum(value);
           });
+        Text('更改后需重新加载模型生效')
+          .fontSize(11)
+          .fontColor('#5A7A9A')
+          .width('100%');
       }
       .width('100%');
     }

@@ -53,6 +53,15 @@ export struct ModelLoadDialog {
             .fontColor(this.viewModel.loaded ? '#45D6A4' : '#F2B35D');
         }
         .width('100%');
+
+        if (!this.viewModel.modelLoading && !this.viewModel.loaded) {
+          Button('关闭')
+            .height(40)
+            .width('100%')
+            .onClick(() => {
+              this.viewModel.closeModelLoadDialog();
+            });
+        }
       }
       .width('86%')
       .padding(18)

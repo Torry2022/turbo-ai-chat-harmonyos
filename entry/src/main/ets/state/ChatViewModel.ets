@@ -9,12 +9,16 @@ import {
   CHAT_FORMAT_MNN_AUTO,
   CHAT_FORMAT_QWEN_IM,
   CHAT_FORMAT_RAW_TEMPLATE,
+  DEFAULT_FREQUENCY_PENALTY,
   DEFAULT_MAX_NEW_TOKENS,
+  DEFAULT_PENALTY_WINDOW,
+  DEFAULT_PRESENCE_PENALTY,
   DEFAULT_REPETITION_PENALTY,
   DEFAULT_TEMPERATURE,
   DEFAULT_THREAD_NUM,
   DEFAULT_TOP_K,
   DEFAULT_TOP_P,
+  GenerationDefaults,
   MAX_GENERATION_TOKENS,
   ModelProfile
 } from '../models/ModelProfile';
@@ -43,6 +47,9 @@ export class ChatViewModel {
   topP: number = DEFAULT_TOP_P;
   topK: number = DEFAULT_TOP_K;
   repetitionPenalty: number = DEFAULT_REPETITION_PENALTY;
+  frequencyPenalty: number = DEFAULT_FREQUENCY_PENALTY;
+  presencePenalty: number = DEFAULT_PRESENCE_PENALTY;
+  penaltyWindow: number = DEFAULT_PENALTY_WINDOW;
   showAdvancedModelSettings: boolean = false;
   showModelLoadDialog: boolean = false;
   modelLoading: boolean = false;
@@ -143,6 +150,7 @@ export class ChatViewModel {
     }
     this.inputText = '';
     this.selectedImageUri = '';
+    this.resetGenerationSettings(false);
     this.session.resetForModelSwitch(model.shortName);
     this.syncMessages();
     this.resetLoadedModel(`已切换至 ${model.shortName}，请加载模型。`);
@@ -204,15 +212,44 @@ export class ChatViewModel {
     }
   }
 
-  resetGenerationSettings(notify: boolean = true): void {
-    this.maxNewTokens = DEFAULT_MAX_NEW_TOKENS;
-    this.temperature = DEFAULT_TEMPERATURE;
-    this.topP = DEFAULT_TOP_P;
-    this.topK = DEFAULT_TOP_K;
-    this.repetitionPenalty = DEFAULT_REPETITION_PENALTY;
+  updateFrequencyPenalty(value: number, notify: boolean = true): void {
+    this.frequencyPenalty = Math.round(value * 100) / 100;
     if (notify) {
       this.notify();
     }
+  }
+
+  updatePresencePenalty(value: number, notify: boolean = true): void {
+    this.presencePenalty = Math.round(value * 100) / 100;
+    if (notify) {
+      this.notify();
+    }
+  }
+
+  updatePenaltyWindow(value: number, notify: boolean = true): void {
+    this.penaltyWindow = Math.round(value);
+    if (notify) {
+      this.notify();
+    }
+  }
+
+  resetGenerationSettings(notify: boolean = true): void {
+    const defaults = this.generationDefaultsForCurrentModel();
+    this.maxNewTokens = defaults.maxNewTokens ?? DEFAULT_MAX_NEW_TOKENS;
+    this.temperature = defaults.temperature ?? DEFAULT_TEMPERATURE;
+    this.topP = defaults.topP ?? DEFAULT_TOP_P;
+    this.topK = defaults.topK ?? DEFAULT_TOP_K;
+    this.repetitionPenalty = defaults.repetitionPenalty ?? DEFAULT_REPETITION_PENALTY;
+    this.frequencyPenalty = defaults.frequencyPenalty ?? DEFAULT_FREQUENCY_PENALTY;
+    this.presencePenalty = defaults.presencePenalty ?? DEFAULT_PRESENCE_PENALTY;
+    this.penaltyWindow = defaults.penaltyWindow ?? DEFAULT_PENALTY_WINDOW;
+    if (notify) {
+      this.notify();
+    }
+  }
+
+  generationDefaultsForCurrentModel(): GenerationDefaults {
+    return this.currentModel().generationDefaults ?? {};
   }
 
   toggleAdvancedModelSettings(): void {
@@ -232,7 +269,7 @@ export class ChatViewModel {
 
     this.busy = true;
     this.modelImporting = true;
-    this.modelImportMessage = '请选择 MNN 模型 zip 包...';
+    this.modelImportMessage = '可导入 MNN 模型 zip 包';
     this.status = '正在导入模型包...';
     this.notify();
 
@@ -478,6 +515,7 @@ export class ChatViewModel {
       if (!installed) {
         return;
       }
+      this.resetGenerationSettings(false);
       this.openModelLoadDialog(false);
       this.startModelLoad();
     }).catch((err: Error) => {
@@ -813,7 +851,7 @@ export class ChatViewModel {
       return this.nativeService.generateRawPrompt(
         this.composeMiniCpmThinkingPrompt(turns),
         this.maxNewTokens,
-        model.stopSequence ?? '</s>',
+        '<|im_end|>',
         this.currentGenerationSettings(),
         onChunk
       );
@@ -849,10 +887,6 @@ export class ChatViewModel {
   }
 
   private expectedAssistantOutputPrefixForCurrentModel(): string {
-    const model = this.currentModel();
-    if ((model.chatFormat ?? CHAT_FORMAT_MNN_AUTO) === CHAT_FORMAT_MINICPM_THINKING) {
-      return '<think>\n';
-    }
     return '';
   }
 
@@ -872,7 +906,10 @@ export class ChatViewModel {
       temperature: this.temperature,
       topP: this.topP,
       topK: this.topK,
-      repetitionPenalty: this.repetitionPenalty
+      repetitionPenalty: this.repetitionPenalty,
+      frequencyPenalty: this.frequencyPenalty,
+      presencePenalty: this.presencePenalty,
+      penaltyWindow: this.penaltyWindow
     };
   }
 
@@ -999,7 +1036,7 @@ export class ChatViewModel {
       }
       prompt += `<|im_start|>${role}\n${content}<|im_end|>\n`;
     });
-    prompt += '<|im_start|>assistant\n<think>\n';
+    prompt += '<|im_start|>assistant\n';
     return prompt;
   }
 
@@ -1037,6 +1074,9 @@ export class ChatViewModel {
       return false;
     }
     if (result.stopReason === 'eos' || result.stopReason === 'user_stop') {
+      return true;
+    }
+    if (result.stopReason === 'unknown') {
       return true;
     }
     return !isLikelyIncompleteAssistantText(answer);
