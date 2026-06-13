@@ -1,6 +1,7 @@
 import { ChatMessage } from '../models/ChatTypes';
 import { MarkdownBlock, MarkdownSpan, parseInlineMarkdown, parseLightMarkdown } from '../utils/markdown';
 import { parseAssistantText } from '../utils/thinking';
+import { pasteboard } from '@kit.BasicServicesKit';
 
 @Component
 export struct MessageBubble {
@@ -14,6 +15,17 @@ export struct MessageBubble {
     thinkingExpanded: false
   };
   onToggleThinking: (messageId: number) => void = (_messageId: number) => {};
+  @State showMenu: boolean = false;
+
+  private async copyToClipboard(): Promise<void> {
+    const text = this.answerText();
+    try {
+      const pasteData = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, text);
+      await pasteboard.getSystemPasteboard().setData(pasteData);
+    } catch (_) {
+      // clipboard may be unavailable
+    }
+  }
 
   private hasThinking(): boolean {
     return parseAssistantText(this.message.content).hasThinking;
@@ -38,9 +50,24 @@ export struct MessageBubble {
   private MarkdownLine(text: string, color: ResourceColor = '#EAF4FF') {
     Text() {
       ForEach(parseInlineMarkdown(text), (span: MarkdownSpan, index: number) => {
-        Span(span.text)
-          .fontWeight(span.bold ? FontWeight.Bold : FontWeight.Normal)
-          .fontColor(color);
+        if (span.code) {
+          Span(span.text)
+            .fontColor('#D7E8F7')
+            .fontFamily('monospace')
+            .fontSize(13)
+            .decoration({ type: TextDecorationType.None });
+        } else if (span.link !== undefined && span.link.length > 0) {
+          Span(span.text)
+            .fontColor('#45A6E7')
+            .decoration({ type: TextDecorationType.Underline })
+            .fontWeight(FontWeight.Normal);
+        } else {
+          Span(span.text)
+            .fontWeight(span.bold ? FontWeight.Bold : FontWeight.Normal)
+            .fontColor(color)
+            .fontStyle(span.italic ? FontStyle.Italic : FontStyle.Normal)
+            .decoration({ type: span.strikethrough ? TextDecorationType.LineThrough : TextDecorationType.None });
+        }
       }, (_span: MarkdownSpan, index: number) => `${index}`);
     }
     .width('100%')
@@ -56,7 +83,8 @@ export struct MessageBubble {
         ForEach(parseInlineMarkdown(block.text), (span: MarkdownSpan, index: number) => {
           Span(span.text)
             .fontWeight(FontWeight.Bold)
-            .fontColor('#F4FBFF');
+            .fontColor('#F4FBFF')
+            .fontStyle(FontStyle.Normal);
         }, (_span: MarkdownSpan, index: number) => `${blockIndex}-${index}`);
       }
       .width('100%')
@@ -64,15 +92,83 @@ export struct MessageBubble {
       .lineHeight(22)
       .textAlign(TextAlign.Start);
     } else if (block.type === 'code') {
-      Text(block.text)
-        .width('100%')
-        .fontSize(13)
-        .lineHeight(19)
-        .fontColor('#D7E8F7')
-        .fontFamily('monospace')
-        .padding(8)
-        .backgroundColor('#0B1724')
-        .borderRadius(6);
+      Stack({ alignContent: Alignment.TopEnd }) {
+        Text(block.text)
+          .width('100%')
+          .fontSize(13)
+          .lineHeight(19)
+          .fontColor('#D7E8F7')
+          .fontFamily('monospace')
+          .padding(8)
+          .backgroundColor('#0B1724')
+          .borderRadius(6);
+        Button('复制')
+          .fontSize(11)
+          .height(28)
+          .padding({ left: 8, right: 8 })
+          .backgroundColor('#1A3048')
+          .fontColor('#8CA2B8')
+          .borderRadius(4)
+          .margin({ top: 4, right: 4 })
+          .onClick(async () => {
+            try {
+              const data = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, block.text);
+              await pasteboard.getSystemPasteboard().setData(data);
+            } catch (_) {}
+          });
+      }
+      .width('100%');
+    } else if (block.type === 'blockquote') {
+      Row() {
+        Column()
+          .width(3)
+          .height('100%')
+          .backgroundColor('#456888')
+          .borderRadius(2);
+        this.MarkdownLine(block.text, '#B7CDE1');
+      }
+      .width('100%')
+      .padding({ left: 8, top: 4, bottom: 4 })
+      .backgroundColor('#0F1A26')
+      .borderRadius(4);
+    } else if (block.type === 'table') {
+      Column({ space: 0 }) {
+        if (block.headers !== undefined) {
+          Row() {
+            ForEach(block.headers, (h: string, hi: number) => {
+              Column() {
+                this.MarkdownLine(h, '#F4FBFF');
+              }
+              .padding({ left: 8, right: 8, top: 4, bottom: 4 })
+              .layoutWeight(1)
+              .backgroundColor('#14283E');
+            }, (h: string, hi: number) => `h-${blockIndex}-${hi}`);
+          }
+          .width('100%');
+        }
+        if (block.rows !== undefined) {
+          ForEach(block.rows, (row: string[], ri: number) => {
+            Row() {
+              ForEach(row, (cell: string, ci: number) => {
+                Column() {
+                  this.MarkdownLine(cell, '#D7E8F7');
+                }
+                .padding({ left: 8, right: 8, top: 3, bottom: 3 })
+                .layoutWeight(1)
+                .backgroundColor(ri % 2 === 0 ? '#0D1A28' : '#111E2C');
+              }, (cell: string, ci: number) => `c-${blockIndex}-${ri}-${ci}`);
+            }
+            .width('100%');
+          }, (row: string[], ri: number) => `r-${blockIndex}-${ri}`);
+        }
+      }
+      .width('100%')
+      .borderRadius(6)
+      .clip(true);
+    } else if (block.type === 'horizontal-rule') {
+      Divider()
+        .strokeWidth(1)
+        .color('#2A4058');
     } else if (block.type === 'ordered-list' || block.type === 'unordered-list') {
       Column({ space: 4 }) {
         ForEach(block.items, (item: string, itemIndex: number) => {
@@ -87,7 +183,8 @@ export struct MessageBubble {
               ForEach(parseInlineMarkdown(item), (span: MarkdownSpan, spanIndex: number) => {
                 Span(span.text)
                   .fontWeight(span.bold ? FontWeight.Bold : FontWeight.Normal)
-                  .fontColor('#EAF4FF');
+                  .fontColor('#EAF4FF')
+                  .fontStyle(span.italic ? FontStyle.Italic : FontStyle.Normal);
               }, (_span: MarkdownSpan, spanIndex: number) => `${blockIndex}-${itemIndex}-${spanIndex}`);
             }
             .fontSize(15)
@@ -186,15 +283,33 @@ export struct MessageBubble {
               .fontColor(Color.White);
           }
         }
+        if (this.message.role === 'assistant' && this.message.perfMetrics !== undefined) {
+          Text(`TTFT ${this.message.perfMetrics.ttft}ms · ${this.message.perfMetrics.tpot}ms/tok · ${this.message.perfMetrics.tokensPerSec} tok/s · ${this.message.perfMetrics.tokens} tokens`)
+            .fontSize(10)
+            .fontColor('#4A6A8A')
+            .textAlign(TextAlign.Center)
+            .width('100%');
+        }
       }
       .padding({ left: 12, right: 12, top: 10, bottom: 10 })
       .backgroundColor(this.message.role === 'user' ? '#1267A8' : '#111E2C')
       .borderRadius(8)
-      .width(this.message.role === 'user' ? '84%' : '94%');
+      .width(this.message.role === 'user' ? '84%' : '94%')
+      .bindContextMenu(this.CopyMenuBuilder, ResponseType.LongPress);
       if (this.message.role !== 'user') {
         Blank();
       }
     }
     .width('100%');
+  }
+
+  @Builder
+  CopyMenuBuilder() {
+    Menu() {
+      MenuItem({ content: '复制' })
+        .onClick(() => {
+          this.copyToClipboard();
+        });
+    }
   }
 }

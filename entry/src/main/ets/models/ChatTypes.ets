@@ -6,6 +6,14 @@ export interface ChatMessage {
   time: string;
   includeInContext: boolean;
   thinkingExpanded: boolean;
+  perfMetrics?: PerfMetrics;
+}
+
+export interface PerfMetrics {
+  ttft: number;
+  tpot: number;
+  tokensPerSec: number;
+  tokens: number;
 }
 
 export interface ChatTurn {

@@ -1,4 +1,4 @@
-import { ChatMessage, ChatTurn, CONTEXT_MESSAGE_LIMIT } from '../models/ChatTypes';
+import { ChatMessage, ChatTurn, CONTEXT_MESSAGE_LIMIT, PerfMetrics } from '../models/ChatTypes';
 import { nowTime } from '../utils/formatters';
 import { answerTextForContext, isLikelyIncompleteAssistantText, stripModelSpecialTokens } from '../utils/thinking';
 
@@ -56,7 +56,7 @@ export class ChatSession {
     return message.id;
   }
 
-  updateMessage(id: number, content: string, includeInContext?: boolean): void {
+  updateMessage(id: number, content: string, includeInContext?: boolean, perfMetrics?: PerfMetrics): void {
     this.messages = this.messages.map((message: ChatMessage) => {
       if (message.id === id) {
         return {
@@ -66,7 +66,8 @@ export class ChatSession {
           imageUri: message.imageUri,
           time: message.time,
           includeInContext: includeInContext === undefined ? message.includeInContext : includeInContext,
-          thinkingExpanded: message.thinkingExpanded
+          thinkingExpanded: message.thinkingExpanded,
+          perfMetrics: perfMetrics ?? message.perfMetrics
         };
       }
       return message;

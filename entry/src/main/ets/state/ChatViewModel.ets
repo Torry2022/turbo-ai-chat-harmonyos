@@ -1,6 +1,6 @@
 import { common } from '@kit.AbilityKit';
 import fs from '@ohos.file.fs';
-import { ChatMessage, ChatTurn, GenerationResult, GenerationSettings } from '../models/ChatTypes';
+import { ChatMessage, ChatTurn, GenerationResult, GenerationSettings, PerfMetrics } from '../models/ChatTypes';
 import { ImportedModelDraft } from '../models/ImportedModelTypes';
 import { BuiltinModelDownloadSpec, BuiltinModelInstallProgress } from '../models/BuiltinModelDownloadTypes';
 import {
@@ -686,6 +686,8 @@ export class ChatViewModel {
     this.refreshStats();
     this.notifyAndScroll();
 
+    const genStartTime: number = Date.now();
+    let firstTokenTime: number = 0;
     let streamedChars = 0;
     let streamedText = '';
     let generation: Promise<GenerationResult>;
@@ -702,6 +704,9 @@ export class ChatViewModel {
           this.maxNewTokens,
           this.currentGenerationSettings(),
           (chunk: string) => {
+            if (firstTokenTime <= 0) {
+              firstTokenTime = Date.now();
+            }
             streamedText += chunk;
             streamedChars = this.handleStreamText(assistantId, streamedText, assistantOutputPrefix);
           }
@@ -709,19 +714,36 @@ export class ChatViewModel {
       });
     } else {
       generation = this.generateTextForCurrentModel(chatTurns, (chunk: string) => {
+        if (firstTokenTime <= 0) {
+          firstTokenTime = Date.now();
+        }
         streamedText += chunk;
         streamedChars = this.handleStreamText(assistantId, streamedText, assistantOutputPrefix);
       });
     }
 
     generation.then((result: GenerationResult) => {
+      const genEndTime: number = Date.now();
       const cleanedText = trimLikelyIncompleteTrailingFragment(this.session.sanitizeAssistantText(
         this.applyExpectedAssistantOutputPrefix(result.text, assistantOutputPrefix),
         this.shouldStripLeadingAssistantSeparator()
       ));
       const answer = cleanedText.length > 0 ? cleanedText : '（原生层返回空内容）';
       const includeInContext = this.shouldIncludeAssistantInContext(answer, result);
-      this.session.updateMessage(assistantId, answer, includeInContext);
+
+      const ttft: number = firstTokenTime > 0 ? firstTokenTime - genStartTime : 0;
+      const genTime: number = genEndTime - genStartTime;
+      const genTokens: number = Math.max(1, result.generatedTokens);
+      const tpot: number = genTime / genTokens;
+      const tokensPerSec: number = (genTokens / (genTime / 1000));
+      const perf: PerfMetrics = {
+        ttft: ttft,
+        tpot: Math.round(tpot * 100) / 100,
+        tokensPerSec: Math.round(tokensPerSec * 10) / 10,
+        tokens: genTokens
+      };
+
+      this.session.updateMessage(assistantId, answer, includeInContext, perf);
       this.syncMessages();
       this.status = this.formatGenerationStatus(answer, includeInContext, result);
       this.busy = false;
