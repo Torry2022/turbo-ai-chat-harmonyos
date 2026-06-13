@@ -172,9 +172,9 @@ std::string BuildSamplingConfigProperties(const GemmaRunner::SamplingConfig& sam
            << "\"top_k\":" << sampling.topK << ","
            << "\"top_p\":" << sampling.topP << ","
            << "\"repetition_penalty\":" << sampling.repetitionPenalty << ","
-           << "\"presence_penalty\":0.0,"
-           << "\"frequency_penalty\":0.0,"
-           << "\"penalty_window\":256,"
+           << "\"presence_penalty\":" << sampling.presencePenalty << ","
+           << "\"frequency_penalty\":" << sampling.frequencyPenalty << ","
+           << "\"penalty_window\":" << sampling.penaltyWindow << ","
            << "\"async\":false";
     return config.str();
 }

@@ -20,6 +20,9 @@ public:
         double topP = 0.9;
         int topK = 40;
         double repetitionPenalty = 1.05;
+        double frequencyPenalty = 0.0;
+        double presencePenalty = 0.0;
+        int penaltyWindow = 256;
     };
 
     struct ChatTurn {

@@ -53,6 +53,7 @@ export class ImagePayloadService {
       if (pixelMap) {
         await pixelMap.release();
       }
+      source.release();
       fs.closeSync(file);
     }
   }

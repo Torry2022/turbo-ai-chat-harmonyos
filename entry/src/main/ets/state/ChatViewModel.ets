@@ -258,7 +258,7 @@ export class ChatViewModel {
   }
 
   importModelPackage(): void {
-    if (this.busy || this.modelLoading || this.modelImporting) {
+    if (this.busy || this.modelLoading || this.modelImporting || this.builtinModelInstalling) {
       return;
     }
     if (!this.context) {
@@ -400,7 +400,7 @@ export class ChatViewModel {
   }
 
   requestDeleteImportedModel(modelId: string): void {
-    if (this.busy || this.modelLoading || this.modelImporting) {
+    if (this.busy || this.modelLoading || this.modelImporting || this.builtinModelInstalling) {
       return;
     }
     const profile = this.findProfile(modelId);
@@ -567,7 +567,6 @@ export class ChatViewModel {
       this.modelLoadProgress = 0;
       this.session.appendMessage('assistant', this.status, '', false);
       this.syncMessages();
-      this.loaded = false;
       this.busy = false;
       this.modelLoading = false;
       this.refreshStats();
@@ -692,34 +691,41 @@ export class ChatViewModel {
     let streamedText = '';
     let generation: Promise<GenerationResult>;
     const assistantOutputPrefix = this.expectedAssistantOutputPrefixForCurrentModel();
-    if (attachedImage.length > 0) {
-      this.status = '正在读取图片...';
-      this.notify();
-      generation = this.imageService.buildImagePayload(attachedImage).then((payload) => {
-        this.status = '等待视觉模型...';
+    try {
+      if (attachedImage.length > 0) {
+        this.status = '正在读取图片...';
         this.notify();
-        return this.nativeService.generateImage(
-          chatTurns,
-          payload,
-          this.maxNewTokens,
-          this.currentGenerationSettings(),
-          (chunk: string) => {
-            if (firstTokenTime <= 0) {
-              firstTokenTime = Date.now();
+        generation = this.imageService.buildImagePayload(attachedImage).then((payload) => {
+          this.status = '等待视觉模型...';
+          this.notify();
+          return this.nativeService.generateImage(
+            chatTurns,
+            payload,
+            this.maxNewTokens,
+            this.currentGenerationSettings(),
+            (chunk: string) => {
+              if (firstTokenTime <= 0) {
+                firstTokenTime = Date.now();
+              }
+              streamedText += chunk;
+              streamedChars = this.handleStreamText(assistantId, streamedText, assistantOutputPrefix);
             }
-            streamedText += chunk;
-            streamedChars = this.handleStreamText(assistantId, streamedText, assistantOutputPrefix);
+          );
+        });
+      } else {
+        generation = this.generateTextForCurrentModel(chatTurns, (chunk: string) => {
+          if (firstTokenTime <= 0) {
+            firstTokenTime = Date.now();
           }
-        );
-      });
-    } else {
-      generation = this.generateTextForCurrentModel(chatTurns, (chunk: string) => {
-        if (firstTokenTime <= 0) {
-          firstTokenTime = Date.now();
-        }
-        streamedText += chunk;
-        streamedChars = this.handleStreamText(assistantId, streamedText, assistantOutputPrefix);
-      });
+          streamedText += chunk;
+          streamedChars = this.handleStreamText(assistantId, streamedText, assistantOutputPrefix);
+        });
+      }
+    } catch (err) {
+      this.busy = false;
+      this.status = `生成失败：${formatError(err as Object)}`;
+      this.notify();
+      return;
     }
 
     generation.then((result: GenerationResult) => {
@@ -1092,6 +1098,9 @@ export class ChatViewModel {
   }
 
   private shouldIncludeAssistantInContext(answer: string, result: GenerationResult): boolean {
+    if (answer.trim().length === 0) {
+      return false;
+    }
     if (result.stopReason === 'max_tokens') {
       return false;
     }

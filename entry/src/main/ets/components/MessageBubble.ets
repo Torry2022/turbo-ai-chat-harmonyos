@@ -15,7 +15,6 @@ export struct MessageBubble {
     thinkingExpanded: false
   };
   onToggleThinking: (messageId: number) => void = (_messageId: number) => {};
-  @State showMenu: boolean = false;
 
   private async copyToClipboard(): Promise<void> {
     const text = this.answerText();

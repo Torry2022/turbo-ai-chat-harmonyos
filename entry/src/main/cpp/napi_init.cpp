@@ -166,6 +166,18 @@ GemmaRunner::SamplingConfig ReadSamplingConfig(
         ReadNamedDouble(env, args[settingsIndex], "repetition_penalty", sampling.repetitionPenalty),
         0.8,
         2.0);
+    sampling.frequencyPenalty = std::clamp(
+        ReadNamedDouble(env, args[settingsIndex], "frequencyPenalty", sampling.frequencyPenalty),
+        0.0,
+        2.0);
+    sampling.presencePenalty = std::clamp(
+        ReadNamedDouble(env, args[settingsIndex], "presencePenalty", sampling.presencePenalty),
+        0.0,
+        2.0);
+    sampling.penaltyWindow = std::clamp(
+        ReadNamedInt(env, args[settingsIndex], "penaltyWindow", sampling.penaltyWindow),
+        64,
+        2048);
     return sampling;
 }
 
@@ -475,7 +487,7 @@ napi_value GenerateStream(napi_env env, napi_callback_info info) {
 
     napi_value resourceName = nullptr;
     napi_create_string_utf8(env, "gemmaGenerateStream", NAPI_AUTO_LENGTH, &resourceName);
-    napi_create_threadsafe_function(
+    napi_status tsfnStatus = napi_create_threadsafe_function(
         env,
         args[callbackIndex],
         nullptr,
@@ -487,6 +499,12 @@ napi_value GenerateStream(napi_env env, napi_callback_info info) {
         nullptr,
         CallStreamChunk,
         &streamWork->callback);
+
+    if (tsfnStatus != napi_ok) {
+        delete streamWork;
+        napi_throw_error(env, nullptr, "generateStream failed to create threadsafe function");
+        return nullptr;
+    }
 
     napi_create_async_work(
         env,
@@ -565,7 +583,7 @@ napi_value GenerateRawPromptStream(napi_env env, napi_callback_info info) {
 
     napi_value resourceName = nullptr;
     napi_create_string_utf8(env, "gemmaGenerateRawPromptStream", NAPI_AUTO_LENGTH, &resourceName);
-    napi_create_threadsafe_function(
+    napi_status tsfnStatus = napi_create_threadsafe_function(
         env,
         args[callbackIndex],
         nullptr,
@@ -577,6 +595,12 @@ napi_value GenerateRawPromptStream(napi_env env, napi_callback_info info) {
         nullptr,
         CallStreamChunk,
         &streamWork->callback);
+
+    if (tsfnStatus != napi_ok) {
+        delete streamWork;
+        napi_throw_error(env, nullptr, "generateRawPromptStream failed to create threadsafe function");
+        return nullptr;
+    }
 
     napi_create_async_work(
         env,
