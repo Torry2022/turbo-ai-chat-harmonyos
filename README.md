@@ -4,319 +4,125 @@
 
 ![Turbo AI Chat hero](docs/images/hero.png)
 
-**Turbo AI Chat** 是一个 HarmonyOS NEXT 原生本地大模型聊天 Demo。它用 ArkTS 构建界面，通过 N-API 调用 C++ 原生推理层，并使用 MNN Runtime 在鸿蒙设备端加载 **Gemma 4 E2B**、**MiniCPM5-1B** 等 MNN 模型完成离线对话。
+**HarmonyOS NEXT 原生端侧大模型聊天应用**。基于 ArkTS + C++ N-API + MNN Runtime，在设备本地运行 Gemma 4 E2B（多模态）和 MiniCPM5-1B（文本）模型，支持流式对话、模型切换、内置模型一键下载。
 
-关键词：HarmonyOS NEXT, HarmonyOS native LLM, ArkTS, N-API, MNN, Gemma 4, MiniCPM5, on-device AI, local LLM, mobile inference, ModelScope model.
+本仓库 fork 自 [Turbo1123/turbo-ai-chat-harmonyos](https://github.com/Turbo1123/turbo-ai-chat-harmonyos)。
 
 ## 项目背景
 
-这个项目来自一次很直接的验证：**鸿蒙 NEXT 能不能在原生 App 里跑本地大模型？**
+鸿蒙生态中，端侧 AI 推理目前主要依赖卓易通等 Android 兼容层运行安卓 App。Turbo AI Chat 用纯原生链路（ArkTS → N-API → MNN → CPU）验证了一条不同的路径：
 
-早期方向是找 GGUF / llama.cpp 在鸿蒙上的案例，但实测下来，面向鸿蒙原生工程更稳的路线是 MNN：它有移动端推理能力，也已经有 Gemma 4 的 MNN 导出模型。于是这个仓库先把目标收敛到一件事：
+- **架构原生**：推理层直接对接 HarmonyOS NDK，无 Android 兼容层转译开销
+- **开箱可复现**：内置模型从 ModelScope 一键下载，不依赖 HuggingFace（国内网络友好）
+- **工程可复用**：MNN Runtime 封装、流式输出管线、Markdown 渲染等模块可作为其他鸿蒙 AI 应用的集成参考
+- **开发者友好**：hdc 一键查看原始推理日志（`raw_output_debug.txt`），便于定位模型行为
 
-> 在 HarmonyOS NEXT 真机上，用原生 App 加载本地 Gemma 4 模型，并完成可交互、可流式输出的聊天。
+如果你正在探索「鸿蒙 + 本地 AI」的技术方案，这个项目提供了一个可验证的工程基线。
 
-当前版本不是云端聊天壳子，也不是 WebView；模型文件在设备本地，推理由 App 内的原生层完成。
+## 快速开始
 
-## 快速开始：从克隆到跑起内置模型
-
-当前推荐流程是：**源码构建安装 App，然后在 App 内按提示下载内置模型**。不再要求新用户先在 PC 上下载模型目录、再用 `hdc file send` 推进沙箱。
-
-### 1. 克隆仓库
+### 1. 克隆并构建
 
 ```sh
 git clone https://github.com/Torry2022/turbo-ai-chat-harmonyos.git
 cd turbo-ai-chat-harmonyos
 ```
 
-如果你想基于原作者仓库开始，也可以替换为上游地址：
-
-```sh
-git clone https://github.com/Turbo1123/turbo-ai-chat-harmonyos.git
-cd turbo-ai-chat-harmonyos
-```
-
-### 2. 用 DevEco Studio 打开并配置签名
-
-1. 使用 DevEco Studio 打开项目根目录。
-2. 登录 Huawei 开发者账号。
-3. 进入 `File > Project Structure > Signing Configs`。
-4. 为默认产品开启自动签名。
-5. 确认真机已开启开发者选项和 USB 调试。
-
-`build-profile.json5` 中只保留默认产品使用 `signingConfig` 的绑定；真实证书、profile、私钥路径和密码不应提交到仓库。
-
-### 3. 构建并安装到真机
-
-可以直接在 DevEco Studio 中运行项目，也可以使用命令行：
-
-```sh
-hvigor assembleHap --no-daemon
-hdc list targets
-hdc install -r entry/build/default/outputs/default/entry-default-signed.hap
-```
-
-如果本机没有全局 `hvigor`，也可以通过项目依赖运行：
+用 DevEco Studio 打开项目，登录华为开发者账号，开启自动签名，然后运行到真机。或命令行：
 
 ```sh
 node ./node_modules/@ohos/hvigor/bin/hvigor.js assembleHap --no-daemon
-```
-
-### 4. 在 App 内安装内置模型
-
-首次安装后，仓库和 HAP 都**不包含模型权重**。进入 App 后：
-
-1. 打开“模型”页。
-2. 选择 `Gemma 4 E2B` 或 `MiniCPM5-1B`。
-3. 点击“加载模型”。
-4. 如果 App 检测到内置模型目录缺失或不完整，会弹出“安装内置模型”。
-5. 点击“下载并安装”，保持 App 在前台等待下载完成。
-6. 下载完成后 App 会继续加载模型，回到“聊天”页即可提问。
-
-内置模型会下载到 App 沙箱目录：
-
-```text
-/data/storage/el2/base/haps/entry/files/gemma-4-E2B-it-MNN/
-/data/storage/el2/base/haps/entry/files/MiniCPM5-1B-MNN/
-```
-
-模型大小约为：Gemma 4 E2B `3.7 GB`，MiniCPM5-1B `625 MB`。请确保设备有足够存储空间和稳定网络。
-
-## 功能
-
-- HarmonyOS NEXT 原生 ArkTS UI
-- C++ / N-API 推理桥接
-- MNN LLM Runtime 设备端推理
-- Gemma 4 / MiniCPM5 MNN 模型切换与加载
-- 流式输出
-- 多轮上下文记忆
-- 图片选择入口
-- CPU / 内存状态展示
-- 启动后检测内置模型目录，缺失时引导一键下载
-- 中文界面、沉浸式布局、底部 Tab
-
-## 截图
-
-| 聊天界面 | 顶部状态 | 输入区 |
-| --- | --- | --- |
-| ![chat main](docs/images/chat-main.jpeg) | ![chat header](docs/images/chat-header.jpeg) | ![chat input](docs/images/chat-input.jpeg) |
-
-## 当前模型格式说明
-
-这个项目当前主线使用的是 **MNN 模型目录**，不是直接加载 `.gguf`。
-
-内置可选模型：
-
-| 模型 | 默认目录 | 输入能力 |
-| --- | --- | --- |
-| Gemma 4 E2B | `gemma-4-E2B-it-MNN/` | 文本、图片 |
-| MiniCPM5-1B | `MiniCPM5-1B-MNN/` | 文本 |
-
-App 会读取所选模型目录下的 `config.json`。切换模型只会切换当前选中项；点击“加载模型”后才会真正释放旧模型并加载新模型。模型对话模板优先交给 MNN 根据 `llm_config.json` 处理，App 不再默认手写各模型的 Prompt 模板。
-
-推荐内置模型来源：
-
-- ModelScope: [`MNN/gemma-4-E2B-it-MNN`](https://modelscope.cn/models/MNN/gemma-4-E2B-it-MNN)
-- ModelScope: [`MNN/MiniCPM5-1B-MNN`](https://modelscope.cn/models/MNN/MiniCPM5-1B-MNN)
-- 模型类型：Gemma 4 E2B instruction，MNN 4-bit 量化导出
-- 主要入口文件：`config.json`
-
-模型目录需要包含这些文件：
-
-```text
-gemma-4-E2B-it-MNN/
-  config.json
-  llm_config.json
-  tokenizer.mtok
-  llm.mnn
-  llm.mnn.weight
-  ple_embeddings_int4.bin
-  visual.mnn
-  visual.mnn.weight
-  audio.mnn
-  audio.mnn.weight
-```
-
-MiniCPM5-1B 的内置目录需要包含：
-
-```text
-MiniCPM5-1B-MNN/
-  config.json
-  llm_config.json
-  tokenizer.mtok
-  llm.mnn
-  llm.mnn.weight
-  embeddings_int4.bin
-```
-
-官方 BF16、GGUF、MLX 权重不能被当前原生 MNN 推理层直接读取。
-
-如果你手里是 GGUF，需要先走转换或另接 llama.cpp 鸿蒙移植层；这个仓库当前没有直接读取 GGUF。
-
-## 直接下载 HAP
-
-Release 会附带可安装的 HAP：
-
-- [Latest Release](https://github.com/Turbo1123/turbo-ai-chat-harmonyos/releases/latest)
-
-安装示例：
-
-```sh
-hdc install -r turbo-ai-chat-harmonyos-v0.1.0-signed.hap
-```
-
-HAP 不内置模型权重。Gemma 4 E2B 约 3.7 GB，MiniCPM5-1B 约 625 MB；安装 App 后，如果内置模型目录缺失，App 会在加载模型前提示从 ModelScope 下载并安装到 App 沙箱目录。
-
-说明：Release 中的 HAP 是调试签名包。如果你的设备不在签名 profile 内，安装可能失败；这种情况下请从源码打开项目，并在 DevEco Studio 中使用自己的账号开启自动签名后重新构建。
-
-## 备用：PC 侧下载模型
-
-正常情况下，安装 App 后直接按 App 内提示下载内置模型即可。下面的 PC 侧下载方式主要用于调试、离线准备或网络受限场景。
-
-```sh
-./scripts/download_gemma4_e2b_mnn.sh
-```
-
-默认下载到：
-
-```text
-models/gemma-4-E2B-it-MNN/
-```
-
-也可以指定目录：
-
-```sh
-./scripts/download_gemma4_e2b_mnn.sh /path/to/gemma-4-E2B-it-MNN
-```
-
-MiniCPM5-1B 推荐在 App 内从 ModelScope 下载；也可以手动准备 MNN 目录，例如：
-
-```text
-models/MiniCPM5-1B-MNN/
-```
-
-脚本默认从 ModelScope 下载 Gemma 4 E2B。如果没有 `modelscope` CLI，脚本会使用 Python 的 `modelscope` 包。缺依赖时先安装：
-
-```sh
-python3 -m pip install modelscope
-```
-
-## 备用：手动推送模型到手机
-
-App 默认读取下面的沙箱路径。正常情况下，App 内下载会自动写入这些目录；下面的 `hdc` 推送方式只作为调试备用。
-
-```text
-/data/storage/el2/base/haps/entry/files/gemma-4-E2B-it-MNN/config.json
-/data/storage/el2/base/haps/entry/files/MiniCPM5-1B-MNN/config.json
-```
-
-这是 App 内看到的沙箱路径。使用 `hdc file send` 时，通常需要推到物理路径：
-
-```text
-/data/app/el2/100/base/com.example.gemma4mnn/haps/entry/files/gemma-4-E2B-it-MNN/
-```
-
-推荐使用脚本：
-
-```sh
-./scripts/push_model_to_device.sh
-./scripts/push_model_to_device.sh models/MiniCPM5-1B-MNN
-```
-
-如果你的设备不是默认用户 `100`，可以指定：
-
-```sh
-USER_ID=100 ./scripts/push_model_to_device.sh
-```
-
-指定设备：
-
-```sh
-HDC_TARGET=<device-id> ./scripts/push_model_to_device.sh
-```
-
-手动推送示例：
-
-```sh
-hdc shell "mkdir -p /data/app/el2/100/base/com.example.gemma4mnn/haps/entry/files"
-hdc file send models/gemma-4-E2B-it-MNN /data/app/el2/100/base/com.example.gemma4mnn/haps/entry/files/
-```
-
-## 从源码构建细节
-
-环境要求：
-
-- DevEco Studio / HarmonyOS SDK
-- HarmonyOS NEXT 真机
-- 已开启开发者选项和 USB 调试
-- Huawei 开发者账号，用于自动签名
-- `hdc` 和 `hvigor` 在 `PATH` 中
-
-构建 HAP：
-
-```sh
-hvigor assembleHap --no-daemon
-```
-
-安装：
-
-```sh
-hdc list targets
 hdc install -r entry/build/default/outputs/default/entry-default-signed.hap
 ```
 
-如果你的本机还没有签名配置，请在 DevEco Studio 中：
+### 2. 安装内置模型
 
-1. 登录 Huawei 开发者账号。
-2. 打开项目。
-3. 进入 `File > Project Structure > Signing Configs`。
-4. 为默认产品开启自动签名。
-5. 重新构建。
+App 和 HAP 均不内置模型权重。打开 App → 模型页 → 选 Gemma 4 或 MiniCPM5-1B → 加载，App 自动引导从 ModelScope 下载到沙箱。
 
-`build-profile.json5` 中不会提交真实签名材料、证书路径和密码。
+| 模型 | 大小 | 能力 |
+|------|------|------|
+| Gemma 4 E2B | ~3.7 GB | 文本 + 图片 |
+| MiniCPM5-1B (BF16) | ~2.1 GB | 文本 |
 
-## MNN Runtime
+### 3. 开始聊天
 
-仓库包含当前 Demo 使用的 Harmony arm64 `libMNN.so` 和最小头文件，方便直接构建。
+模型加载完成后回到聊天页，发送消息即可。MiniCPM5-1B 会展示思考块（`<think>`），Gemma 4 支持图片输入。
 
-如果你想从 MNN 源码重新构建：
+## 功能
+
+- 本地推理：模型在设备端运行，无网络依赖
+- 流式输出：token 级实时响应
+- 模型切换：Gemma 4 / MiniCPM5-1B 热切换
+- 思考块：MiniCPM5-1B 展示推理思考过程
+- Markdown 渲染：代码块（含复制按钮）、表格、引用、链接等
+- 生成参数调节：温度、Top-P/K、惩罚项等
+- 性能指标：TTFT、TPOT、tokens/s 实时显示
+- 内置模型管理：一键下载、安装、更新
+- 导入本地 MNN zip：支持自有模型包导入
+
+## 截图
+
+| 聊天界面                          | 模型界面                              | 监控界面                                |
+|-------------------------------|-----------------------------------|-------------------------------------|
+| ![chat](docs/images/chat.jpg) | ![models](docs/images/models.jpg) | ![monitor](docs/images/monitor.jpg) |
+
+## 从 HAP 直接安装
+
+[Releases](https://github.com/Torry2022/turbo-ai-chat-harmonyos/releases) 提供签名 HAP。使用 hdc 安装：
 
 ```sh
-git clone https://github.com/alibaba/MNN.git ../MNN
-./scripts/build_mnn_ohos.sh
-./scripts/stage_mnn_ohos.sh
+hdc install -r turbo-ai-chat-harmonyos-v0.2.0-signed.hap
 ```
 
-`stage_mnn_ohos.sh` 会把产物放到：
+也可通过[小白调试助手](https://github.com/likuai2010/auto-installer)图形化安装。调试签名包仅限当前 profile 内设备；其他设备请下载未签名包自行签名。
 
-```text
-entry/src/main/libs/arm64-v8a/libMNN.so
-third_party/mnn/include/
+## 备用：手动推送模型
+
+App 内下载是推荐方式。以下 `hdc` 推送仅作调试备用。
+
+推送的模型目录必须是 **MNN 格式**，即通过 MNN `llmexport.py` 从 HuggingFace 权重导出的目录，包含 `config.json`、`llm_config.json`、`tokenizer.mtok`、`llm.mnn`、`llm.mnn.weight` 等文件。原始 HuggingFace safetensors、GGUF、MLX 权重不能直接使用。
+
+```sh
+hdc file send -b com.example.gemma4mnn models/gemma-4-E2B-it-MNN /data/storage/el2/base/haps/entry/files/
+hdc file send -b com.example.gemma4mnn models/MiniCPM5-1B-MNN /data/storage/el2/base/haps/entry/files/
 ```
+
+> `-b` 指定 bundle 名称，是写入 App 沙箱的必需参数。超过约 2 GB 的 zip 包可能因系统 ZIP 兼容性问题导入失败，建议用 `file send` 直接推送目录。
+
+## PC 侧下载模型脚本
+
+```sh
+# Gemma 4 E2B（约 3.7 GB）
+./scripts/download_gemma4_e2b_mnn.sh
+
+# MiniCPM5-1B BF16（约 2.1 GB）
+./scripts/download_minicpm5_1b_mnn.sh
+```
+
+指定输出目录：
+
+```sh
+./scripts/download_minicpm5_1b_mnn.sh /path/to/MiniCPM5-1B-MNN
+```
+
+需要 Python modelscope 包：`pip install modelscope`。
+
+## 模型格式说明
+
+App 使用 **MNN 模型目录**格式。内置模型当前从 [TorryJi/MiniCPM5-1B-MNN-BF16](https://modelscope.cn/models/TorryJi/MiniCPM5-1B-MNN-BF16)（ModelScope）和 MNN 官方 Gemma 4 源下载。原始 HuggingFace 权重需要经 MNN `llmexport.py` 转换后才能使用。
 
 ## 原生接口
 
-ArkTS 通过：
+ArkTS 通过 `import entry from 'libentry.so'` 调用 N-API：
 
 ```ts
-import entry from 'libentry.so';
-```
-
-调用 N-API：
-
-```ts
-entry.loadModelAsync(configPath, threadNum, maxNewTokens): Promise<string>
-entry.generateChatStream(messages, maxNewTokens, onChunk): Promise<string>
+entry.loadModelAsync(configPath, threadNum, maxNewTokens, settings): Promise<string>
+entry.generateRawPromptStream(prompt, maxNewTokens, endWith, settings, onChunk): Promise<GenerationResult>
+entry.generateChatStream(messages, maxNewTokens, settings, onChunk): Promise<GenerationResult>
 entry.reset(): void
 entry.isLoaded(): boolean
 ```
 
-## Roadmap
-- 图片输入接入 Gemma 4 多模态能力
-- 更细的 token / 首字延迟 / tokens per second 指标
-- release 构建流水线
-- GGUF / llama.cpp 路线对比和实验分支
-
 ## License
 
-Apache-2.0. MNN 和模型文件遵循各自上游许可证；本仓库不提交大模型权重。
+Apache-2.0. MNN 和模型文件遵循各自上游许可证。本仓库不提交模型权重。

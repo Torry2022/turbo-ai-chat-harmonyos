@@ -1,10 +1,10 @@
-import { ChatMessage, ChatTurn, CONTEXT_MESSAGE_LIMIT, PerfMetrics } from '../models/ChatTypes';
-import { nowTime } from '../utils/formatters';
-import { answerTextForContext, isLikelyIncompleteAssistantText, stripModelSpecialTokens } from '../utils/thinking';
+import { ChatMessage, ChatTurn, CONTEXT_MESSAGE_LIMIT, PerfMetrics } from '../models/ChatTypes'
+import { nowTime } from '../utils/formatters'
+import { answerTextForContext, isLikelyIncompleteAssistantText, stripModelSpecialTokens } from '../utils/thinking'
 
 export class ChatSession {
-  messages: ChatMessage[] = [];
-  private nextMessageId: number = 1;
+  messages: ChatMessage[] = []
+  private nextMessageId: number = 1
 
   initializeWelcome(modelShortName: string): void {
     this.messages = [{
@@ -15,7 +15,7 @@ export class ChatSession {
       time: nowTime(),
       includeInContext: false,
       thinkingExpanded: false
-    }];
+    }]
   }
 
   newChat(loaded: boolean, modelShortName: string): void {
@@ -27,7 +27,7 @@ export class ChatSession {
       time: nowTime(),
       includeInContext: false,
       thinkingExpanded: false
-    }];
+    }]
   }
 
   resetForModelSwitch(modelShortName: string): void {
@@ -39,7 +39,7 @@ export class ChatSession {
       time: nowTime(),
       includeInContext: false,
       thinkingExpanded: false
-    }];
+    }]
   }
 
   appendMessage(role: string, content: string, imageUri: string = '', includeInContext: boolean = true): number {
@@ -51,9 +51,9 @@ export class ChatSession {
       time: nowTime(),
       includeInContext,
       thinkingExpanded: false
-    };
-    this.messages = [...this.messages, message];
-    return message.id;
+    }
+    this.messages = [...this.messages, message]
+    return message.id
   }
 
   updateMessage(id: number, content: string, includeInContext?: boolean, perfMetrics?: PerfMetrics): void {
@@ -68,10 +68,10 @@ export class ChatSession {
           includeInContext: includeInContext === undefined ? message.includeInContext : includeInContext,
           thinkingExpanded: message.thinkingExpanded,
           perfMetrics: perfMetrics ?? message.perfMetrics
-        };
+        }
       }
-      return message;
-    });
+      return message
+    })
   }
 
   appendToMessage(id: number, chunk: string): void {
@@ -85,10 +85,10 @@ export class ChatSession {
           time: message.time,
           includeInContext: message.includeInContext,
           thinkingExpanded: message.thinkingExpanded
-        };
+        }
       }
-      return message;
-    });
+      return message
+    })
   }
 
   toggleThinkingExpanded(id: number): void {
@@ -102,94 +102,94 @@ export class ChatSession {
           time: message.time,
           includeInContext: message.includeInContext,
           thinkingExpanded: !message.thinkingExpanded
-        };
+        }
       }
-      return message;
-    });
+      return message
+    })
   }
 
   composeChatTurns(systemPrompt: string, text: string, contextMessageLimit: number = CONTEXT_MESSAGE_LIMIT): ChatTurn[] {
     const turns: ChatTurn[] = [{
       role: 'system',
       content: systemPrompt
-    }];
-    const safeContextLimit = Math.max(0, Math.round(contextMessageLimit));
-    const contextTurns = safeContextLimit > 0 ? this.composeCompleteContextTurns().slice(-safeContextLimit) : [];
+    }]
+    const safeContextLimit = Math.max(0, Math.round(contextMessageLimit))
+    const contextTurns = safeContextLimit > 0 ? this.composeCompleteContextTurns().slice(-safeContextLimit) : []
     contextTurns.forEach((turn: ChatTurn) => {
-      turns.push(turn);
-    });
+      turns.push(turn)
+    })
     turns.push({
       role: 'user',
       content: text
-    });
-    return turns;
+    })
+    return turns
   }
 
   sanitizeAssistantText(text: string, stripLeadingSeparator: boolean = false): string {
-    const normalizedText = stripModelSpecialTokens(text);
+    const normalizedText = stripModelSpecialTokens(text)
     const lines = normalizedText
       .split('\n')
       .map((line: string) => line.trimEnd())
       .filter((line: string) => {
-        const trimmed = line.trim();
-        return trimmed.length > 0 && !/^[*\-•]+\s*$/.test(trimmed);
-    });
-    const cleanedText = lines.join('\n').trim();
-    return stripLeadingSeparator ? this.stripLeadingAssistantSeparator(cleanedText) : cleanedText;
+        const trimmed = line.trim()
+        return trimmed.length > 0 && !/^[*\-•]+\s*$/.test(trimmed)
+    })
+    const cleanedText = lines.join('\n').trim()
+    return stripLeadingSeparator ? this.stripLeadingAssistantSeparator(cleanedText) : cleanedText
   }
 
   sanitizeStreamingAssistantText(text: string, stripLeadingSeparator: boolean = false): string {
-    const cleanedText = this.sanitizeAssistantText(text, stripLeadingSeparator);
-    return cleanedText.replace(/^\uFFFD+/, '').trimStart();
+    const cleanedText = this.sanitizeAssistantText(text, stripLeadingSeparator)
+    return cleanedText.replace(/^\uFFFD+/, '').trimStart()
   }
 
   private stripLeadingAssistantSeparator(text: string): string {
-    return text.replace(/^(assistant|助手)?\s*[:：]\s*/, '').trim();
+    return text.replace(/^(assistant|助手)?\s*[:：]\s*/, '').trim()
   }
 
   private composeCompleteContextTurns(): ChatTurn[] {
-    const turns: ChatTurn[] = [];
-    let pendingUser: ChatMessage | undefined = undefined;
+    const turns: ChatTurn[] = []
+    let pendingUser: ChatMessage | undefined = undefined
 
     this.messages.forEach((message: ChatMessage) => {
       if (!message.includeInContext || message.content.trim().length === 0) {
         if (message.role === 'assistant') {
-          pendingUser = undefined;
+          pendingUser = undefined
         }
-        return;
+        return
       }
 
       if (message.role === 'user') {
-        pendingUser = message;
-        return;
+        pendingUser = message
+        return
       }
 
       if (message.role !== 'assistant' || pendingUser === undefined) {
-        return;
+        return
       }
 
       if (isLikelyIncompleteAssistantText(message.content)) {
-        pendingUser = undefined;
-        return;
+        pendingUser = undefined
+        return
       }
 
-      const userContent = pendingUser.content.trim();
-      const assistantContent = answerTextForContext(message.content).trim();
-      pendingUser = undefined;
+      const userContent = pendingUser.content.trim()
+      const assistantContent = answerTextForContext(message.content).trim()
+      pendingUser = undefined
       if (userContent.length <= 0 || assistantContent.length <= 0) {
-        return;
+        return
       }
 
       turns.push({
         role: 'user',
         content: userContent
-      });
+      })
       turns.push({
         role: 'assistant',
         content: assistantContent
-      });
-    });
+      })
+    })
 
-    return turns;
+    return turns
   }
 }

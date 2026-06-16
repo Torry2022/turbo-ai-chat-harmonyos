@@ -10,7 +10,7 @@ export struct LaunchScreen {
         Image($r('app.media.app_icon'))
           .width(92)
           .height(92)
-          .borderRadius(24);
+          .borderRadius(24)
         Text('Turbo AI Chat')
           .fontSize(28)
           .fontWeight(FontWeight.Bold)
@@ -24,6 +24,6 @@ export struct LaunchScreen {
     .height('100%')
     .backgroundColor('#06121F')
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
-    .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.TOP, LayoutSafeAreaEdge.BOTTOM]);
+    .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.TOP, LayoutSafeAreaEdge.BOTTOM])
   }
 }

@@ -1,38 +1,38 @@
 export interface BuiltinModelFileSpec {
-  relativePath: string;
-  sizeBytes: number;
-  url: string;
+  relativePath: string
+  sizeBytes: number
+  url: string
 }
 
 export interface BuiltinModelDownloadSpec {
-  id: string;
-  modelId: string;
-  directoryName: string;
-  displayName: string;
-  sourceName: string;
-  sourceUrl: string;
-  files: BuiltinModelFileSpec[];
-  totalBytes: number;
+  id: string
+  modelId: string
+  directoryName: string
+  displayName: string
+  sourceName: string
+  sourceUrl: string
+  files: BuiltinModelFileSpec[]
+  totalBytes: number
 }
 
 export interface BuiltinModelInstallProgress {
-  modelName: string;
-  fileName: string;
-  downloadedBytes: number;
-  totalBytes: number;
-  progress: number;
-  message: string;
+  modelName: string
+  fileName: string
+  downloadedBytes: number
+  totalBytes: number
+  progress: number
+  message: string
 }
 
 interface BuiltinModelFileInput {
-  relativePath: string;
-  sizeBytes: number;
+  relativePath: string
+  sizeBytes: number
 }
 
-const MODELSCOPE_BASE_URL: string = 'https://modelscope.cn/models';
+const MODELSCOPE_BASE_URL: string = 'https://modelscope.cn/models'
 
 function modelScopeFileUrl(repo: string, relativePath: string): string {
-  return `${MODELSCOPE_BASE_URL}/${repo}/resolve/master/${relativePath}`;
+  return `${MODELSCOPE_BASE_URL}/${repo}/resolve/master/${relativePath}`
 }
 
 function createSpec(
@@ -48,12 +48,12 @@ function createSpec(
       relativePath: file.relativePath,
       sizeBytes: file.sizeBytes,
       url: modelScopeFileUrl(repo, file.relativePath)
-    };
-  });
-  let totalBytes = 0;
+    }
+  })
+  let totalBytes = 0
   resolvedFiles.forEach((file: BuiltinModelFileSpec) => {
-    totalBytes += file.sizeBytes;
-  });
+    totalBytes += file.sizeBytes
+  })
   return {
     id,
     modelId,
@@ -63,7 +63,7 @@ function createSpec(
     sourceUrl: `${MODELSCOPE_BASE_URL}/${repo}`,
     files: resolvedFiles,
     totalBytes
-  };
+  }
 }
 
 export const BUILTIN_MODEL_DOWNLOADS: BuiltinModelDownloadSpec[] = [
@@ -101,26 +101,26 @@ export const BUILTIN_MODEL_DOWNLOADS: BuiltinModelDownloadSpec[] = [
       { relativePath: 'embeddings_bf16.bin', sizeBytes: 401080320 }
     ]
   )
-];
+]
 
 export function findBuiltinModelDownloadSpec(downloadId: string | undefined): BuiltinModelDownloadSpec | undefined {
   if (downloadId === undefined || downloadId.length <= 0) {
-    return undefined;
+    return undefined
   }
   for (let index = 0; index < BUILTIN_MODEL_DOWNLOADS.length; index++) {
     if (BUILTIN_MODEL_DOWNLOADS[index].id === downloadId) {
-      return BUILTIN_MODEL_DOWNLOADS[index];
+      return BUILTIN_MODEL_DOWNLOADS[index]
     }
   }
-  return undefined;
+  return undefined
 }
 
 export function formatBytes(bytes: number): string {
   if (bytes >= 1024 * 1024 * 1024) {
-    return `${Math.round(bytes / 1024 / 1024 / 1024 * 10) / 10} GB`;
+    return `${Math.round(bytes / 1024 / 1024 / 1024 * 10) / 10} GB`
   }
   if (bytes >= 1024 * 1024) {
-    return `${Math.round(bytes / 1024 / 1024 * 10) / 10} MB`;
+    return `${Math.round(bytes / 1024 / 1024 * 10) / 10} MB`
   }
-  return `${Math.round(bytes / 1024 * 10) / 10} KB`;
+  return `${Math.round(bytes / 1024 * 10) / 10} KB`
 }

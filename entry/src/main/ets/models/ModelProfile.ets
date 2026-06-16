@@ -1,51 +1,51 @@
 export interface ModelProfile {
-  id: string;
-  name: string;
-  shortName: string;
-  directoryName: string;
-  description: string;
-  supportsImage: boolean;
-  systemPrompt: string;
-  source: string;
-  configPath?: string;
-  chatFormat?: string;
-  promptTemplate?: string;
-  stopSequence?: string;
-  contextMessageLimit?: number;
-  templateOverride?: boolean;
-  downloadId?: string;
-  editable?: boolean;
-  removable?: boolean;
-  generationDefaults?: GenerationDefaults;
+  id: string
+  name: string
+  shortName: string
+  directoryName: string
+  description: string
+  supportsImage: boolean
+  systemPrompt: string
+  source: string
+  configPath?: string
+  chatFormat?: string
+  promptTemplate?: string
+  stopSequence?: string
+  contextMessageLimit?: number
+  templateOverride?: boolean
+  downloadId?: string
+  editable?: boolean
+  removable?: boolean
+  generationDefaults?: GenerationDefaults
 }
 
 export interface GenerationDefaults {
-  maxNewTokens?: number;
-  temperature?: number;
-  topP?: number;
-  topK?: number;
-  repetitionPenalty?: number;
-  frequencyPenalty?: number;
-  presencePenalty?: number;
-  penaltyWindow?: number;
+  maxNewTokens?: number
+  temperature?: number
+  topP?: number
+  topK?: number
+  repetitionPenalty?: number
+  frequencyPenalty?: number
+  presencePenalty?: number
+  penaltyWindow?: number
 }
 
-export const CHAT_FORMAT_MNN_AUTO: string = 'mnn-auto';
-export const CHAT_FORMAT_RAW_TEMPLATE: string = 'raw-template';
-export const CHAT_FORMAT_QWEN_IM: string = 'qwen-im';
-export const CHAT_FORMAT_GEMMA_TURN: string = 'gemma-turn';
-export const CHAT_FORMAT_MINICPM_THINKING: string = 'minicpm-thinking';
-export const MAX_GENERATION_TOKENS: number = 2048;
-export const DEFAULT_MAX_NEW_TOKENS: number = 512;
-export const DEFAULT_THREAD_NUM: number = 6;
-export const DEFAULT_TEMPERATURE: number = 0.6;
-export const DEFAULT_TOP_P: number = 0.9;
-export const DEFAULT_TOP_K: number = 40;
-export const DEFAULT_REPETITION_PENALTY: number = 1.05;
-export const DEFAULT_FREQUENCY_PENALTY: number = 0.0;
-export const DEFAULT_PRESENCE_PENALTY: number = 0.0;
-export const DEFAULT_PENALTY_WINDOW: number = 256;
-export const DEFAULT_MODEL_ID: string = 'gemma4';
+export const CHAT_FORMAT_MNN_AUTO: string = 'mnn-auto'
+export const CHAT_FORMAT_RAW_TEMPLATE: string = 'raw-template'
+export const CHAT_FORMAT_QWEN_IM: string = 'qwen-im'
+export const CHAT_FORMAT_GEMMA_TURN: string = 'gemma-turn'
+export const CHAT_FORMAT_MINICPM_THINKING: string = 'minicpm-thinking'
+export const MAX_GENERATION_TOKENS: number = 2048
+export const DEFAULT_MAX_NEW_TOKENS: number = 512
+export const DEFAULT_THREAD_NUM: number = 6
+export const DEFAULT_TEMPERATURE: number = 0.6
+export const DEFAULT_TOP_P: number = 0.9
+export const DEFAULT_TOP_K: number = 40
+export const DEFAULT_REPETITION_PENALTY: number = 1.05
+export const DEFAULT_FREQUENCY_PENALTY: number = 0.0
+export const DEFAULT_PRESENCE_PENALTY: number = 0.0
+export const DEFAULT_PENALTY_WINDOW: number = 256
+export const DEFAULT_MODEL_ID: string = 'gemma4'
 
 export const MODEL_PROFILES: ModelProfile[] = [
   {
@@ -98,4 +98,4 @@ export const MODEL_PROFILES: ModelProfile[] = [
     editable: false,
     removable: false
   }
-];
+]

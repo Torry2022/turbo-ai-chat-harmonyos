@@ -1,11 +1,11 @@
-import entry from 'libentry.so';
-import { ChatTurn, GenerationResult, GenerationSettings, ImagePayload } from '../models/ChatTypes';
+import entry from 'libentry.so'
+import { ChatTurn, GenerationResult, GenerationSettings, ImagePayload } from '../models/ChatTypes'
 
 export class NativeInferenceService {
   loadModel(configPath: string, threadNum: number, maxNewTokens: number, settings: GenerationSettings): Promise<boolean> {
     return entry.loadModelAsync(configPath, threadNum, maxNewTokens, settings).then((_result: string) => {
-      return entry.isLoaded() as boolean;
-    });
+      return entry.isLoaded() as boolean
+    })
   }
 
   generateText(
@@ -14,7 +14,7 @@ export class NativeInferenceService {
     settings: GenerationSettings,
     onChunk: (chunk: string) => void
   ): Promise<GenerationResult> {
-    return entry.generateChatStream(turns, maxNewTokens, settings, onChunk);
+    return entry.generateChatStream(turns, maxNewTokens, settings, onChunk)
   }
 
   generateRawPrompt(
@@ -24,7 +24,7 @@ export class NativeInferenceService {
     settings: GenerationSettings,
     onChunk: (chunk: string) => void
   ): Promise<GenerationResult> {
-    return entry.generateRawPromptStream(prompt, maxNewTokens, endWith, settings, onChunk);
+    return entry.generateRawPromptStream(prompt, maxNewTokens, endWith, settings, onChunk)
   }
 
   generateImage(
@@ -42,14 +42,14 @@ export class NativeInferenceService {
       maxNewTokens,
       settings,
       onChunk
-    );
+    )
   }
 
   reset(): void {
-    entry.reset();
+    entry.reset()
   }
 
   isLoaded(): boolean {
-    return entry.isLoaded() as boolean;
+    return entry.isLoaded() as boolean
   }
 }

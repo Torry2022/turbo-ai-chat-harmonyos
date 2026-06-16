@@ -1,11 +1,11 @@
-import { ChatMessage } from '../models/ChatTypes';
-import { ChatViewModel } from '../state/ChatViewModel';
-import { MessageBubble } from './MessageBubble';
+import { ChatMessage } from '../models/ChatTypes'
+import { ChatViewModel } from '../state/ChatViewModel'
+import { MessageBubble } from './MessageBubble'
 
 @Component
 export struct ChatTab {
-  @ObjectLink viewModel: ChatViewModel;
-  @Prop renderVersion: number;
+  @ObjectLink viewModel: ChatViewModel
+  @Prop renderVersion: number
 
   build() {
     Column({ space: 8 }) {
@@ -15,20 +15,20 @@ export struct ChatTab {
             MessageBubble({
               message,
               onToggleThinking: (messageId: number) => {
-                this.viewModel.toggleMessageThinking(messageId);
+                this.viewModel.toggleMessageThinking(messageId)
               }
-            });
+            })
           }
         }, (message: ChatMessage) => {
           if (message.role === 'assistant') {
-            return `${message.id}-${message.content.length}-${message.thinkingExpanded ? 1 : 0}-${message.perfMetrics !== undefined ? 1 : 0}`;
+            return `${message.id}-${message.content.length}-${message.thinkingExpanded ? 1 : 0}-${message.perfMetrics !== undefined ? 1 : 0}`
           }
-          return `${message.id}`;
-        });
+          return `${message.id}`
+        })
       }
       .layoutWeight(1)
       .width('100%')
-      .divider({ strokeWidth: 0 });
+      .divider({ strokeWidth: 0 })
 
       if (this.viewModel.selectedImageUri.length > 0) {
         Row({ space: 8 }) {
@@ -36,57 +36,74 @@ export struct ChatTab {
             .width(72)
             .height(48)
             .objectFit(ImageFit.Cover)
-            .borderRadius(8);
+            .borderRadius(8)
           Text(this.viewModel.selectedImageUri)
             .fontSize(12)
             .fontColor('#8CA2B8')
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
-            .layoutWeight(1);
+            .layoutWeight(1)
           Button('清除')
             .height(34)
             .onClick(() => {
-              this.viewModel.clearSelectedImage();
-            });
+              this.viewModel.clearSelectedImage()
+            })
         }
         .width('100%')
         .padding(8)
         .backgroundColor('#101D2B')
-        .borderRadius(8);
+        .borderRadius(8)
       }
 
-      Row({ space: 8 }) {
-        if (this.viewModel.currentModel().supportsImage) {
-          Button('图片')
-            .enabled(!this.viewModel.busy)
-            .height(44)
-            .onClick(() => {
-              this.viewModel.chooseImage();
-            });
-        }
-
-        TextArea({ text: this.viewModel.inputText, placeholder: '输入消息' })
-          .height(58)
-          .layoutWeight(1)
+      Stack({ alignContent: Alignment.End }) {
+        TextArea({ text: this.viewModel.inputText })
+          .enabled(this.viewModel.loaded)
+          .constraintSize({ minHeight: 44, maxHeight: 120 })
           .fontSize(14)
           .fontColor('#EAF4FF')
-          .placeholderColor('#8CA2B8')
           .backgroundColor('#101D2B')
-          .maxLines(3)
+          .borderRadius(10)
+          .padding({ left: 16, right: 84, top: 13, bottom: 10 })
           .onChange((value: string) => {
-            this.viewModel.updateInputText(value);
-          });
+            this.viewModel.updateInputText(value)
+          })
 
-        Button(this.viewModel.busy ? '生成中' : '发送')
-          .enabled(this.viewModel.loaded && !this.viewModel.busy && this.viewModel.inputText.trim().length > 0 && (this.viewModel.selectedImageUri.length === 0 || this.viewModel.currentModel().supportsImage))
-          .height(44)
-          .onClick(() => {
-            this.viewModel.sendMessage();
-          });
+        if (this.viewModel.inputText.length === 0) {
+          Text(this.viewModel.loaded ? '输入您的问题...' : '请先加载模型...')
+            .fontSize(15)
+            .fontColor('#8CA2B8')
+            .width('100%')
+            .height(38)
+            .textAlign(TextAlign.Start)
+            .padding({ left: 18 })
+            .hitTestBehavior(HitTestMode.None)
+        }
+
+        Row({ space: 4 }) {
+          if (this.viewModel.currentModel().supportsImage && this.viewModel.loaded) {
+            Image(this.viewModel.busy ? $r('app.media.icon_image_add_muted') : $r('app.media.icon_image_add'))
+              .width(36)
+              .height(36)
+              .onClick(() => {
+                if (!this.viewModel.busy) {
+                  this.viewModel.chooseImage()
+                }
+              })
+          }
+          Image(this.viewModel.loaded && !this.viewModel.busy && this.viewModel.inputText.trim().length > 0 && (this.viewModel.selectedImageUri.length === 0 || this.viewModel.currentModel().supportsImage) ? $r('app.media.icon_send') : $r('app.media.icon_send_disabled'))
+            .width(36)
+            .height(36)
+            .onClick(() => {
+              if (this.viewModel.loaded && !this.viewModel.busy && this.viewModel.inputText.trim().length > 0) {
+                this.viewModel.sendMessage()
+              }
+            })
+        }
+        .margin({ right: 10 })
       }
-      .width('100%');
+      .width('100%')
     }
     .layoutWeight(1)
-    .width('100%');
+    .width('100%')
   }
 }
