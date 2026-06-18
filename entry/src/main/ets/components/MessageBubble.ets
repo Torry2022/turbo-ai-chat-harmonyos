@@ -172,7 +172,7 @@ export struct MessageBubble {
       Column({ space: 4 }) {
         ForEach(block.items, (item: string, itemIndex: number) => {
           Row({ space: 6 }) {
-            Text(block.type === 'ordered-list' ? `${itemIndex + 1}.` : '•')
+            Text(block.type === 'ordered-list' ? `${(block.startNumber ?? 1) + itemIndex}.` : '•')
               .width(20)
               .fontSize(15)
               .lineHeight(22)

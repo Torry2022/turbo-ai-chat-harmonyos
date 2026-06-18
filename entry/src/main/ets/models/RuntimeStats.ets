@@ -11,6 +11,11 @@ export interface RuntimeStats {
   threadCount: string
 }
 
+export interface StorageStats {
+  appFiles: string
+  currentModel: string
+}
+
 export const EMPTY_RUNTIME_STATS: RuntimeStats = {
   appCpu: '--',
   systemCpu: '--',
@@ -22,4 +27,9 @@ export const EMPTY_RUNTIME_STATS: RuntimeStats = {
   systemMemAvailable: '--',
   socTemp: '--',
   threadCount: '--'
+}
+
+export const EMPTY_STORAGE_STATS: StorageStats = {
+  appFiles: '--',
+  currentModel: '--'
 }

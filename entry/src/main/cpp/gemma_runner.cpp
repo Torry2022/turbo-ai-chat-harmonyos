@@ -199,6 +199,42 @@ std::string BuildGenerationConfig(const GemmaRunner::SamplingConfig& sampling) {
     return "{" + BuildSamplingConfigProperties(sampling) + "}";
 }
 
+void DumpRawPromptDebug(
+    const std::string& prompt,
+    const std::string& output,
+    const std::vector<int>& inputIds,
+    const GemmaRunner::SamplingConfig& sampling,
+    const GemmaRunner::GenerationResult& result,
+    const Llm* llm) {
+    std::ofstream dump("/data/storage/el2/base/haps/entry/files/raw_output_debug.txt",
+                       std::ios::out | std::ios::trunc);
+    if (!dump.good()) {
+        return;
+    }
+
+    const auto* context = llm == nullptr ? nullptr : llm->getContext();
+    dump << "=== SAMPLING ===\n";
+    dump << "requested_max_new_tokens=" << sampling.maxNewTokens << "\n";
+    dump << "temperature=" << sampling.temperature << "\n";
+    dump << "top_p=" << sampling.topP << "\n";
+    dump << "top_k=" << sampling.topK << "\n";
+    dump << "repetition_penalty=" << sampling.repetitionPenalty << "\n";
+    dump << "frequency_penalty=" << sampling.frequencyPenalty << "\n";
+    dump << "presence_penalty=" << sampling.presencePenalty << "\n";
+    dump << "penalty_window=" << sampling.penaltyWindow << "\n";
+    dump << "end_with_context=" << (context == nullptr ? "" : context->end_with) << "\n";
+    dump << "context_status=" << (context == nullptr ? -1 : static_cast<int>(context->status)) << "\n";
+    dump << "context_output_tokens="
+         << (context == nullptr ? 0 : static_cast<int>(context->output_tokens.size())) << "\n";
+    dump << "input_prompt_tokens=" << inputIds.size() << "\n\n";
+
+    dump << "=== PROMPT ===\n" << prompt << "\n\n";
+    dump << "=== RAW OUTPUT (" << output.size() << " chars, "
+         << result.generatedTokens << " tokens, stop=" << result.stopReason << ") ===\n"
+         << output << "\n";
+    dump << "=== END ===\n";
+}
+
 int ResolveGeneratedTokens(Llm* llm, const std::string& text, int maxNewTokens) {
     int contextTokens = 0;
     const auto* context = llm == nullptr ? nullptr : llm->getContext();
@@ -352,19 +388,7 @@ GemmaRunner::GenerationResult GemmaRunner::generateRawPromptStreaming(
     llm_->response(inputIds, &output, endWithPtr, sampling.maxNewTokens);
     output.flush();
     GenerationResult result = BuildGenerationResult(llm_.get(), buffer.output(), sampling.maxNewTokens);
-
-    {
-        std::ofstream dump("/data/storage/el2/base/haps/entry/files/raw_output_debug.txt",
-                           std::ios::out | std::ios::trunc);
-        if (dump.good()) {
-            dump << "=== PROMPT ===\n" << prompt << "\n\n";
-            dump << "=== RAW OUTPUT (" << result.text.size() << " chars, "
-                 << result.generatedTokens << " tokens, stop=" << result.stopReason << ") ===\n"
-                 << result.text << "\n";
-            dump << "=== END ===\n";
-            dump.close();
-        }
-    }
+    DumpRawPromptDebug(prompt, result.text, inputIds, sampling, result, llm_.get());
 
     return result;
 }
@@ -393,9 +417,12 @@ GemmaRunner::GenerationResult GemmaRunner::generateChatStreaming(
 
     MNN::Transformer::ChatMessages chatMessages;
     chatMessages.reserve(messages.size());
+    std::ostringstream debugPrompt;
+    debugPrompt << "MNN ChatMessages\n";
     for (const auto& message : messages) {
         if (!message.role.empty() && !message.content.empty()) {
             chatMessages.emplace_back(message.role, message.content);
+            debugPrompt << message.role << ":\n" << message.content << "\n\n";
         }
     }
 
@@ -409,7 +436,15 @@ GemmaRunner::GenerationResult GemmaRunner::generateChatStreaming(
     llm_->reset();
     llm_->response(chatMessages, &output, nullptr, sampling.maxNewTokens);
     output.flush();
-    return BuildGenerationResult(llm_.get(), buffer.output(), sampling.maxNewTokens);
+    GenerationResult result = BuildGenerationResult(llm_.get(), buffer.output(), sampling.maxNewTokens);
+    DumpRawPromptDebug(
+        debugPrompt.str(),
+        result.text,
+        llm_->tokenizer_encode(debugPrompt.str()),
+        sampling,
+        result,
+        llm_.get());
+    return result;
 }
 
 GemmaRunner::GenerationResult GemmaRunner::generateImageChatStreaming(

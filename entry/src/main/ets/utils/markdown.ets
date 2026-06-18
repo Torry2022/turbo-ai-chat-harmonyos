@@ -12,6 +12,7 @@ export interface MarkdownBlock {
   text: string
   items: string[]
   language: string
+  startNumber?: number
   headers?: string[]
   rows?: string[][]
 }
@@ -38,11 +39,14 @@ function flushParagraph(blocks: MarkdownBlock[], paragraphLines: string[]): void
   paragraphLines.length = 0
 }
 
-function flushList(blocks: MarkdownBlock[], listItems: string[], ordered: boolean): void {
+function flushList(blocks: MarkdownBlock[], listItems: string[], ordered: boolean, startNumber: number = 1): void {
   if (listItems.length <= 0) {
     return
   }
   const block = emptyBlock(ordered ? 'ordered-list' : 'unordered-list')
+  if (ordered) {
+    block.startNumber = startNumber
+  }
   listItems.forEach((item: string) => {
     block.items.push(item)
   })
@@ -166,6 +170,8 @@ export function parseInlineMarkdown(text: string): MarkdownSpan[] {
 
     const inner: string = text.substring(bestStart + bestKind.length, bestEnd)
 
+    let nextIndex: number = bestEnd + bestKind.length
+
     if (bestKind === '**' && inner.length > 0) {
       const s: MarkdownSpan = { text: inner, bold: true }
       spans.push(s)
@@ -185,16 +191,18 @@ export function parseInlineMarkdown(text: string): MarkdownSpan[] {
         const s: MarkdownSpan = { text: linkText, bold: false, link: linkUrl }
         spans.push(s)
       }
+      nextIndex = bestEnd + 1
     } else if (bestKind === 'url') {
       const url: string = text.substring(bestStart, bestEnd)
       const s: MarkdownSpan = { text: url, bold: false, link: url }
       spans.push(s)
+      nextIndex = bestEnd
     } else {
       const s: MarkdownSpan = { text: text.substring(bestStart, bestEnd + bestKind.length), bold: false }
       spans.push(s)
     }
 
-    i = bestEnd + bestKind.length
+    i = nextIndex
   }
   return spans.filter((span: MarkdownSpan) => span.text.length > 0)
 }
@@ -211,8 +219,23 @@ export function parseLightMarkdown(content: string): MarkdownBlock[] {
   let inTable = false
   let parentListItems: string[] = []
   let parentListOrdered: boolean | undefined = undefined
+  let parentListStart: number = 1
   let childListItems: string[] = []
   let childListOrdered: boolean | undefined = undefined
+  let childListStart: number = 1
+
+  const resetListState = () => {
+    childListOrdered = undefined
+    parentListOrdered = undefined
+    childListStart = 1
+    parentListStart = 1
+  }
+
+  const flushLists = () => {
+    flushList(blocks, parentListItems, parentListOrdered ?? false, parentListStart)
+    flushList(blocks, childListItems, childListOrdered ?? false, childListStart)
+    resetListState()
+  }
 
   const flushQuote = () => {
     if (quoteLines.length > 0) {
@@ -281,10 +304,7 @@ export function parseLightMarkdown(content: string): MarkdownBlock[] {
         return
       }
       flushParagraph(blocks, paragraphLines)
-      flushList(blocks, childListItems, childListOrdered ?? false)
-    flushList(blocks, parentListItems, parentListOrdered ?? false)
-    childListOrdered = undefined
-    parentListOrdered = undefined
+      flushLists()
       inCode = true
       codeLanguage = trimmed.substring(3).trim()
       return
@@ -297,10 +317,7 @@ export function parseLightMarkdown(content: string): MarkdownBlock[] {
 
     if (trimmed.length <= 0) {
       flushParagraph(blocks, paragraphLines)
-      flushList(blocks, parentListItems, parentListOrdered ?? false)
-      flushList(blocks, childListItems, childListOrdered ?? false)
-      childListOrdered = undefined
-      parentListOrdered = undefined
+      flushLists()
       flushQuote()
       flushTable()
       return
@@ -308,10 +325,7 @@ export function parseLightMarkdown(content: string): MarkdownBlock[] {
 
     if (/^(-{3,}|\*{3,}|_{3,})$/.test(trimmed)) {
       flushParagraph(blocks, paragraphLines)
-      flushList(blocks, parentListItems, parentListOrdered ?? false)
-      flushList(blocks, childListItems, childListOrdered ?? false)
-      childListOrdered = undefined
-      parentListOrdered = undefined
+      flushLists()
       flushQuote()
       flushTable()
       const block = emptyBlock('horizontal-rule')
@@ -322,10 +336,7 @@ export function parseLightMarkdown(content: string): MarkdownBlock[] {
     const headingMatch = trimmed.match(/^(#{1,3})\s+(.+)$/)
     if (headingMatch !== null) {
       flushParagraph(blocks, paragraphLines)
-      flushList(blocks, parentListItems, parentListOrdered ?? false)
-      flushList(blocks, childListItems, childListOrdered ?? false)
-      childListOrdered = undefined
-      parentListOrdered = undefined
+      flushLists()
       flushQuote()
       flushTable()
       const block = emptyBlock('heading')
@@ -336,10 +347,7 @@ export function parseLightMarkdown(content: string): MarkdownBlock[] {
 
     if (trimmed.startsWith('>')) {
       flushParagraph(blocks, paragraphLines)
-      flushList(blocks, childListItems, childListOrdered ?? false)
-    flushList(blocks, parentListItems, parentListOrdered ?? false)
-    childListOrdered = undefined
-    parentListOrdered = undefined
+      flushLists()
       flushTable()
       inQuote = true
       const q = trimmed.substring(1).trim()
@@ -349,10 +357,7 @@ export function parseLightMarkdown(content: string): MarkdownBlock[] {
 
     if (isTableLine(trimmed)) {
       flushParagraph(blocks, paragraphLines)
-      flushList(blocks, parentListItems, parentListOrdered ?? false)
-      flushList(blocks, childListItems, childListOrdered ?? false)
-      childListOrdered = undefined
-      parentListOrdered = undefined
+      flushLists()
       flushQuote()
       if (!inTable && isTableAlignLine(trimmed)) {
         return
@@ -366,51 +371,52 @@ export function parseLightMarkdown(content: string): MarkdownBlock[] {
     flushTable()
 
     const unorderedMatch = trimmed.match(/^[-*•]\s+(.+)$/)
-    const orderedMatch = trimmed.match(/^\d+[.)]\s+(.+)$/)
+    const orderedMatch = trimmed.match(/^(\d+)[.)]\s+(.+)$/)
     if (unorderedMatch !== null || orderedMatch !== null) {
       flushParagraph(blocks, paragraphLines)
       const ordered = orderedMatch !== null
-      const orderedText = orderedMatch !== null ? orderedMatch[1].trim() : ''
+      const orderedNumber = orderedMatch !== null ? Number.parseInt(orderedMatch[1], 10) : 1
+      const orderedText = orderedMatch !== null ? orderedMatch[2].trim() : ''
       const unorderedText = unorderedMatch !== null ? unorderedMatch[1].trim() : ''
+      const listItemText = orderedText.length > 0 ? orderedText : unorderedText
 
       // Determine whether this is parent or child list
       if (parentListOrdered === undefined) {
         parentListOrdered = ordered
-        parentListItems.push(orderedText.length > 0 ? orderedText : unorderedText)
+        parentListStart = ordered ? orderedNumber : 1
+        parentListItems.push(listItemText)
         return
       }
 
       if (ordered === parentListOrdered) {
-        // Same type as parent — continue parent, keep child items pending
-        parentListItems.push(orderedText.length > 0 ? orderedText : unorderedText)
+        if (childListItems.length > 0) {
+          flushList(blocks, parentListItems, parentListOrdered ?? false, parentListStart)
+          flushList(blocks, childListItems, childListOrdered ?? false, childListStart)
+          childListOrdered = undefined
+          childListStart = 1
+          parentListStart = ordered ? orderedNumber : 1
+        }
+        parentListItems.push(listItemText)
         return
       }
 
       // Different type — accumulate as child
       if (childListOrdered === undefined) {
         childListOrdered = ordered
+        childListStart = ordered ? orderedNumber : 1
       }
       if (ordered !== childListOrdered) {
         // Child type changed again — flush child, restart
-        flushList(blocks, childListItems, childListOrdered ?? false)
+        flushList(blocks, childListItems, childListOrdered ?? false, childListStart)
         childListItems.length = 0
         childListOrdered = ordered
+        childListStart = ordered ? orderedNumber : 1
       }
-      childListItems.push(orderedText.length > 0 ? orderedText : unorderedText)
+      childListItems.push(listItemText)
       return
     }
 
-    flushList(blocks, childListItems, childListOrdered ?? false)
-    flushList(blocks, parentListItems, parentListOrdered ?? false)
-    childListItems.length = 0
-    childListOrdered = undefined
-    parentListItems.length = 0
-    parentListOrdered = undefined
-
-    flushList(blocks, childListItems, childListOrdered ?? false)
-    flushList(blocks, parentListItems, parentListOrdered ?? false)
-    childListOrdered = undefined
-    parentListOrdered = undefined
+    flushLists()
     paragraphLines.push(line)
   })
 
@@ -421,8 +427,7 @@ export function parseLightMarkdown(content: string): MarkdownBlock[] {
     blocks.push(block)
   }
   flushParagraph(blocks, paragraphLines)
-  flushList(blocks, childListItems, childListOrdered ?? false)
-  flushList(blocks, parentListItems, parentListOrdered ?? false)
+  flushLists()
   flushQuote()
   flushTable()
   return blocks

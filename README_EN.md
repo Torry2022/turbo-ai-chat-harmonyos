@@ -4,318 +4,149 @@
 
 ![Turbo AI Chat hero](docs/images/hero.png)
 
-**Turbo AI Chat** is a HarmonyOS NEXT native local LLM chat demo. The app uses ArkTS for the UI, calls a C++ inference layer through N-API, and runs MNN models such as **Gemma 4 E2B** and **MiniCPM5-1B** locally on a HarmonyOS device with the MNN Runtime.
+**HarmonyOS NEXT native on-device LLM chat application**. Built with ArkTS + C++ N-API + MNN Runtime, running Qwen3-4B-Instruct (text), MiniCPM5-1B (text), and Gemma 4 E2B (multimodal) locally on HarmonyOS devices with streaming chat, model switching, and one-click built-in model download.
 
-Keywords: HarmonyOS NEXT, HarmonyOS native LLM, ArkTS, N-API, MNN, Gemma 4, MiniCPM5, on-device AI, local LLM, mobile inference, ModelScope model.
+This repository is forked from [Turbo1123/turbo-ai-chat-harmonyos](https://github.com/Turbo1123/turbo-ai-chat-harmonyos).
 
 ## Background
 
-This project started from a simple question: **Can HarmonyOS NEXT run a local large language model inside a native app?**
+In the HarmonyOS ecosystem, on-device AI inference today largely depends on Android compatibility layers running Android apps. Turbo AI Chat validates a different path with a fully native pipeline (ArkTS → N-API → MNN → CPU):
 
-The early direction was to look for GGUF / llama.cpp examples on HarmonyOS. In practice, the MNN route was more stable for a native HarmonyOS project: MNN has mature mobile inference support, and Gemma 4 already has an MNN-exported model. This repository narrows the first milestone down to one thing:
+- **Native architecture**: inference directly via HarmonyOS NDK, no Android compatibility layer overhead
+- **Reproducible out of the box**: built-in models downloaded from ModelScope with one click, no HuggingFace required (China-network friendly)
+- **Reusable engineering**: MNN Runtime wrapper, streaming pipeline, Markdown rendering as integration references for other HarmonyOS AI apps
+- **Developer-friendly**: one hdc command to inspect raw inference logs (`raw_output_debug.txt`)
 
-> Load a local Gemma 4 model on a real HarmonyOS NEXT device and provide an interactive streaming chat UI.
+## Quick Start
 
-This is not a cloud-chat wrapper and not a WebView shell. Model files live on the device, and inference runs inside the app's native layer.
-
-## Quick Start: Clone, Run, Install Built-in Models
-
-The recommended flow is: **build and install the app from source, then let the app download the built-in model files**. New users no longer need to download model directories on a PC first and push them into the app sandbox with `hdc file send`.
-
-### 1. Clone the repository
+### 1. Clone and build
 
 ```sh
 git clone https://github.com/Torry2022/turbo-ai-chat-harmonyos.git
 cd turbo-ai-chat-harmonyos
 ```
 
-You can also start from the upstream repository:
-
-```sh
-git clone https://github.com/Turbo1123/turbo-ai-chat-harmonyos.git
-cd turbo-ai-chat-harmonyos
-```
-
-### 2. Open with DevEco Studio and configure signing
-
-1. Open the project root in DevEco Studio.
-2. Log in to your Huawei developer account.
-3. Go to `File > Project Structure > Signing Configs`.
-4. Enable automatic signing for the default product.
-5. Make sure your physical device has Developer options and USB debugging enabled.
-
-`build-profile.json5` keeps only the default product's `signingConfig` binding. Real certificates, profiles, private key paths, and passwords should not be committed to the repository.
-
-### 3. Build and install on a physical device
-
-You can run the project directly from DevEco Studio, or use the command line:
-
-```sh
-hvigor assembleHap --no-daemon
-hdc list targets
-hdc install -r entry/build/default/outputs/default/entry-default-signed.hap
-```
-
-If `hvigor` is not available globally, run it through the project dependency:
+Open with DevEco Studio, log in to your Huawei developer account, enable automatic signing, then run on a device. Or via command line:
 
 ```sh
 node ./node_modules/@ohos/hvigor/bin/hvigor.js assembleHap --no-daemon
-```
-
-### 4. Install built-in models in the app
-
-The repository and the HAP do **not** include model weights. After installing the app:
-
-1. Open the Model tab.
-2. Select `Gemma 4 E2B` or `MiniCPM5-1B`.
-3. Tap "Load model".
-4. If the selected built-in model directory is missing or incomplete, the app opens the "Install built-in model" dialog.
-5. Tap "Download and install" and keep the app in the foreground.
-6. After download completion, the app continues loading the model. Go back to the Chat tab and start chatting.
-
-Built-in models are downloaded into the app sandbox:
-
-```text
-/data/storage/el2/base/haps/entry/files/gemma-4-E2B-it-MNN/
-/data/storage/el2/base/haps/entry/files/MiniCPM5-1B-MNN/
-```
-
-Approximate model sizes: Gemma 4 E2B `3.7 GB`, MiniCPM5-1B `625 MB`. Make sure the device has enough storage and a stable network connection.
-
-## Features
-
-- Native HarmonyOS NEXT ArkTS UI
-- C++ / N-API inference bridge
-- On-device inference with MNN LLM Runtime
-- Gemma 4 / MiniCPM5 MNN model switching and loading
-- Streaming generation
-- Multi-turn conversation context
-- Image picker entry
-- CPU / memory status panel
-- Startup built-in model check with one-click download guidance
-- Chinese UI, immersive layout, bottom tabs
-
-## Screenshots
-
-| Chat | Header | Input |
-| --- | --- | --- |
-| ![chat main](docs/images/chat-main.jpeg) | ![chat header](docs/images/chat-header.jpeg) | ![chat input](docs/images/chat-input.jpeg) |
-
-## Model Format
-
-The current mainline uses an **MNN model directory**, not direct `.gguf` loading.
-
-Built-in selectable models:
-
-| Model | Default directory | Input support |
-| --- | --- | --- |
-| Gemma 4 E2B | `gemma-4-E2B-it-MNN/` | Text, image |
-| MiniCPM5-1B | `MiniCPM5-1B-MNN/` | Text |
-
-The app reads `config.json` from the selected model directory. Switching models only changes the selected item; the previous model is released and the new model is loaded only after tapping "Load model". Chat templates are delegated to MNN through each model's `llm_config.json` by default, instead of being hard-coded by the app.
-
-Recommended built-in model sources:
-
-- ModelScope: [`MNN/gemma-4-E2B-it-MNN`](https://modelscope.cn/models/MNN/gemma-4-E2B-it-MNN)
-- ModelScope: [`MNN/MiniCPM5-1B-MNN`](https://modelscope.cn/models/MNN/MiniCPM5-1B-MNN)
-- Model type: Gemma 4 E2B instruction, MNN 4-bit quantized export
-- Entry file: `config.json`
-
-The model directory should include:
-
-```text
-gemma-4-E2B-it-MNN/
-  config.json
-  llm_config.json
-  tokenizer.mtok
-  llm.mnn
-  llm.mnn.weight
-  ple_embeddings_int4.bin
-  visual.mnn
-  visual.mnn.weight
-  audio.mnn
-  audio.mnn.weight
-```
-
-MiniCPM5-1B must include:
-
-```text
-MiniCPM5-1B-MNN/
-  config.json
-  llm_config.json
-  tokenizer.mtok
-  llm.mnn
-  llm.mnn.weight
-  embeddings_int4.bin
-```
-
-The official BF16, GGUF, and MLX weights cannot be loaded directly by the current native MNN inference layer.
-
-If you have a GGUF model, you need a conversion path or a separate llama.cpp HarmonyOS port. This repository does not directly read GGUF yet.
-
-## Download HAP
-
-Installable HAP builds are attached to GitHub Releases:
-
-- [Latest Release](https://github.com/Turbo1123/turbo-ai-chat-harmonyos/releases/latest)
-
-Install example:
-
-```sh
-hdc install -r turbo-ai-chat-harmonyos-v0.1.0-signed.hap
-```
-
-The HAP does not bundle model weights. Gemma 4 E2B is about 3.7 GB, and MiniCPM5-1B is about 625 MB. After installing the app, if a built-in model directory is missing, the app prompts you to download and install it from ModelScope into the app sandbox.
-
-Note: the Release HAP is debug-signed. If your device is not covered by the debug profile, installation may fail. In that case, open the project from source and rebuild it with DevEco Studio automatic signing using your own Huawei developer account.
-
-## Fallback: Download Models On PC
-
-Normally, install the app and follow the in-app prompt to download built-in models. The PC-side workflow below is kept for debugging, offline preparation, or restricted network environments.
-
-```sh
-./scripts/download_gemma4_e2b_mnn.sh
-```
-
-Default output:
-
-```text
-models/gemma-4-E2B-it-MNN/
-```
-
-You can also choose a custom directory:
-
-```sh
-./scripts/download_gemma4_e2b_mnn.sh /path/to/gemma-4-E2B-it-MNN
-```
-
-MiniCPM5-1B is best downloaded in the app from ModelScope. You can also prepare an MNN directory manually, for example:
-
-```text
-models/MiniCPM5-1B-MNN/
-```
-
-The script downloads Gemma 4 E2B from ModelScope by default. If the `modelscope` CLI is not available, it falls back to the Python `modelscope` package. Install it first if needed:
-
-```sh
-python3 -m pip install modelscope
-```
-
-## Fallback: Push Models Manually
-
-The app reads the sandbox paths below by default. Normally the in-app downloader writes these directories automatically; the `hdc` workflow is kept as a debugging fallback.
-
-```text
-/data/storage/el2/base/haps/entry/files/gemma-4-E2B-it-MNN/config.json
-/data/storage/el2/base/haps/entry/files/MiniCPM5-1B-MNN/config.json
-```
-
-That is the sandbox path visible to the app. When using `hdc file send`, you usually need to push to the physical path:
-
-```text
-/data/app/el2/100/base/com.example.gemma4mnn/haps/entry/files/gemma-4-E2B-it-MNN/
-```
-
-Recommended script:
-
-```sh
-./scripts/push_model_to_device.sh
-./scripts/push_model_to_device.sh models/MiniCPM5-1B-MNN
-```
-
-If your device user id is not `100`, specify it explicitly:
-
-```sh
-USER_ID=100 ./scripts/push_model_to_device.sh
-```
-
-Specify a device target:
-
-```sh
-HDC_TARGET=<device-id> ./scripts/push_model_to_device.sh
-```
-
-Manual push example:
-
-```sh
-hdc shell "mkdir -p /data/app/el2/100/base/com.example.gemma4mnn/haps/entry/files"
-hdc file send -b com.example.gemma4mnn models/gemma-4-E2B-it-MNN /data/storage/el2/base/haps/entry/files/
-```
-
-## Build From Source Details
-
-Requirements:
-
-- DevEco Studio / HarmonyOS SDK
-- HarmonyOS NEXT physical device
-- Developer options and USB debugging enabled
-- Huawei developer account for automatic signing
-- `hdc` and `hvigor` available in `PATH`
-
-Build HAP:
-
-```sh
-hvigor assembleHap --no-daemon
-```
-
-Install:
-
-```sh
-hdc list targets
 hdc install -r entry/build/default/outputs/default/entry-default-signed.hap
 ```
 
-If signing is not configured on your machine:
+### 2. Install built-in models
 
-1. Log in to your Huawei developer account in DevEco Studio.
-2. Open this project.
-3. Go to `File > Project Structure > Signing Configs`.
-4. Enable automatic signing for the default product.
-5. Build again.
+The app and HAP do not include model weights. Open the app → Model tab → select Qwen3, MiniCPM5-1B, or Gemma 4 → load. The app will guide you to download from ModelScope into the app sandbox.
 
-Real signing material, certificate paths, and passwords are intentionally not committed to `build-profile.json5`.
+| Model | Size | Capability |
+|------|------|------|
+| Qwen3-4B-Instruct | ~2.5 GB | Text |
+| Gemma 4 E2B | ~3.7 GB | Text + Image |
+| MiniCPM5-1B (BF16) | ~2.1 GB | Text |
 
-## MNN Runtime
+### 3. Start chatting
 
-This repository includes the HarmonyOS arm64 `libMNN.so` and the minimal MNN headers used by the demo, so the project can build directly.
+After the model loads, return to the Chat tab and send a message. MiniCPM5-1B displays thinking blocks (`<think>`). Gemma 4 supports image input.
 
-To rebuild MNN from source:
+## Features
+
+- Local inference: models run on-device, no network required
+- Streaming output: token-level real-time response
+- Model switching: Qwen3 / MiniCPM5-1B / Gemma 4 hot swap
+- Thinking blocks: MiniCPM5-1B displays reasoning process
+- Markdown rendering: code blocks (with copy button), tables, blockquotes, links, etc.
+- Generation parameter controls: temperature, Top-P/K, penalty terms, etc.
+- Performance metrics: TTFT, TPOT, tokens/s per assistant message
+- Built-in model management: one-click download, install, update
+- Import local MNN zip packages
+
+## Screenshots
+
+| Chat | Model | Monitor |
+| --- | --- | --- |
+| ![chat](docs/images/chat.jpg) | ![models](docs/images/models.jpg) | ![monitor](docs/images/monitor.jpg) |
+
+## Install from HAP
+
+[Releases](https://github.com/Torry2022/turbo-ai-chat-harmonyos/releases) provide signed HAPs. Install via hdc:
 
 ```sh
-git clone https://github.com/alibaba/MNN.git ../MNN
-./scripts/build_mnn_ohos.sh
-./scripts/stage_mnn_ohos.sh
+hdc install -r turbo-ai-chat-harmonyos-v1.0.0-signed.hap
 ```
 
-`stage_mnn_ohos.sh` stages outputs into:
+You can also use [Xiaobai Debug Assistant](https://github.com/likuai2010/auto-installer) for graphical installation. The signed HAP only works on devices within the current debug signing profile. For other devices, download the unsigned HAP and re-sign with your own developer account.
+
+## Fallback: Manual Model Push
+
+In-app download and zip import are the recommended approaches. Manual `hdc` push is kept as a debugging fallback.
+
+The model directory must be in **MNN format** — exported via MNN `llmexport.py` from HuggingFace weights, containing `config.json`, `llm_config.json`, tokenizer file, `llm.mnn`, `llm.mnn.weight`, etc. Original HuggingFace safetensors, GGUF, and MLX weights cannot be used directly.
+
+### Pushing built-in model directories
+
+Use the following commands to restore built-in model directories when in-app download is unavailable:
+
+```sh
+hdc file send -b com.example.gemma4mnn models/gemma-4-E2B-it-MNN /data/storage/el2/base/haps/entry/files/
+hdc file send -b com.example.gemma4mnn models/MiniCPM5-1B-MNN /data/storage/el2/base/haps/entry/files/
+hdc file send -b com.example.gemma4mnn models/Qwen3-4B-Instruct-2507-MNN /data/storage/el2/base/haps/entry/files/
+```
+
+> The `-b` flag specifies the bundle name and is required to write into the app sandbox. Zip files larger than ~2 GB may fail due to system ZIP compatibility — use `file send` to push the directory directly instead.
+
+### Pushing a model for manual path loading
+
+Push model files to any subdirectory, then expand "Runtime Config" on the Model page and set the config path to `config.json` in that directory. This loads the model without registering it as an import entry.
+
+```sh
+hdc file send -b com.example.gemma4mnn models/Qwen3-4B-Instruct-2507-MNN /data/storage/el2/base/haps/entry/files/manual-models/
+```
+
+In the app, set the model config path to:
 
 ```text
-entry/src/main/libs/arm64-v8a/libMNN.so
-third_party/mnn/include/
+/data/storage/el2/base/haps/entry/files/manual-models/Qwen3-4B-Instruct-2507-MNN/config.json
 ```
+
+### Registering a pushed model as an import
+
+To have a manually pushed model appear in the import model list, push the directory under `model-imports/`, then write a matching entry in `imported-models.json`. See the Chinese README for the full JSON template and detailed steps.
+
+## PC-side Model Download Scripts
+
+```sh
+# Qwen3-4B-Instruct (~2.5 GB)
+./scripts/download_qwen3_4b_mnn.sh
+
+# Gemma 4 E2B (~3.7 GB)
+./scripts/download_gemma4_e2b_mnn.sh
+
+# MiniCPM5-1B BF16 (~2.1 GB)
+./scripts/download_minicpm5_1b_mnn.sh
+```
+
+Specify an output directory:
+
+```sh
+./scripts/download_minicpm5_1b_mnn.sh /path/to/MiniCPM5-1B-MNN
+```
+
+Requires the Python modelscope package: `pip install modelscope`.
+
+## Model Format
+
+The app uses **MNN model directory** format. Built-in models are downloaded from ModelScope: Qwen3-4B-Instruct and Gemma 4 E2B from the [MNN organization](https://modelscope.cn/organization/MNN), MiniCPM5-1B BF16 from [TorryJi](https://modelscope.cn/models/TorryJi/MiniCPM5-1B-MNN-BF16). Original HuggingFace weights must be converted via MNN `llmexport.py` before use.
 
 ## Native API
 
-ArkTS imports the native module:
+ArkTS calls N-API via `import entry from 'libentry.so'`:
 
 ```ts
-import entry from 'libentry.so';
-```
-
-N-API surface:
-
-```ts
-entry.loadModelAsync(configPath, threadNum, maxNewTokens): Promise<string>
-entry.generateChatStream(messages, maxNewTokens, onChunk): Promise<string>
+entry.loadModelAsync(configPath, threadNum, maxNewTokens, settings): Promise<string>
+entry.generateRawPromptStream(prompt, maxNewTokens, endWith, settings, onChunk): Promise<GenerationResult>
+entry.generateChatStream(messages, maxNewTokens, settings, onChunk): Promise<GenerationResult>
 entry.reset(): void
 entry.isLoaded(): boolean
 ```
-
-## Roadmap
-- Gemma 4 multimodal image input
-- More detailed token / first-token latency / tokens-per-second metrics
-- Release build pipeline
-- GGUF / llama.cpp route comparison and experiment branch
 
 ## License
 

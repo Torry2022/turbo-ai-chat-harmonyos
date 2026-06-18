@@ -6,6 +6,7 @@ import { MessageBubble } from './MessageBubble'
 export struct ChatTab {
   @ObjectLink viewModel: ChatViewModel
   @Prop renderVersion: number
+  private inputController: TextAreaController = new TextAreaController()
 
   build() {
     Column({ space: 8 }) {
@@ -56,7 +57,7 @@ export struct ChatTab {
       }
 
       Stack({ alignContent: Alignment.End }) {
-        TextArea({ text: this.viewModel.inputText })
+        TextArea({ text: this.viewModel.inputText, controller: this.inputController })
           .enabled(this.viewModel.loaded)
           .constraintSize({ minHeight: 44, maxHeight: 120 })
           .fontSize(14)
@@ -95,6 +96,7 @@ export struct ChatTab {
             .height(36)
             .onClick(() => {
               if (this.viewModel.loaded && !this.viewModel.busy && this.viewModel.inputText.trim().length > 0) {
+                this.inputController.stopEditing()
                 this.viewModel.sendMessage()
               }
             })

@@ -50,6 +50,13 @@ export struct ModelTab {
     this.syncGenerationSlidersFromViewModel()
   }
 
+  private controlsEnabled(): boolean {
+    return !this.viewModel.busy &&
+      !this.viewModel.modelLoading &&
+      !this.viewModel.modelImporting &&
+      !this.viewModel.builtinModelInstalling
+  }
+
   @Builder
   private SectionTitle(title: string, subtitle: string = '') {
     Column({ space: 2 }) {
@@ -106,6 +113,9 @@ export struct ModelTab {
     .backgroundColor(this.viewModel.selectedModelId === profile.id ? '#14344A' : '#091522')
     .borderRadius(8)
     .onClick(() => {
+      if (!this.controlsEnabled()) {
+        return
+      }
       this.viewModel.switchModel(profile.id)
       this.syncGenerationSlidersFromViewModel()
     })
@@ -149,8 +159,9 @@ export struct ModelTab {
         Button('释放模型')
           .width('100%')
           .height(38)
-          .enabled(!this.viewModel.busy)
-          .backgroundColor('#ff602828')
+          .enabled(this.controlsEnabled())
+          .fontColor('#B7CDE1')
+          .backgroundColor('#14344A')
           .onClick(() => {
             this.viewModel.unloadModel()
           })
@@ -158,7 +169,9 @@ export struct ModelTab {
       Button(this.viewModel.loaded ? '重新加载模型' : '加载模型')
         .width('100%')
         .height(38)
-        .enabled(!this.viewModel.busy)
+        .enabled(this.controlsEnabled())
+        .fontColor('#F4FBFF')
+        .backgroundColor('#0F62FE')
         .onClick(() => {
             this.viewModel.loadModel()
           })
@@ -183,6 +196,7 @@ export struct ModelTab {
       }
       .width('100%')
       Slider({ value: this.sliderMaxNewTokens, min: 64, max: this.viewModel.maxGenerationTokens, step: 64 })
+        .enabled(this.controlsEnabled())
         .onChange((value: number, _mode: SliderChangeMode) => {
           this.sliderMaxNewTokens = Math.round(value)
           this.viewModel.updateMaxNewTokens(this.sliderMaxNewTokens, false)
@@ -202,6 +216,7 @@ export struct ModelTab {
       }
       .width('100%')
       Slider({ value: this.sliderTemperature, min: 0, max: 2, step: 0.05 })
+        .enabled(this.controlsEnabled())
         .onChange((value: number, _mode: SliderChangeMode) => {
           this.sliderTemperature = Math.round(value * 100) / 100
           this.viewModel.updateTemperature(this.sliderTemperature, false)
@@ -221,6 +236,7 @@ export struct ModelTab {
       }
       .width('100%')
       Slider({ value: this.sliderTopP, min: 0.05, max: 1, step: 0.05 })
+        .enabled(this.controlsEnabled())
         .onChange((value: number, _mode: SliderChangeMode) => {
           this.sliderTopP = Math.round(value * 100) / 100
           this.viewModel.updateTopP(this.sliderTopP, false)
@@ -240,6 +256,7 @@ export struct ModelTab {
       }
       .width('100%')
       Slider({ value: this.sliderTopK, min: 1, max: 128, step: 1 })
+        .enabled(this.controlsEnabled())
         .onChange((value: number, _mode: SliderChangeMode) => {
           this.sliderTopK = Math.round(value)
           this.viewModel.updateTopK(this.sliderTopK, false)
@@ -259,6 +276,7 @@ export struct ModelTab {
       }
       .width('100%')
       Slider({ value: this.sliderRepetitionPenalty, min: 0.8, max: 1.5, step: 0.05 })
+        .enabled(this.controlsEnabled())
         .onChange((value: number, _mode: SliderChangeMode) => {
           this.sliderRepetitionPenalty = Math.round(value * 100) / 100
           this.viewModel.updateRepetitionPenalty(this.sliderRepetitionPenalty, false)
@@ -278,6 +296,7 @@ export struct ModelTab {
       }
       .width('100%')
       Slider({ value: this.sliderFrequencyPenalty, min: 0, max: 1, step: 0.05 })
+        .enabled(this.controlsEnabled())
         .onChange((value: number, _mode: SliderChangeMode) => {
           this.sliderFrequencyPenalty = Math.round(value * 100) / 100
           this.viewModel.updateFrequencyPenalty(this.sliderFrequencyPenalty, false)
@@ -297,6 +316,7 @@ export struct ModelTab {
       }
       .width('100%')
       Slider({ value: this.sliderPresencePenalty, min: 0, max: 1, step: 0.05 })
+        .enabled(this.controlsEnabled())
         .onChange((value: number, _mode: SliderChangeMode) => {
           this.sliderPresencePenalty = Math.round(value * 100) / 100
           this.viewModel.updatePresencePenalty(this.sliderPresencePenalty, false)
@@ -315,7 +335,8 @@ export struct ModelTab {
           .fontColor('#EAF4FF')
       }
       .width('100%')
-      Slider({ value: this.sliderPenaltyWindow, min: 64, max: 2048, step: 64 })
+      Slider({ value: this.sliderPenaltyWindow, min: 0, max: 2048, step: 64 })
+        .enabled(this.controlsEnabled())
         .onChange((value: number, _mode: SliderChangeMode) => {
           this.sliderPenaltyWindow = Math.round(value)
           this.viewModel.updatePenaltyWindow(this.sliderPenaltyWindow, false)
@@ -375,7 +396,7 @@ export struct ModelTab {
       if (this.generationExpanded) {
         this.GenerationSliders()
         Button('恢复默认')
-          .enabled(!this.viewModel.busy)
+          .enabled(this.controlsEnabled())
           .height(36)
           .width('100%')
           .onClick(() => {
@@ -422,7 +443,7 @@ export struct ModelTab {
           .onChange((value: string) => {
             this.viewModel.updateModelPath(value)
           })
-          .enabled(!this.viewModel.busy)
+          .enabled(this.controlsEnabled())
           .height(42)
           .fontSize(12)
           .fontColor('#EAF4FF')
@@ -442,6 +463,7 @@ export struct ModelTab {
         }
         .width('100%')
         Slider({ value: this.viewModel.threadNum, min: 2, max: 8, step: 1 })
+          .enabled(this.controlsEnabled())
           .onChange((value: number, _mode: SliderChangeMode) => {
             this.viewModel.updateThreadNum(value)
           })
@@ -493,7 +515,7 @@ export struct ModelTab {
             .onChange((value: string) => {
               this.viewModel.updateImportedModelName(value)
             })
-            .enabled(!this.viewModel.busy)
+            .enabled(this.controlsEnabled())
             .height(40)
             .fontSize(12)
             .fontColor('#EAF4FF')
@@ -511,7 +533,7 @@ export struct ModelTab {
             .onChange((value: string) => {
               this.viewModel.updateImportedModelShortName(value)
             })
-            .enabled(!this.viewModel.busy)
+            .enabled(this.controlsEnabled())
             .height(40)
             .fontSize(12)
             .fontColor('#EAF4FF')
@@ -529,7 +551,7 @@ export struct ModelTab {
             .onChange((value: string) => {
               this.viewModel.updateImportedModelSystemPrompt(value)
             })
-            .enabled(!this.viewModel.busy)
+            .enabled(this.controlsEnabled())
             .height(44)
             .fontSize(12)
             .fontColor('#EAF4FF')
@@ -539,7 +561,7 @@ export struct ModelTab {
         .width('100%')
 
         Button(this.viewModel.showAdvancedModelSettings ? '收起高级参数' : '展开高级参数')
-          .enabled(!this.viewModel.busy)
+          .enabled(this.controlsEnabled())
           .height(38)
           .width('100%')
           .onClick(() => {
@@ -551,7 +573,7 @@ export struct ModelTab {
         }
 
         Button('保存配置')
-          .enabled(!this.viewModel.busy)
+          .enabled(this.controlsEnabled())
           .height(38)
           .width('100%')
           .onClick(() => {
@@ -559,7 +581,7 @@ export struct ModelTab {
           })
 
         Button('删除模型')
-          .enabled(!this.viewModel.busy)
+          .enabled(this.controlsEnabled())
           .height(38)
           .width('100%')
           .backgroundColor('#733030')
@@ -584,7 +606,7 @@ export struct ModelTab {
           .fontColor('#8CA2B8')
           .width('100%')
         Button(this.chatFormatLabel())
-          .enabled(!this.viewModel.busy)
+          .enabled(this.controlsEnabled())
           .height(38)
           .backgroundColor('#15283D')
           .width('100%')
@@ -606,7 +628,7 @@ export struct ModelTab {
     Column({ space: 8 }) {
       this.SectionTitle('模型管理')
       Button(this.viewModel.modelImporting ? '正在导入' : '导入模型包')
-        .enabled(!this.viewModel.busy && !this.viewModel.modelImporting)
+        .enabled(this.controlsEnabled())
         .height(38)
         .width('100%')
         .onClick(() => {

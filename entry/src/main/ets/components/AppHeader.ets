@@ -33,10 +33,9 @@ export struct AppHeader {
 
       Button('新对话')
         .enabled(!this.busy)
-        .height(32)
-        .fontSize(15)
+        .fontColor('#F4FBFF')
         .backgroundColor('#14344A')
-        .borderRadius(8)
+        .borderRadius(12)
         .padding({ left: 14, right: 14 })
         .onClick(() => {
           this.onNewChat()

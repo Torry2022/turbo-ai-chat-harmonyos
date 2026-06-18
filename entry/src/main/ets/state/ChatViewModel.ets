@@ -77,6 +77,8 @@ export class ChatViewModel {
   showDeleteImportedModelDialog: boolean = false
   pendingDeleteImportedModelId: string = ''
   stats: RuntimeStats = EMPTY_RUNTIME_STATS
+  streamingChars: number = 0
+  latestPerfMetrics?: PerfMetrics
   chatScroller: Scroller = new Scroller()
 
   private filesDir: string = ''
@@ -104,6 +106,10 @@ export class ChatViewModel {
     return MAX_GENERATION_TOKENS
   }
 
+  get appFilesDir(): string {
+    return this.filesDir
+  }
+
   bindNotify(callback: () => void): void {
     this.notifyCallback = callback
   }
@@ -112,6 +118,7 @@ export class ChatViewModel {
     this.context = context
     this.filesDir = context.filesDir
     this.modelManager.initialize(this.filesDir)
+    this.resetGenerationSettings(false)
     this.session.initializeWelcome(this.currentModel().shortName)
     this.syncMessages()
     this.refreshStats()
@@ -695,6 +702,8 @@ export class ChatViewModel {
     this.inputText = ''
     this.selectedImageUri = ''
     this.busy = true
+    this.streamingChars = 0
+    this.latestPerfMetrics = undefined
     this.status = '等待首个字元...'
     this.refreshStats()
     this.notifyAndScroll()
@@ -763,6 +772,8 @@ export class ChatViewModel {
         tokens: genTokens
       }
 
+      this.latestPerfMetrics = perf
+      this.streamingChars = answer.length
       this.session.updateMessage(assistantId, answer, includeInContext, perf)
       this.syncMessages()
       this.status = this.formatGenerationStatus(answer, includeInContext, result)
@@ -774,6 +785,7 @@ export class ChatViewModel {
       this.session.updateMessage(assistantId, message, false)
       this.syncMessages()
       this.status = message
+      this.latestPerfMetrics = undefined
       this.busy = false
       this.refreshStats()
       this.notifyAndScroll()
@@ -1157,6 +1169,7 @@ export class ChatViewModel {
       this.shouldStripLeadingAssistantSeparator()
     )
     const nextStreamedChars = displayText.length
+    this.streamingChars = nextStreamedChars
     this.status = `正在生成... ${nextStreamedChars} 字符`
     this.session.updateMessage(assistantId, displayText)
     this.syncMessages()

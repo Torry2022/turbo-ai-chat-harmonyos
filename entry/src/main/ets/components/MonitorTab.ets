@@ -1,5 +1,5 @@
 import { ChatViewModel } from '../state/ChatViewModel'
-import { EMPTY_RUNTIME_STATS, RuntimeStats } from '../models/RuntimeStats'
+import { EMPTY_RUNTIME_STATS, EMPTY_STORAGE_STATS, RuntimeStats, StorageStats } from '../models/RuntimeStats'
 import { RuntimeStatsService } from '../services/RuntimeStatsService'
 
 @Component
@@ -33,7 +33,9 @@ struct MonitorStatItem {
 export struct MonitorTab {
   @ObjectLink viewModel: ChatViewModel
   @State stats: RuntimeStats = EMPTY_RUNTIME_STATS
+  @State storageStats: StorageStats = EMPTY_STORAGE_STATS
   private statsTimer: number = -1
+  private storageStatsReading: boolean = false
   private statsService: RuntimeStatsService = new RuntimeStatsService()
 
   aboutToAppear(): void {
@@ -47,6 +49,20 @@ export struct MonitorTab {
 
   private refreshStats(): void {
     this.stats = this.statsService.readStats()
+    if (this.storageStatsReading) {
+      return
+    }
+    this.storageStatsReading = true
+    this.statsService.readStorageStats(
+      this.viewModel.appFilesDir,
+      `${this.viewModel.appFilesDir}/${this.viewModel.currentModel().directoryName}`
+    ).then((storageStats: StorageStats) => {
+      this.storageStats = storageStats
+    }).catch((_err: Error) => {
+      this.storageStats = EMPTY_STORAGE_STATS
+    }).finally(() => {
+      this.storageStatsReading = false
+    })
   }
 
   private startTimer(): void {
@@ -77,13 +93,13 @@ export struct MonitorTab {
 
   build() {
     Scroll() {
-      Column({ space: 12 }) {
+      Column({ space: 10 }) {
         // Intro
         Column({ space: 4 }) {
-          Text('在此处实时查看当前设备的 CPU、内存和模型运行状态，\n数据每两秒自动刷新')
+          Text('实时查看设备与模型运行状态，每两秒自动刷新')
             .width('100%')
             .lineHeight(18)
-            .padding({ left: 8 })
+            .padding({ left: 7 })
             .fontSize(12)
             .fontColor('#8CA2B8')
         }
@@ -91,30 +107,46 @@ export struct MonitorTab {
         .padding({ left: 4, bottom: 4 })
 
         // Model state
-        Column({ space: 8 }) {
+        Column({ space: 6 }) {
           this.SectionTitle('模型状态')
-          Column({ space: 8 }) {
+          Row({ space: 8 }) {
             MonitorStatItem({
               label: '模型',
               value: this.viewModel.currentModel().shortName,
-              itemWidth: '100%'
+              itemWidth: '48%'
             })
             MonitorStatItem({
               label: '状态',
               value: this.viewModel.busy ? '生成中...' : (this.viewModel.modelLoading ? '加载中...' : (this.viewModel.loaded ? '就绪' : '未加载')),
-              itemWidth: '100%',
+              itemWidth: '48%',
               valueColor: this.viewModel.busy ? '#F2B35D' : (this.viewModel.modelLoading ? '#5BA4E6' : (this.viewModel.loaded ? '#45D6A4' : '#8CA2B8'))
             })
           }
           .width('100%')
+          .alignItems(VerticalAlign.Top)
         }
         .width('100%')
-        .padding(12)
+        .padding(10)
+        .backgroundColor('#0D1A28')
+        .borderRadius(8)
+
+        // App storage
+        Column({ space: 6 }) {
+          this.SectionTitle('存储占用')
+          Row({ space: 8 }) {
+            MonitorStatItem({ label: '文件目录', value: this.storageStats.appFiles, itemWidth: '48%' })
+            MonitorStatItem({ label: '当前模型', value: this.storageStats.currentModel, itemWidth: '48%' })
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Top)
+        }
+        .width('100%')
+        .padding(10)
         .backgroundColor('#0D1A28')
         .borderRadius(8)
 
         // CPU
-        Column({ space: 8 }) {
+        Column({ space: 6 }) {
           this.SectionTitle('CPU')
           Row({ space: 8 }) {
             MonitorStatItem({ label: '应用 CPU', value: this.stats.appCpu, itemWidth: '48%' })
@@ -130,12 +162,12 @@ export struct MonitorTab {
           .alignItems(VerticalAlign.Top)
         }
         .width('100%')
-        .padding(12)
+        .padding(10)
         .backgroundColor('#0D1A28')
         .borderRadius(8)
 
         // App memory
-        Column({ space: 8 }) {
+        Column({ space: 6 }) {
           this.SectionTitle('应用内存')
           Row({ space: 8 }) {
             MonitorStatItem({ label: '进程占用', value: this.stats.appPss, itemWidth: '48%' })
@@ -145,12 +177,12 @@ export struct MonitorTab {
           .alignItems(VerticalAlign.Top)
         }
         .width('100%')
-        .padding(12)
+        .padding(10)
         .backgroundColor('#0D1A28')
         .borderRadius(8)
 
         // System memory
-        Column({ space: 8 }) {
+        Column({ space: 6 }) {
           this.SectionTitle('系统内存')
           Row({ space: 8 }) {
             MonitorStatItem({ label: '总内存', value: this.stats.systemMemTotal, itemWidth: '48%' })
@@ -160,7 +192,7 @@ export struct MonitorTab {
           .alignItems(VerticalAlign.Top)
         }
         .width('100%')
-        .padding(12)
+        .padding(10)
         .backgroundColor('#0D1A28')
         .borderRadius(8)
 

@@ -176,7 +176,7 @@ GemmaRunner::SamplingConfig ReadSamplingConfig(
         2.0);
     sampling.penaltyWindow = std::clamp(
         ReadNamedInt(env, args[settingsIndex], "penaltyWindow", sampling.penaltyWindow),
-        64,
+        0,
         2048);
     return sampling;
 }

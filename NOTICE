@@ -8,3 +8,4 @@ The recommended built-in MNN model weights are not included in this repository.
 Download them from ModelScope:
 https://modelscope.cn/models/MNN/gemma-4-E2B-it-MNN
 https://modelscope.cn/models/MNN/MiniCPM5-1B-MNN
+https://modelscope.cn/models/MNN/Qwen3-4B-Instruct-2507-MNN

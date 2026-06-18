@@ -68,6 +68,20 @@ function createSpec(
 
 export const BUILTIN_MODEL_DOWNLOADS: BuiltinModelDownloadSpec[] = [
   createSpec(
+    'qwen3-4b-instruct',
+    'qwen3-4b-instruct',
+    'Qwen3-4B-Instruct-2507-MNN',
+    'Qwen3-4B-Instruct',
+    'MNN/Qwen3-4B-Instruct-2507-MNN',
+    [
+      { relativePath: 'config.json', sizeBytes: 403 },
+      { relativePath: 'llm_config.json', sizeBytes: 4803 },
+      { relativePath: 'tokenizer.txt', sizeBytes: 3193555 },
+      { relativePath: 'llm.mnn', sizeBytes: 592336 },
+      { relativePath: 'llm.mnn.weight', sizeBytes: 2709972658 }
+    ]
+  ),
+  createSpec(
     'gemma4',
     'gemma4',
     'gemma-4-E2B-it-MNN',

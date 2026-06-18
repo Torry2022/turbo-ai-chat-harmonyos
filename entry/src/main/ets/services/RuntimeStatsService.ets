@@ -1,7 +1,8 @@
 import hidebug from '@ohos.hidebug'
 import batteryInfo from '@ohos.batteryInfo'
-import { EMPTY_RUNTIME_STATS, RuntimeStats } from '../models/RuntimeStats'
-import { bytesToMb, formatError, kbToMb } from '../utils/formatters'
+import fs from '@ohos.file.fs'
+import { EMPTY_RUNTIME_STATS, EMPTY_STORAGE_STATS, RuntimeStats, StorageStats } from '../models/RuntimeStats'
+import { bytesToDisplay, bytesToMb, formatError, kbToMb } from '../utils/formatters'
 
 export class RuntimeStatsService {
   readStats(): RuntimeStats {
@@ -33,6 +34,50 @@ export class RuntimeStatsService {
         socTemp: EMPTY_RUNTIME_STATS.socTemp,
         threadCount: EMPTY_RUNTIME_STATS.threadCount
       }
+    }
+  }
+
+  async readStorageStats(filesDir: string, currentModelDir: string): Promise<StorageStats> {
+    if (filesDir.length <= 0) {
+      return EMPTY_STORAGE_STATS
+    }
+    try {
+      const appFilesBytes = await this.pathSize(filesDir)
+      const currentModelBytes = currentModelDir.length > 0 && (await this.exists(currentModelDir)) ?
+        await this.pathSize(currentModelDir) : 0
+      return {
+        appFiles: bytesToDisplay(appFilesBytes),
+        currentModel: currentModelBytes > 0 ? bytesToDisplay(currentModelBytes) : '未安装'
+      }
+    } catch (err) {
+      return {
+        appFiles: `不可用：${formatError(err as Object)}`,
+        currentModel: EMPTY_STORAGE_STATS.currentModel
+      }
+    }
+  }
+
+  private async pathSize(path: string): Promise<number> {
+    const stat = await fs.stat(path)
+    if (stat.isFile()) {
+      return stat.size
+    }
+    if (!stat.isDirectory()) {
+      return 0
+    }
+    let total = 0
+    const names = await fs.listFile(path)
+    for (let index = 0; index < names.length; index++) {
+      total += await this.pathSize(`${path}/${names[index]}`)
+    }
+    return total
+  }
+
+  private async exists(path: string): Promise<boolean> {
+    try {
+      return await fs.access(path)
+    } catch (_) {
+      return false
     }
   }
 }
