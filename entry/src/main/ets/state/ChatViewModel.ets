@@ -311,6 +311,47 @@ export class ChatViewModel {
     })
   }
 
+  scanPushedModelDirectories(): void {
+    if (this.busy || this.modelLoading || this.modelImporting || this.builtinModelInstalling) {
+      return
+    }
+
+    this.busy = true
+    this.modelImporting = true
+
+    this.modelImportService.scanPushedModelDirectories(this.filesDir, this.modelProfiles()).then((result) => {
+      this.modelManager.updateImportedProfiles(result.profiles, this.filesDir)
+      const addedProfile = result.addedProfiles.length > 0 ? result.addedProfiles[result.addedProfiles.length - 1] : undefined
+      if (addedProfile !== undefined) {
+        const model = this.modelManager.switchModel(addedProfile.id, this.filesDir)
+        this.prepareImportedModelEditor(model.id)
+        this.selectedImageUri = ''
+        this.inputText = ''
+        this.resetGenerationSettings(false)
+        this.session.resetForModelSwitch(model.shortName)
+        this.syncMessages()
+        this.resetLoadedModel(`已添加 ${result.addedProfiles.length} 个模型，请加载 ${model.shortName}。`)
+        this.modelImportMessage = `已添加 ${result.addedProfiles.length} 个模型，请加载 ${model.shortName}。`
+      } else {
+        this.prepareImportedModelEditor(this.selectedModelId)
+        this.modelImportMessage = result.skippedCount > 0 ?
+          '未发现新的可导入 MNN 目录，请确认目录中包含 config.json 和 .mnn 文件。' :
+          '未发现新的已推送模型目录。'
+        this.status = this.loaded ? `${this.currentModel().shortName} 已加载` : this.status
+      }
+      this.busy = false
+      this.modelImporting = false
+      this.notify()
+    }).catch((err: Error) => {
+      const message = `扫描失败：${formatError(err as Object)}`
+      this.modelImportMessage = message
+      this.status = message
+      this.busy = false
+      this.modelImporting = false
+      this.notify()
+    })
+  }
+
   prepareImportedModelEditor(modelId: string): void {
     const profile = this.findProfile(modelId)
     if (profile === undefined || profile.source !== 'imported') {

@@ -19,6 +19,12 @@ export interface ModelImportResult {
   message: string
 }
 
+export interface ModelImportScanResult {
+  profiles: ModelProfile[]
+  addedProfiles: ModelProfile[]
+  skippedCount: number
+}
+
 export const IMPORTED_MODELS_DIR: string = 'model-imports'
 export const IMPORTED_MODELS_STORE_FILE: string = 'imported-models.json'
 export const IMPORTED_MODEL_SOURCE: string = 'imported'

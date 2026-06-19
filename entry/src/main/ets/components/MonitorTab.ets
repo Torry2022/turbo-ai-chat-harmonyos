@@ -82,6 +82,28 @@ export struct MonitorTab {
     this.statsTimer = -1
   }
 
+  private modelStateModelWidth(): string {
+    const modelName = this.viewModel.currentModel().shortName
+    if (modelName.length > 18) {
+      return '64%'
+    }
+    if (modelName.length > 12) {
+      return '58%'
+    }
+    return '48%'
+  }
+
+  private modelStateStatusWidth(): string {
+    const modelName = this.viewModel.currentModel().shortName
+    if (modelName.length > 18) {
+      return '32%'
+    }
+    if (modelName.length > 12) {
+      return '38%'
+    }
+    return '48%'
+  }
+
   @Builder
   private SectionTitle(title: string) {
     Text(title)
@@ -113,29 +135,14 @@ export struct MonitorTab {
             MonitorStatItem({
               label: '模型',
               value: this.viewModel.currentModel().shortName,
-              itemWidth: '48%'
+              itemWidth: this.modelStateModelWidth()
             })
             MonitorStatItem({
               label: '状态',
               value: this.viewModel.busy ? '生成中...' : (this.viewModel.modelLoading ? '加载中...' : (this.viewModel.loaded ? '就绪' : '未加载')),
-              itemWidth: '48%',
+              itemWidth: this.modelStateStatusWidth(),
               valueColor: this.viewModel.busy ? '#F2B35D' : (this.viewModel.modelLoading ? '#5BA4E6' : (this.viewModel.loaded ? '#45D6A4' : '#8CA2B8'))
             })
-          }
-          .width('100%')
-          .alignItems(VerticalAlign.Top)
-        }
-        .width('100%')
-        .padding(10)
-        .backgroundColor('#0D1A28')
-        .borderRadius(8)
-
-        // App storage
-        Column({ space: 6 }) {
-          this.SectionTitle('存储占用')
-          Row({ space: 8 }) {
-            MonitorStatItem({ label: '文件目录', value: this.storageStats.appFiles, itemWidth: '48%' })
-            MonitorStatItem({ label: '当前模型', value: this.storageStats.currentModel, itemWidth: '48%' })
           }
           .width('100%')
           .alignItems(VerticalAlign.Top)
@@ -187,6 +194,21 @@ export struct MonitorTab {
           Row({ space: 8 }) {
             MonitorStatItem({ label: '总内存', value: this.stats.systemMemTotal, itemWidth: '48%' })
             MonitorStatItem({ label: '可用', value: this.stats.systemMemAvailable, itemWidth: '48%' })
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Top)
+        }
+        .width('100%')
+        .padding(10)
+        .backgroundColor('#0D1A28')
+        .borderRadius(8)
+
+        // App storage
+        Column({ space: 6 }) {
+          this.SectionTitle('存储占用')
+          Row({ space: 8 }) {
+            MonitorStatItem({ label: '文件目录', value: this.storageStats.appFiles, itemWidth: '48%' })
+            MonitorStatItem({ label: '当前模型', value: this.storageStats.currentModel, itemWidth: '48%' })
           }
           .width('100%')
           .alignItems(VerticalAlign.Top)

@@ -9,6 +9,7 @@ import {
   IMPORTED_MODELS_STORE_FILE,
   ImportedModelDraft,
   ImportedModelManifest,
+  ModelImportScanResult,
   LEGACY_IMPORTED_MODEL_PROMPT,
   ModelImportResult
 } from '../models/ImportedModelTypes'
@@ -108,6 +109,80 @@ export class ModelImportService {
         await this.deletePathRecursive(targetDir)
       }
       throw new Error(formatError(err as Object))
+    }
+  }
+
+  async scanPushedModelDirectories(filesDir: string, existingProfiles: ModelProfile[]): Promise<ModelImportScanResult> {
+    const importRoot = this.importRoot(filesDir)
+    await this.ensureDir(importRoot)
+
+    const importedProfiles = await this.loadImportedProfiles(filesDir)
+    const nextProfiles = importedProfiles.slice()
+    const addedProfiles: ModelProfile[] = []
+    let skippedCount = 0
+
+    const names = await fs.listFile(importRoot)
+    for (let index = 0; index < names.length; index++) {
+      const directoryName = names[index]
+      if (!this.isSafeImportedDirectoryName(directoryName) || directoryName === 'tmp') {
+        skippedCount++
+        continue
+      }
+
+      const targetDir = `${importRoot}/${directoryName}`
+      const stat = await fs.stat(targetDir)
+      if (!stat.isDirectory()) {
+        continue
+      }
+      if (this.hasImportedDirectory(nextProfiles, directoryName)) {
+        continue
+      }
+
+      const configPath = await this.findConfigPath(targetDir)
+      if (configPath.length <= 0 || this.hasImportedConfigPath(nextProfiles, configPath)) {
+        skippedCount++
+        continue
+      }
+
+      const allFiles = await this.listFilesRecursive(targetDir)
+      if (!this.containsMnnFile(allFiles)) {
+        skippedCount++
+        continue
+      }
+
+      const profilePool = existingProfiles.concat(nextProfiles)
+      const inferredName = this.uniqueProfileName(this.inferNameFromDirectory(configPath, targetDir, directoryName), profilePool)
+      const inferredShortName = this.uniqueProfileShortName(this.toShortName(inferredName), profilePool)
+      const promptConfig = await this.readPromptTemplateProfile(configPath, inferredName)
+      const profile: ModelProfile = {
+        id: this.uniqueProfileId(`imported-${this.toSafeId(directoryName)}`, profilePool),
+        name: inferredName,
+        shortName: inferredShortName,
+        directoryName,
+        description: '用户导入的 MNN 模型。',
+        supportsImage: false,
+        systemPrompt: DEFAULT_IMPORTED_MODEL_PROMPT,
+        source: IMPORTED_MODEL_SOURCE,
+        configPath,
+        chatFormat: promptConfig.chatFormat,
+        promptTemplate: promptConfig.promptTemplate,
+        stopSequence: promptConfig.stopSequence,
+        templateOverride: false,
+        editable: true,
+        removable: true
+      }
+
+      nextProfiles.push(profile)
+      addedProfiles.push(profile)
+    }
+
+    if (addedProfiles.length > 0) {
+      await this.saveImportedProfiles(filesDir, nextProfiles)
+    }
+    return {
+      profiles: nextProfiles,
+      addedProfiles,
+      skippedCount
     }
   }
 
@@ -316,6 +391,15 @@ export class ModelImportService {
     return fromZip.length > 0 ? fromZip : 'Imported MNN Model'
   }
 
+  private inferNameFromDirectory(configPath: string, targetDir: string, directoryName: string): string {
+    const fromDirectory = this.nameFromConfigDirectory(configPath, targetDir)
+    if (fromDirectory.length > 0) {
+      return fromDirectory
+    }
+    const fromDirectoryName = this.stripMnnSuffix(directoryName)
+    return fromDirectoryName.length > 0 ? fromDirectoryName : 'Imported MNN Model'
+  }
+
   private cleanFileName(path: string): string {
     const normalized = decodeURIComponent(path)
     const segments = normalized.split('/')
@@ -365,10 +449,26 @@ export class ModelImportService {
     return candidate
   }
 
+  private uniqueProfileId(baseId: string, profiles: ModelProfile[]): string {
+    const id = baseId.length > 0 ? baseId : 'imported-model'
+    let candidate = id
+    let suffix = 2
+    while (profiles.some((profile: ModelProfile) => profile.id === candidate)) {
+      candidate = `${id}-${suffix}`
+      suffix++
+    }
+    return candidate
+  }
+
+  private toSafeId(name: string): string {
+    const normalized = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+    return normalized.length > 0 ? normalized : 'model'
+  }
+
   private toShortName(name: string): string {
     const normalized = this.stripMnnSuffix(name)
-    const familyAndSize = this.extractFamilyAndSize(normalized)
-    return familyAndSize.length > 24 ? familyAndSize.substring(0, 24) : familyAndSize
+    const shortName = this.extractModelShortName(normalized)
+    return shortName.length > 32 ? shortName.substring(0, 32) : shortName
   }
 
   private stripMnnSuffix(name: string): string {
@@ -382,13 +482,37 @@ export class ModelImportService {
     return normalized.trim()
   }
 
-  private extractFamilyAndSize(name: string): string {
+  private extractModelShortName(name: string): string {
     const normalized = name.trim()
-    const tokens = normalized.split('-')
+    const tokens = normalized.split('-').filter((token: string) => token.length > 0)
     if (tokens.length <= 1) {
       return normalized
     }
 
+    let parameterIndex = -1
+    for (let index = 1; index < tokens.length; index++) {
+      if (this.isParameterToken(tokens[index])) {
+        parameterIndex = index
+        break
+      }
+    }
+    if (parameterIndex < 0) {
+      return tokens[0]
+    }
+
+    let endIndex = tokens.length
+    while (endIndex > parameterIndex + 1 && this.isTrailingModelMetadataToken(tokens[endIndex - 1])) {
+      endIndex--
+    }
+    return tokens.slice(0, endIndex).join('-')
+  }
+
+  private legacyShortName(name: string): string {
+    const normalized = name.trim()
+    const tokens = normalized.split('-').filter((token: string) => token.length > 0)
+    if (tokens.length <= 1) {
+      return normalized
+    }
     for (let index = 1; index < tokens.length; index++) {
       if (this.isParameterToken(tokens[index])) {
         return `${tokens[0]}-${tokens[index]}`
@@ -401,6 +525,13 @@ export class ModelImportService {
     return /^[0-9]+(\.[0-9]+)?[BMbK]?$/.test(token) || /^E[0-9]+B$/i.test(token)
   }
 
+  private isTrailingModelMetadataToken(token: string): boolean {
+    const lowerToken = token.toLowerCase()
+    return lowerToken === 'it' ||
+      /^[0-9]{4,8}$/.test(lowerToken) ||
+      /^v[0-9]+(\.[0-9]+)*$/.test(lowerToken)
+  }
+
   private async normalizeImportedProfile(profile: ModelProfile): Promise<ModelProfile> {
     const normalizedName = this.stripMnnSuffix(profile.name)
     const normalizedSystemPrompt = profile.systemPrompt === LEGACY_IMPORTED_MODEL_PROMPT ?
@@ -408,6 +539,7 @@ export class ModelImportService {
       profile.systemPrompt
     const shouldRefreshShortName =
       profile.shortName.length === 12 && profile.name.length > 12 && profile.shortName === profile.name.substring(0, 12) ||
+      profile.shortName === this.legacyShortName(normalizedName) ||
       profile.shortName === normalizedName ||
       profile.shortName === profile.name
     const hasTemplateOverride = profile.templateOverride === true
@@ -458,6 +590,21 @@ export class ModelImportService {
       return false
     }
     return profile.configPath.startsWith(`${importRoot}/`)
+  }
+
+  private isSafeImportedDirectoryName(name: string): boolean {
+    if (name.length <= 0 || name.indexOf('/') >= 0 || name.indexOf('\\') >= 0) {
+      return false
+    }
+    return name.indexOf('..') < 0
+  }
+
+  private hasImportedDirectory(profiles: ModelProfile[], directoryName: string): boolean {
+    return profiles.some((profile: ModelProfile) => profile.directoryName === directoryName)
+  }
+
+  private hasImportedConfigPath(profiles: ModelProfile[], configPath: string): boolean {
+    return profiles.some((profile: ModelProfile) => profile.configPath === configPath)
   }
 
   private async readPromptTemplateProfile(configPath: string, modelName: string): Promise<PromptTemplateProfile> {

@@ -157,9 +157,9 @@ export struct ModelTab {
       .width('100%')
       if (this.viewModel.loaded) {
         Button('释放模型')
-          .width('100%')
-          .height(38)
           .enabled(this.controlsEnabled())
+          .height(38)
+          .width('100%')
           .fontColor('#B7CDE1')
           .backgroundColor('#14344A')
           .onClick(() => {
@@ -167,9 +167,9 @@ export struct ModelTab {
           })
       }
       Button(this.viewModel.loaded ? '重新加载模型' : '加载模型')
-        .width('100%')
-        .height(38)
         .enabled(this.controlsEnabled())
+        .height(38)
+        .width('100%')
         .fontColor('#F4FBFF')
         .backgroundColor('#0F62FE')
         .onClick(() => {
@@ -506,89 +506,89 @@ export struct ModelTab {
           .fontColor('#5A7A9A')
           .width('100%')
         if (this.importedConfigExpanded) {
-        Column({ space: 4 }) {
-          Text('模型名称')
-            .fontSize(12)
-            .fontColor('#8CA2B8')
-            .width('100%')
-          TextInput({ text: this.viewModel.importedModelNameInput, placeholder: '模型名称' })
-            .onChange((value: string) => {
-              this.viewModel.updateImportedModelName(value)
-            })
-            .enabled(this.controlsEnabled())
-            .height(40)
-            .fontSize(12)
-            .fontColor('#EAF4FF')
-            .backgroundColor('#0A1623')
-            .width('100%')
-        }
-        .width('100%')
-
-        Column({ space: 4 }) {
-          Text('短名称')
-            .fontSize(12)
-            .fontColor('#8CA2B8')
-            .width('100%')
-          TextInput({ text: this.viewModel.importedModelShortNameInput, placeholder: '短名称' })
-            .onChange((value: string) => {
-              this.viewModel.updateImportedModelShortName(value)
-            })
-            .enabled(this.controlsEnabled())
-            .height(40)
-            .fontSize(12)
-            .fontColor('#EAF4FF')
-            .backgroundColor('#0A1623')
-            .width('100%')
-        }
-        .width('100%')
-
-        Column({ space: 4 }) {
-          Text('系统提示词')
-            .fontSize(12)
-            .fontColor('#8CA2B8')
-            .width('100%')
-          TextInput({ text: this.viewModel.importedModelSystemPromptInput, placeholder: '系统提示词' })
-            .onChange((value: string) => {
-              this.viewModel.updateImportedModelSystemPrompt(value)
-            })
-            .enabled(this.controlsEnabled())
-            .height(44)
-            .fontSize(12)
-            .fontColor('#EAF4FF')
-            .backgroundColor('#0A1623')
-            .width('100%')
-        }
-        .width('100%')
-
-        Button(this.viewModel.showAdvancedModelSettings ? '收起高级参数' : '展开高级参数')
-          .enabled(this.controlsEnabled())
-          .height(38)
+          Column({ space: 4 }) {
+            Text('模型名称')
+              .fontSize(12)
+              .fontColor('#8CA2B8')
+              .width('100%')
+            TextInput({ text: this.viewModel.importedModelNameInput, placeholder: '模型名称' })
+              .onChange((value: string) => {
+                this.viewModel.updateImportedModelName(value)
+              })
+              .enabled(this.controlsEnabled())
+              .height(40)
+              .fontSize(12)
+              .fontColor('#EAF4FF')
+              .backgroundColor('#0A1623')
+              .width('100%')
+          }
           .width('100%')
-          .onClick(() => {
-            this.viewModel.toggleAdvancedModelSettings()
-          })
 
-        if (this.viewModel.showAdvancedModelSettings) {
-          this.ImportedAdvancedSettings()
+          Column({ space: 4 }) {
+            Text('短名称')
+              .fontSize(12)
+              .fontColor('#8CA2B8')
+              .width('100%')
+            TextInput({ text: this.viewModel.importedModelShortNameInput, placeholder: '短名称' })
+              .onChange((value: string) => {
+                this.viewModel.updateImportedModelShortName(value)
+              })
+              .enabled(this.controlsEnabled())
+              .height(40)
+              .fontSize(12)
+              .fontColor('#EAF4FF')
+              .backgroundColor('#0A1623')
+              .width('100%')
+          }
+          .width('100%')
+
+          Column({ space: 4 }) {
+            Text('系统提示词')
+              .fontSize(12)
+              .fontColor('#8CA2B8')
+              .width('100%')
+            TextInput({ text: this.viewModel.importedModelSystemPromptInput, placeholder: '系统提示词' })
+              .onChange((value: string) => {
+                this.viewModel.updateImportedModelSystemPrompt(value)
+              })
+              .enabled(this.controlsEnabled())
+              .height(44)
+              .fontSize(12)
+              .fontColor('#EAF4FF')
+              .backgroundColor('#0A1623')
+              .width('100%')
+          }
+          .width('100%')
+
+          Button(this.viewModel.showAdvancedModelSettings ? '收起高级参数' : '展开高级参数')
+            .enabled(this.controlsEnabled())
+            .height(38)
+            .width('100%')
+            .onClick(() => {
+              this.viewModel.toggleAdvancedModelSettings()
+            })
+
+          if (this.viewModel.showAdvancedModelSettings) {
+            this.ImportedAdvancedSettings()
+          }
+
+          Button('保存配置')
+            .enabled(this.controlsEnabled())
+            .height(38)
+            .width('100%')
+            .onClick(() => {
+              this.viewModel.saveImportedModelProfile()
+            })
+
+          Button('删除模型')
+            .enabled(this.controlsEnabled())
+            .height(38)
+            .width('100%')
+            .backgroundColor('#733030')
+            .onClick(() => {
+              this.viewModel.requestDeleteImportedModel(this.viewModel.currentModel().id)
+            })
         }
-
-        Button('保存配置')
-          .enabled(this.controlsEnabled())
-          .height(38)
-          .width('100%')
-          .onClick(() => {
-            this.viewModel.saveImportedModelProfile()
-          })
-
-        Button('删除模型')
-          .enabled(this.controlsEnabled())
-          .height(38)
-          .width('100%')
-          .backgroundColor('#733030')
-          .onClick(() => {
-            this.viewModel.requestDeleteImportedModel(this.viewModel.currentModel().id)
-          })
-      }
       }
       .width('100%')
       .padding(12)
@@ -634,12 +634,22 @@ export struct ModelTab {
         .onClick(() => {
           this.viewModel.importModelPackage()
         })
+      Button('扫描已推送目录')
+        .enabled(this.controlsEnabled())
+        .height(38)
+        .width('100%')
+        .fontColor('#B7CDE1')
+        .backgroundColor('#14344A')
+        .onClick(() => {
+          this.viewModel.scanPushedModelDirectories()
+        })
       Text(this.viewModel.modelImportMessage)
         .fontSize(12)
         .lineHeight(18)
-        .fontColor(this.viewModel.modelImportMessage.startsWith('导入失败') ? '#FF9C9C' : '#8CA2B8')
+        .fontColor(this.viewModel.modelImportMessage.indexOf('失败') >= 0 ? '#FF9C9C' : '#8CA2B8')
+        .height(36)
         .width('100%')
-      Text('过大的 zip 包可能因格式兼容问题导入失败，建议用 hdc file send -b 命令直接推送模型目录。')
+      Text('大模型可推送到 model-imports 后扫描。')
         .fontSize(11)
         .lineHeight(16)
         .fontColor('#5A7A9A')
