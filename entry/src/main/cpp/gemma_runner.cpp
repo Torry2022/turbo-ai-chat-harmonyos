@@ -1,6 +1,7 @@
 #include "gemma_runner.h"
 
 #include <algorithm>
+#include <cctype>
 #include <exception>
 #include <fstream>
 #include <functional>
@@ -193,6 +194,60 @@ std::string MapStopReason(LlmStatus status) {
     }
 }
 
+void AddUniqueStopSequence(std::vector<std::string>& stopSequences, const std::string& stopSequence) {
+    if (stopSequence.empty()) {
+        return;
+    }
+    if (std::find(stopSequences.begin(), stopSequences.end(), stopSequence) != stopSequences.end()) {
+        return;
+    }
+    stopSequences.push_back(stopSequence);
+}
+
+std::vector<std::string> BuildStopSequences(const Llm* llm, const std::string& explicitEndWith) {
+    std::vector<std::string> stopSequences;
+    AddUniqueStopSequence(stopSequences, explicitEndWith);
+
+    const auto* context = llm == nullptr ? nullptr : llm->getContext();
+    if (context != nullptr) {
+        AddUniqueStopSequence(stopSequences, context->end_with);
+    }
+
+    AddUniqueStopSequence(stopSequences, "<turn|>");
+    AddUniqueStopSequence(stopSequences, "<|im_end|>");
+    AddUniqueStopSequence(stopSequences, "<|endoftext|>");
+    return stopSequences;
+}
+
+bool StripTrailingStopSequence(std::string& text, const std::string& stopSequence) {
+    if (text.empty() || stopSequence.empty()) {
+        return false;
+    }
+
+    size_t suffixEnd = text.size();
+    while (suffixEnd > 0 && std::isspace(static_cast<unsigned char>(text[suffixEnd - 1])) != 0) {
+        suffixEnd--;
+    }
+    if (suffixEnd < stopSequence.size()) {
+        return false;
+    }
+
+    const size_t stopStart = suffixEnd - stopSequence.size();
+    if (text.compare(stopStart, stopSequence.size(), stopSequence) != 0) {
+        return false;
+    }
+
+    text.erase(stopStart);
+    return true;
+}
+
+int TokenCount(Llm* llm, const std::string& text) {
+    if (llm == nullptr || text.empty()) {
+        return 0;
+    }
+    return static_cast<int>(llm->tokenizer_encode(text).size());
+}
+
 std::string BuildSamplingConfigProperties(const GemmaRunner::SamplingConfig& sampling) {
     std::ostringstream config;
     config << "\"max_new_tokens\":" << sampling.maxNewTokens << ","
@@ -266,38 +321,50 @@ void DumpRawPromptDebug(
     dump << "=== END ===\n";
 }
 
-int ResolveGeneratedTokens(Llm* llm, const std::string& text, int maxNewTokens) {
+int ResolveGeneratedTokens(Llm* llm, const std::string& text, int maxNewTokens, int removedStopTokens) {
     int contextTokens = 0;
     const auto* context = llm == nullptr ? nullptr : llm->getContext();
     if (context != nullptr) {
         contextTokens = static_cast<int>(context->output_tokens.size());
     }
 
-    if (contextTokens > 0 && (maxNewTokens <= 0 || contextTokens <= maxNewTokens)) {
-        return contextTokens;
+    if (contextTokens > 0) {
+        const int adjustedContextTokens = std::max(0, contextTokens - removedStopTokens);
+        if (maxNewTokens <= 0 || adjustedContextTokens <= maxNewTokens) {
+            return adjustedContextTokens;
+        }
     }
 
-    if (llm == nullptr || text.empty()) {
-        return 0;
-    }
-
-    const int estimatedTokens = static_cast<int>(llm->tokenizer_encode(text).size());
+    const int estimatedTokens = TokenCount(llm, text);
     if (maxNewTokens > 0 && estimatedTokens > maxNewTokens) {
         return maxNewTokens;
     }
     return estimatedTokens;
 }
 
-GemmaRunner::GenerationResult BuildGenerationResult(Llm* llm, const std::string& text, int maxNewTokens) {
+GemmaRunner::GenerationResult BuildGenerationResult(
+    Llm* llm,
+    const std::string& text,
+    int maxNewTokens,
+    const std::string& explicitEndWith = "") {
     GemmaRunner::GenerationResult result;
     result.text = text;
     const auto* context = llm == nullptr ? nullptr : llm->getContext();
     if (context == nullptr) {
+        result.generatedTokens = TokenCount(llm, result.text);
         return result;
     }
 
-    result.generatedTokens = ResolveGeneratedTokens(llm, text, maxNewTokens);
     result.stopReason = MapStopReason(context->status);
+    int removedStopTokens = 0;
+    for (const auto& stopSequence : BuildStopSequences(llm, explicitEndWith)) {
+        while (StripTrailingStopSequence(result.text, stopSequence)) {
+            result.stopReason = "eos";
+            removedStopTokens += TokenCount(llm, stopSequence);
+        }
+    }
+
+    result.generatedTokens = ResolveGeneratedTokens(llm, result.text, maxNewTokens, removedStopTokens);
     if (result.stopReason == "unknown" && maxNewTokens > 0 && result.generatedTokens >= maxNewTokens) {
         result.stopReason = "max_tokens";
     }
@@ -401,7 +468,8 @@ GemmaRunner::GenerationResult GemmaRunner::generateStreaming(
             return {};
         }
     }
-    GenerationResult result = BuildGenerationResult(llm_.get(), buffer.output(), sampling.maxNewTokens);
+    const std::string rawOutput = buffer.output();
+    GenerationResult result = BuildGenerationResult(llm_.get(), rawOutput, sampling.maxNewTokens);
     const bool stopped = stopRequested_.load();
     ApplyUserStop(result, stopped);
     stopRequested_.store(false);
@@ -454,11 +522,12 @@ GemmaRunner::GenerationResult GemmaRunner::generateRawPromptStreaming(
             return {};
         }
     }
-    GenerationResult result = BuildGenerationResult(llm_.get(), buffer.output(), sampling.maxNewTokens);
+    const std::string rawOutput = buffer.output();
+    GenerationResult result = BuildGenerationResult(llm_.get(), rawOutput, sampling.maxNewTokens, endWith);
     const bool stopped = stopRequested_.load();
     ApplyUserStop(result, stopped);
     stopRequested_.store(false);
-    DumpRawPromptDebug(prompt, result.text, inputIds, sampling, result, llm_.get());
+    DumpRawPromptDebug(prompt, rawOutput, inputIds, sampling, result, llm_.get());
 
     return result;
 }
@@ -518,13 +587,14 @@ GemmaRunner::GenerationResult GemmaRunner::generateChatStreaming(
             return {};
         }
     }
-    GenerationResult result = BuildGenerationResult(llm_.get(), buffer.output(), sampling.maxNewTokens);
+    const std::string rawOutput = buffer.output();
+    GenerationResult result = BuildGenerationResult(llm_.get(), rawOutput, sampling.maxNewTokens);
     const bool stopped = stopRequested_.load();
     ApplyUserStop(result, stopped);
     stopRequested_.store(false);
     DumpRawPromptDebug(
         debugPrompt.str(),
-        result.text,
+        rawOutput,
         llm_->tokenizer_encode(debugPrompt.str()),
         sampling,
         result,
@@ -616,7 +686,8 @@ GemmaRunner::GenerationResult GemmaRunner::generateImageChatStreaming(
         error = "MNN vision encoder did not run. Rebuild libMNN.so with LLM_SUPPORT_VISION=ON and MNN_BUILD_OPENCV=ON.";
         return {};
     }
-    GenerationResult result = BuildGenerationResult(llm_.get(), buffer.output(), sampling.maxNewTokens);
+    const std::string rawOutput = buffer.output();
+    GenerationResult result = BuildGenerationResult(llm_.get(), rawOutput, sampling.maxNewTokens, "<turn|>");
     ApplyUserStop(result, stopped);
     stopRequested_.store(false);
     return result;

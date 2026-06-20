@@ -95,7 +95,7 @@ export struct BuiltinModelInstallDialog {
         }
         .width('100%')
       }
-      .width('86%')
+      .width('90%')
       .padding(18)
       .backgroundColor('#0D1A28')
       .borderRadius(10)

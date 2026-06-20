@@ -517,7 +517,8 @@ export class ChatViewModel {
     this.loaded = false
     this.status = '模型已释放'
     this.modelLoadMessage = '模型已从内存中释放，可重新加载。'
-    this.session.appendMessage('assistant', this.status, '', false)
+    this.session.appendMessage('assistant',
+      `${this.currentModel().shortName} 已从内存中释放。当前不会继续占用推理内存；如需继续对话，请在模型页重新加载该模型，或切换并加载其他模型。`, '', false)
     this.syncMessages()
     this.refreshStats()
     this.notify()
@@ -807,9 +808,11 @@ export class ChatViewModel {
 
       const ttft: number = firstTokenTime > 0 ? firstTokenTime - genStartTime : 0
       const genTime: number = genEndTime - genStartTime
-      const genTokens: number = Math.max(1, result.generatedTokens)
-      const tpot: number = genTime / genTokens
-      const tokensPerSec: number = (genTokens / (genTime / 1000))
+      const genTokens: number = Math.max(0, result.generatedTokens)
+      const safeGenTokens: number = Math.max(1, genTokens)
+      const safeGenTime: number = Math.max(1, genTime)
+      const tpot: number = safeGenTime / safeGenTokens
+      const tokensPerSec: number = (safeGenTokens / (safeGenTime / 1000))
       const perf: PerfMetrics = {
         ttft: ttft,
         tpot: Math.round(tpot * 100) / 100,
