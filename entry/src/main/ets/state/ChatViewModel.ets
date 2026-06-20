@@ -79,6 +79,7 @@ export class ChatViewModel {
   private context?: common.UIAbilityContext
   private modelLoadTimer: number = -1
   private autoScrollPending: boolean = false
+  private chatAutoScrollEnabled: boolean = true
   private notifyCallback: () => void = () => {}
   private session: ChatSession = new ChatSession()
   private modelManager: ModelManager = new ModelManager()
@@ -733,6 +734,7 @@ export class ChatViewModel {
     this.session.appendMessage('user', text, attachedImage)
     const assistantId = this.session.appendMessage('assistant', '', '')
     this.syncMessages()
+    this.resumeChatAutoScroll()
     this.inputText = ''
     this.selectedImageUri = ''
     this.busy = true
@@ -829,7 +831,7 @@ export class ChatViewModel {
       this.generating = false
       this.generationStopping = false
       this.refreshStats()
-      this.notifyAndScroll()
+      this.notifyAndMaybeScroll()
     }).catch((err: Error) => {
       const message = `生成失败：${formatError(err as Object)}`
       this.session.updateMessage(assistantId, message, false)
@@ -874,6 +876,14 @@ export class ChatViewModel {
         }
       }
     }, 30)
+  }
+
+  pauseChatAutoScroll(): void {
+    this.chatAutoScrollEnabled = false
+  }
+
+  resumeChatAutoScroll(): void {
+    this.chatAutoScrollEnabled = true
   }
 
   private resetLoadedModel(status: string): void {
@@ -1074,7 +1084,10 @@ export class ChatViewModel {
     this.status = `正在生成... ${nextStreamedChars} 字符`
     this.session.updateMessage(assistantId, displayText)
     this.syncMessages()
-    this.notifyAndScroll()
+    this.notify()
+    if (this.chatAutoScrollEnabled) {
+      this.scrollToBottom()
+    }
     return nextStreamedChars
   }
 
@@ -1099,6 +1112,13 @@ export class ChatViewModel {
   private notifyAndScroll(): void {
     this.notify()
     this.scrollToBottom()
+  }
+
+  private notifyAndMaybeScroll(): void {
+    this.notify()
+    if (this.chatAutoScrollEnabled) {
+      this.scrollToBottom()
+    }
   }
 
   private notify(): void {

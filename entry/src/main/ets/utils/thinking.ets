@@ -5,6 +5,17 @@ export interface AssistantTextParts {
   thinkingClosed: boolean
 }
 
+const ASSISTANT_TEXT_CACHE_LIMIT: number = 240
+const assistantTextCache: Map<string, AssistantTextParts> = new Map()
+
+function rememberAssistantText(content: string, parts: AssistantTextParts): AssistantTextParts {
+  if (assistantTextCache.size >= ASSISTANT_TEXT_CACHE_LIMIT) {
+    assistantTextCache.clear()
+  }
+  assistantTextCache.set(content, parts)
+  return parts
+}
+
 function stripThinkTags(text: string): string {
   return text
     .replace(/<think>/g, '')
@@ -37,6 +48,14 @@ export function stripModelSpecialTokens(content: string): string {
 }
 
 export function parseAssistantText(content: string): AssistantTextParts {
+  const cached = assistantTextCache.get(content)
+  if (cached !== undefined) {
+    return cached
+  }
+  return rememberAssistantText(content, parseAssistantTextUncached(content))
+}
+
+function parseAssistantTextUncached(content: string): AssistantTextParts {
   const normalizedContent = stripModelSpecialTokens(content)
   const openTag = '<think>'
   const closeTag = '</think>'

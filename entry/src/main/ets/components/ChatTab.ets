@@ -30,6 +30,12 @@ export struct ChatTab {
       .layoutWeight(1)
       .width('100%')
       .divider({ strokeWidth: 0 })
+      .scrollBar(BarState.Off)
+      .onTouch((event: TouchEvent) => {
+        if (event.type === TouchType.Down) {
+          this.viewModel.pauseChatAutoScroll()
+        }
+      })
       .onClick(() => {
         this.inputController.stopEditing()
       })

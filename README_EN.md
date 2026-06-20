@@ -27,6 +27,7 @@ In the HarmonyOS ecosystem, on-device AI inference today largely depends on Andr
 - Improved model import: in addition to zip import, you can push a complete MNN model directory into the app sandbox and scan it from the Model tab, which avoids large zip import failures.
 - Made model-page controls safer by disabling relevant actions while loading, importing, or generating; model ordering and deleting installed model directories are also supported.
 - Added generation interruption: during streaming output, the send button switches to a stop button, and stopped responses are not added to future conversation context.
+- Improved Chat tab scrolling: Markdown and thinking-block parsing results are cached, completed generations no longer pull the view back to the bottom while the user is reading history, and the chat list scrollbar is hidden.
 - Added a device status strip on the Chat tab for app CPU, app memory, and device temperature.
 - Added app storage usage, model state, and tighter device metrics to the Monitor tab.
 - Improved Markdown rendering, list parsing, thinking block display, raw output logs, and MNN chat-template handling for diagnosing repetition, stop tokens, and prompt template issues.
@@ -69,6 +70,7 @@ After the model loads, return to the Chat tab and send a message. MiniCPM5-1B di
 - Model switching: Qwen3-4B-Instruct / MiniCPM5-1B / Gemma-4-E2B-it hot swap
 - Thinking blocks: MiniCPM5-1B displays reasoning process
 - Markdown rendering: code blocks (with copy button), tables, blockquotes, links, etc.
+- Long-conversation scrolling optimization: caches Markdown / thinking-block parsing and pauses auto-follow while the user is scrolling
 - Generation parameter controls: temperature, Top-P/K, penalty terms, etc.
 - Performance metrics: TTFT, TPOT, tokens/s per assistant message
 - Model management: one-click built-in model download, model ordering, and deleting installed model directories

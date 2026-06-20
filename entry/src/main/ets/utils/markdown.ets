@@ -17,6 +17,27 @@ export interface MarkdownBlock {
   rows?: string[][]
 }
 
+const INLINE_MARKDOWN_CACHE_LIMIT: number = 360
+const BLOCK_MARKDOWN_CACHE_LIMIT: number = 160
+const inlineMarkdownCache: Map<string, MarkdownSpan[]> = new Map()
+const blockMarkdownCache: Map<string, MarkdownBlock[]> = new Map()
+
+function rememberInlineMarkdown(text: string, spans: MarkdownSpan[]): MarkdownSpan[] {
+  if (inlineMarkdownCache.size >= INLINE_MARKDOWN_CACHE_LIMIT) {
+    inlineMarkdownCache.clear()
+  }
+  inlineMarkdownCache.set(text, spans)
+  return spans
+}
+
+function rememberBlockMarkdown(content: string, blocks: MarkdownBlock[]): MarkdownBlock[] {
+  if (blockMarkdownCache.size >= BLOCK_MARKDOWN_CACHE_LIMIT) {
+    blockMarkdownCache.clear()
+  }
+  blockMarkdownCache.set(content, blocks)
+  return blocks
+}
+
 function emptyBlock(type: string): MarkdownBlock {
   const block: MarkdownBlock = {
     type: type,
@@ -103,6 +124,14 @@ interface CandidateMarker {
 }
 
 export function parseInlineMarkdown(text: string): MarkdownSpan[] {
+  const cached = inlineMarkdownCache.get(text)
+  if (cached !== undefined) {
+    return cached
+  }
+  return rememberInlineMarkdown(text, parseInlineMarkdownUncached(text))
+}
+
+function parseInlineMarkdownUncached(text: string): MarkdownSpan[] {
   const spans: MarkdownSpan[] = []
   let i: number = 0
   while (i < text.length) {
@@ -208,6 +237,14 @@ export function parseInlineMarkdown(text: string): MarkdownSpan[] {
 }
 
 export function parseLightMarkdown(content: string): MarkdownBlock[] {
+  const cached = blockMarkdownCache.get(content)
+  if (cached !== undefined) {
+    return cached
+  }
+  return rememberBlockMarkdown(content, parseLightMarkdownUncached(content))
+}
+
+function parseLightMarkdownUncached(content: string): MarkdownBlock[] {
   const blocks: MarkdownBlock[] = []
   const paragraphLines: string[] = []
   const codeLines: string[] = []
