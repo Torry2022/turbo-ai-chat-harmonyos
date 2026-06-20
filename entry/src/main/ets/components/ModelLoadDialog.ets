@@ -55,12 +55,23 @@ export struct ModelLoadDialog {
         .width('100%')
 
         if (!this.viewModel.modelLoading && !this.viewModel.loaded) {
-          Button('关闭')
-            .height(40)
-            .width('100%')
-            .onClick(() => {
-              this.viewModel.closeModelLoadDialog()
-            })
+          Row({ space: 10 }) {
+            Button('关闭')
+              .height(38)
+              .layoutWeight(1)
+              .fontColor('#F4FBFF')
+              .backgroundColor('#14344A')
+              .onClick(() => {
+                this.viewModel.closeModelLoadDialog()
+              })
+            Button('加载模型')
+              .height(38)
+              .layoutWeight(1)
+              .onClick(() => {
+                this.viewModel.loadModel()
+              })
+          }
+          .width('100%')
         }
       }
       .width('90%')

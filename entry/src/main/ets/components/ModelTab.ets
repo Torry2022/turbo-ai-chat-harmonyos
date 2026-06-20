@@ -1,8 +1,4 @@
 import {
-  CHAT_FORMAT_GEMMA_TURN,
-  CHAT_FORMAT_MINICPM_THINKING,
-  CHAT_FORMAT_QWEN_IM,
-  CHAT_FORMAT_RAW_TEMPLATE,
   DEFAULT_FREQUENCY_PENALTY,
   DEFAULT_MAX_NEW_TOKENS,
   DEFAULT_PENALTY_WINDOW,
@@ -18,6 +14,7 @@ import { ChatViewModel } from '../state/ChatViewModel'
 @Component
 export struct ModelTab {
   @ObjectLink viewModel: ChatViewModel
+  @Prop @Watch('onRenderVersionChange') renderVersion: number = 0
   @State sliderMaxNewTokens: number = DEFAULT_MAX_NEW_TOKENS
   @State sliderTemperature: number = DEFAULT_TEMPERATURE
   @State sliderTopP: number = DEFAULT_TOP_P
@@ -29,9 +26,24 @@ export struct ModelTab {
   @State generationExpanded: boolean = false
   @State runtimeExpanded: boolean = false
   @State importedConfigExpanded: boolean = false
+  @State visibleModelProfiles: ModelProfile[] = []
+  @State draggingModelId: string = ''
+  @State dragOffsetY: number = 0
+  private readonly modelDragStep: number = 78
+  private dragStartIndex: number = -1
+  private dragLatestIndex: number = -1
 
   aboutToAppear(): void {
     this.syncGenerationSlidersFromViewModel()
+    this.refreshModelProfiles()
+  }
+
+  private onRenderVersionChange(): void {
+    this.refreshModelProfiles()
+  }
+
+  private refreshModelProfiles(): void {
+    this.visibleModelProfiles = this.viewModel.modelProfiles()
   }
 
   private syncGenerationSlidersFromViewModel(): void {
@@ -55,6 +67,39 @@ export struct ModelTab {
       !this.viewModel.modelLoading &&
       !this.viewModel.modelImporting &&
       !this.viewModel.builtinModelInstalling
+  }
+
+  private beginModelDrag(profile: ModelProfile, index: number): void {
+    if (!this.controlsEnabled()) {
+      return
+    }
+    this.draggingModelId = profile.id
+    this.dragStartIndex = index
+    this.dragLatestIndex = index
+    this.dragOffsetY = 0
+  }
+
+  private updateModelDrag(offsetY: number): void {
+    if (this.draggingModelId.length <= 0 || this.dragStartIndex < 0) {
+      return
+    }
+    const profiles = this.visibleModelProfiles
+    const targetIndex = Math.max(0, Math.min(profiles.length - 1, this.dragStartIndex + Math.round(offsetY / this.modelDragStep)))
+    this.dragOffsetY = offsetY - (targetIndex - this.dragStartIndex) * this.modelDragStep
+    if (targetIndex === this.dragLatestIndex) {
+      return
+    }
+    this.dragLatestIndex = targetIndex
+    this.viewModel.moveModelToIndex(this.draggingModelId, targetIndex)
+    this.refreshModelProfiles()
+  }
+
+  private endModelDrag(): void {
+    this.draggingModelId = ''
+    this.dragStartIndex = -1
+    this.dragLatestIndex = -1
+    this.dragOffsetY = 0
+    this.refreshModelProfiles()
   }
 
   @Builder
@@ -87,54 +132,91 @@ export struct ModelTab {
   }
 
   @Builder
-  private ModelOption(profile: ModelProfile) {
-    Column({ space: 4 }) {
-      Row({ space: 6 }) {
-        Text(profile.name)
-          .fontSize(14)
-          .fontWeight(FontWeight.Medium)
-          .fontColor(this.viewModel.selectedModelId === profile.id ? '#F4FBFF' : '#B7CDE1')
-          .layoutWeight(1)
-        if (profile.source === 'imported') {
-          this.CapabilityTag('导入', '#45D6A4', '#12372E')
+  private ModelOption(profile: ModelProfile, index: number) {
+    Stack({ alignContent: Alignment.BottomEnd }) {
+      Column({ space: 4 }) {
+        Row({ space: 6 }) {
+          Text(profile.name)
+            .fontSize(14)
+            .fontWeight(FontWeight.Medium)
+            .fontColor(this.viewModel.selectedModelId === profile.id ? '#F4FBFF' : '#B7CDE1')
+            .layoutWeight(1)
+          if (profile.source === 'imported') {
+            this.CapabilityTag('导入', '#45D6A4', '#12372E')
+          }
+          this.CapabilityTag(
+            profile.supportsImage ? '文本 + 图片' : '仅文本',
+            profile.supportsImage ? '#8DE4C3' : '#F2B35D',
+            profile.supportsImage ? '#12372E' : '#3A2A14'
+          )
         }
-        this.CapabilityTag(profile.supportsImage ? '文本 + 图片' : '仅文本', profile.supportsImage ? '#8DE4C3' : '#F2B35D', '#0B1B2A')
+        .width('100%')
+
+        Text(profile.description)
+          .fontSize(12)
+          .lineHeight(18)
+          .fontColor(this.viewModel.selectedModelId === profile.id ? '#9FBDD5' : '#64788D')
+          .width('100%')
+          .padding({ right: 22 })
       }
       .width('100%')
 
-      Text(profile.description)
-        .fontSize(12)
-        .lineHeight(18)
-        .fontColor(this.viewModel.selectedModelId === profile.id ? '#9FBDD5' : '#64788D')
-        .width('100%')
+      Image($r('app.media.model_drag_handle_icon'))
+        .width(18)
+        .height(18)
+        .opacity(this.draggingModelId === profile.id ? 0.9 : 0.5)
+        .gesture(
+          GestureGroup(GestureMode.Parallel,
+            LongPressGesture({ duration: 350 })
+              .onAction(() => {
+                this.beginModelDrag(profile, index)
+              })
+              .onActionEnd(() => {
+                this.endModelDrag()
+              })
+              .onActionCancel(() => {
+                this.endModelDrag()
+              }),
+            PanGesture({ direction: PanDirection.Vertical, distance: 1 })
+              .onActionUpdate((event: GestureEvent) => {
+                this.updateModelDrag(event.offsetY)
+              })
+              .onActionEnd(() => {
+                this.endModelDrag()
+              })
+              .onActionCancel(() => {
+                this.endModelDrag()
+              })
+          )
+        )
     }
     .width('100%')
     .padding(10)
     .backgroundColor(this.viewModel.selectedModelId === profile.id ? '#14344A' : '#091522')
     .borderRadius(8)
+    .shadow(this.draggingModelId === profile.id ? {
+      radius: 16,
+      color: '#00000066',
+      offsetX: 0,
+      offsetY: 8
+    } : {
+      radius: 0,
+      color: '#00000000',
+      offsetX: 0,
+      offsetY: 0
+    })
+    .scale(this.draggingModelId === profile.id ? { x: 1.02, y: 1.02 } : { x: 1, y: 1 })
+    .translate({ x: 0, y: this.draggingModelId === profile.id ? this.dragOffsetY : 0 })
+    .zIndex(this.draggingModelId === profile.id ? 10 : 0)
+    .animation({ duration: this.draggingModelId === profile.id ? 80 : 180, curve: Curve.EaseInOut })
     .onClick(() => {
-      if (!this.controlsEnabled()) {
+      if (!this.controlsEnabled() || this.draggingModelId.length > 0) {
         return
       }
       this.viewModel.switchModel(profile.id)
       this.syncGenerationSlidersFromViewModel()
+      this.importedConfigExpanded = profile.source === 'imported'
     })
-  }
-
-  private chatFormatLabel(): string {
-    if (this.viewModel.importedModelChatFormatInput === CHAT_FORMAT_RAW_TEMPLATE) {
-      return '原始模板'
-    }
-    if (this.viewModel.importedModelChatFormatInput === CHAT_FORMAT_QWEN_IM) {
-      return 'Qwen IM'
-    }
-    if (this.viewModel.importedModelChatFormatInput === CHAT_FORMAT_GEMMA_TURN) {
-      return 'Gemma Turn'
-    }
-    if (this.viewModel.importedModelChatFormatInput === CHAT_FORMAT_MINICPM_THINKING) {
-      return 'MiniCPM Thinking'
-    }
-    return '自动'
   }
 
   private contextDescription(): string {
@@ -150,31 +232,35 @@ export struct ModelTab {
     Column({ space: 10 }) {
       this.SectionTitle('模型列表')
       Column({ space: 8 }) {
-        ForEach(this.viewModel.modelProfiles(), (profile: ModelProfile) => {
-          this.ModelOption(profile)
+        ForEach(this.visibleModelProfiles, (profile: ModelProfile, index: number) => {
+          this.ModelOption(profile, index)
         }, (profile: ModelProfile) => profile.id)
       }
       .width('100%')
-      if (this.viewModel.loaded) {
-        Button('释放模型')
-          .enabled(this.controlsEnabled())
-          .height(38)
-          .width('100%')
-          .fontColor('#B7CDE1')
-          .backgroundColor('#14344A')
-          .onClick(() => {
-            this.viewModel.unloadModel()
-          })
-      }
-      Button(this.viewModel.loaded ? '重新加载模型' : '加载模型')
+      Button(this.viewModel.loaded ? '释放模型' : '加载模型')
         .enabled(this.controlsEnabled())
         .height(38)
         .width('100%')
-        .fontColor('#F4FBFF')
-        .backgroundColor('#0F62FE')
+        .fontColor(this.viewModel.loaded ? '#B7CDE1' : '#F4FBFF')
+        .backgroundColor(this.viewModel.loaded ? '#14344A' : '#0F62FE')
         .onClick(() => {
+          if (this.viewModel.loaded) {
+            this.viewModel.unloadModel()
+            return
+          }
             this.viewModel.loadModel()
           })
+      if (this.viewModel.canDeleteModel(this.viewModel.selectedModelId)) {
+        Button('删除当前模型')
+          .enabled(this.controlsEnabled())
+          .height(38)
+          .width('100%')
+          .fontColor('#F4FBFF')
+          .backgroundColor('#B43B3B')
+          .onClick(() => {
+            this.viewModel.requestDeleteModel(this.viewModel.selectedModelId)
+          })
+      }
     }
     .width('100%')
     .padding(12)
@@ -399,6 +485,7 @@ export struct ModelTab {
           .enabled(this.controlsEnabled())
           .height(36)
           .width('100%')
+          .fontColor('#F4FBFF')
           .onClick(() => {
             this.resetGenerationSliders()
           })
@@ -501,7 +588,7 @@ export struct ModelTab {
         .onClick(() => {
           this.importedConfigExpanded = !this.importedConfigExpanded
         })
-        Text('可修改已导入模型的名称、系统提示词、对话格式和停止序列')
+        Text('可修改已导入模型的名称和系统提示词')
           .fontSize(11)
           .fontColor('#5A7A9A')
           .width('100%')
@@ -560,33 +647,13 @@ export struct ModelTab {
           }
           .width('100%')
 
-          Button(this.viewModel.showAdvancedModelSettings ? '收起高级参数' : '展开高级参数')
-            .enabled(this.controlsEnabled())
-            .height(38)
-            .width('100%')
-            .onClick(() => {
-              this.viewModel.toggleAdvancedModelSettings()
-            })
-
-          if (this.viewModel.showAdvancedModelSettings) {
-            this.ImportedAdvancedSettings()
-          }
-
           Button('保存配置')
             .enabled(this.controlsEnabled())
             .height(38)
             .width('100%')
+            .fontColor('#F4FBFF')
             .onClick(() => {
               this.viewModel.saveImportedModelProfile()
-            })
-
-          Button('删除模型')
-            .enabled(this.controlsEnabled())
-            .height(38)
-            .width('100%')
-            .backgroundColor('#733030')
-            .onClick(() => {
-              this.viewModel.requestDeleteImportedModel(this.viewModel.currentModel().id)
             })
         }
       }
@@ -598,32 +665,6 @@ export struct ModelTab {
   }
 
   @Builder
-  private ImportedAdvancedSettings() {
-    Column({ space: 8 }) {
-      Column({ space: 4 }) {
-        Text('对话格式')
-          .fontSize(12)
-          .fontColor('#8CA2B8')
-          .width('100%')
-        Button(this.chatFormatLabel())
-          .enabled(this.controlsEnabled())
-          .height(38)
-          .backgroundColor('#15283D')
-          .width('100%')
-          .onClick(() => {
-            this.viewModel.cycleImportedModelChatFormat()
-          })
-      }
-      .width('100%')
-
-    }
-    .width('100%')
-    .padding(10)
-    .backgroundColor('#091522')
-    .borderRadius(8)
-  }
-
-  @Builder
   private ModelManagementCard() {
     Column({ space: 8 }) {
       this.SectionTitle('模型管理')
@@ -631,6 +672,7 @@ export struct ModelTab {
         .enabled(this.controlsEnabled())
         .height(38)
         .width('100%')
+        .fontColor('#F4FBFF')
         .onClick(() => {
           this.viewModel.importModelPackage()
         })

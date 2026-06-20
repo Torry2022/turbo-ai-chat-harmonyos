@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -69,10 +70,12 @@ public:
         const SamplingConfig& sampling,
         const std::function<void(const std::string&)>& onChunk,
         std::string& error);
+    void requestStop();
     void reset();
     bool isLoaded() const;
 
 private:
     mutable std::mutex mutex_;
+    std::atomic_bool stopRequested_{false};
     std::unique_ptr<MNN::Transformer::Llm> llm_;
 };

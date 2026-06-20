@@ -30,6 +30,9 @@ export struct ChatTab {
       .layoutWeight(1)
       .width('100%')
       .divider({ strokeWidth: 0 })
+      .onClick(() => {
+        this.inputController.stopEditing()
+      })
 
       if (this.viewModel.selectedImageUri.length > 0) {
         Row({ space: 8 }) {
@@ -47,6 +50,7 @@ export struct ChatTab {
           Button('清除')
             .height(34)
             .onClick(() => {
+              this.inputController.stopEditing()
               this.viewModel.clearSelectedImage()
             })
         }
@@ -54,6 +58,9 @@ export struct ChatTab {
         .padding(8)
         .backgroundColor('#101D2B')
         .borderRadius(8)
+        .onClick(() => {
+          this.inputController.stopEditing()
+        })
       }
 
       Stack({ alignContent: Alignment.End }) {
@@ -81,25 +88,36 @@ export struct ChatTab {
         }
 
         Row({ space: 4 }) {
-          if (this.viewModel.currentModel().supportsImage && this.viewModel.loaded) {
-            Image(this.viewModel.busy ? $r('app.media.icon_image_add_muted') : $r('app.media.icon_image_add'))
+          if (this.viewModel.generating) {
+            Image(this.viewModel.generationStopping ? $r('app.media.icon_stop_generation_disabled') : $r('app.media.icon_stop_generation'))
               .width(36)
               .height(36)
               .onClick(() => {
-                if (!this.viewModel.busy) {
+                if (!this.viewModel.generationStopping) {
+                  this.inputController.stopEditing()
+                  this.viewModel.stopGeneration()
+                }
+              })
+          } else {
+            if (this.viewModel.currentModel().supportsImage && this.viewModel.loaded) {
+              Image($r('app.media.icon_image_add'))
+                .width(36)
+                .height(36)
+                .onClick(() => {
+                  this.inputController.stopEditing()
                   this.viewModel.chooseImage()
+                })
+            }
+            Image(this.viewModel.loaded && this.viewModel.inputText.trim().length > 0 && (this.viewModel.selectedImageUri.length === 0 || this.viewModel.currentModel().supportsImage) ? $r('app.media.icon_send') : $r('app.media.icon_send_disabled'))
+              .width(36)
+              .height(36)
+              .onClick(() => {
+                if (this.viewModel.loaded && this.viewModel.inputText.trim().length > 0) {
+                  this.inputController.stopEditing()
+                  this.viewModel.sendMessage()
                 }
               })
           }
-          Image(this.viewModel.loaded && !this.viewModel.busy && this.viewModel.inputText.trim().length > 0 && (this.viewModel.selectedImageUri.length === 0 || this.viewModel.currentModel().supportsImage) ? $r('app.media.icon_send') : $r('app.media.icon_send_disabled'))
-            .width(36)
-            .height(36)
-            .onClick(() => {
-              if (this.viewModel.loaded && !this.viewModel.busy && this.viewModel.inputText.trim().length > 0) {
-                this.inputController.stopEditing()
-                this.viewModel.sendMessage()
-              }
-            })
         }
         .margin({ right: 10 })
       }

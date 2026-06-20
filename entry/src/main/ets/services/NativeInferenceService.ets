@@ -49,6 +49,10 @@ export class NativeInferenceService {
     entry.reset()
   }
 
+  stopGeneration(): void {
+    entry.stopGeneration()
+  }
+
   isLoaded(): boolean {
     return entry.isLoaded() as boolean
   }

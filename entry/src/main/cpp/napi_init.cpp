@@ -844,6 +844,13 @@ napi_value Reset(napi_env env, napi_callback_info info) {
     return result;
 }
 
+napi_value StopGeneration(napi_env env, napi_callback_info info) {
+    g_runner.requestStop();
+    napi_value result = nullptr;
+    napi_get_undefined(env, &result);
+    return result;
+}
+
 napi_value IsLoaded(napi_env env, napi_callback_info info) {
     napi_value result = nullptr;
     napi_get_boolean(env, g_runner.isLoaded(), &result);
@@ -860,6 +867,7 @@ static napi_value Init(napi_env env, napi_value exports) {
         {"generateRawPromptStream", nullptr, GenerateRawPromptStream, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"generateChatStream", nullptr, GenerateChatStream, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"generateImageChatStream", nullptr, GenerateImageChatStream, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"stopGeneration", nullptr, StopGeneration, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"reset", nullptr, Reset, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"isLoaded", nullptr, IsLoaded, nullptr, nullptr, nullptr, napi_default, nullptr},
     };

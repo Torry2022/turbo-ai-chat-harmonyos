@@ -9,9 +9,6 @@ export interface ImportedModelDraft {
   shortName: string
   supportsImage: boolean
   systemPrompt: string
-  chatFormat: string
-  promptTemplate: string
-  stopSequence: string
 }
 
 export interface ModelImportResult {

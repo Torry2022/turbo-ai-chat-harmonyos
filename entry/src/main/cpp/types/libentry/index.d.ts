@@ -48,5 +48,6 @@ export const generateImageChatStream: (
   settings: GenerationSettings,
   onChunk: (chunk: string) => void
 ) => Promise<GenerationResult>;
+export const stopGeneration: () => void;
 export const reset: () => void;
 export const isLoaded: () => boolean;

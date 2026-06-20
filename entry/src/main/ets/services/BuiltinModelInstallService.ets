@@ -35,6 +35,19 @@ export class BuiltinModelInstallService {
     return true
   }
 
+  async deleteInstalled(filesDir: string, profile: ModelProfile): Promise<boolean> {
+    const spec = this.getDownloadSpec(profile)
+    if (spec === undefined) {
+      return false
+    }
+    const targetDir = `${filesDir}/${spec.directoryName}`
+    if (!await this.exists(targetDir)) {
+      return false
+    }
+    await this.deletePathRecursive(targetDir)
+    return true
+  }
+
   async install(
     context: common.UIAbilityContext,
     profile: ModelProfile,
@@ -174,5 +187,21 @@ export class BuiltinModelInstallService {
     } catch (_) {
       return false
     }
+  }
+
+  private async deletePathRecursive(path: string): Promise<void> {
+    const stat = await fs.stat(path)
+    if (stat.isFile()) {
+      await fs.unlink(path)
+      return
+    }
+    if (!stat.isDirectory()) {
+      return
+    }
+    const names = await fs.listFile(path)
+    for (let index = 0; index < names.length; index++) {
+      await this.deletePathRecursive(`${path}/${names[index]}`)
+    }
+    await fs.rmdir(path)
   }
 }

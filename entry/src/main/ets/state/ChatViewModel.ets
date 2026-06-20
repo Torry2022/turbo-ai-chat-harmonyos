@@ -1,14 +1,10 @@
 import { common } from '@kit.AbilityKit'
 import fs from '@ohos.file.fs'
+import preferences from '@ohos.data.preferences'
 import { ChatMessage, ChatTurn, GenerationResult, GenerationSettings, PerfMetrics } from '../models/ChatTypes'
 import { ImportedModelDraft } from '../models/ImportedModelTypes'
 import { BuiltinModelDownloadSpec, BuiltinModelInstallProgress } from '../models/BuiltinModelDownloadTypes'
 import {
-  CHAT_FORMAT_GEMMA_TURN,
-  CHAT_FORMAT_MINICPM_THINKING,
-  CHAT_FORMAT_MNN_AUTO,
-  CHAT_FORMAT_QWEN_IM,
-  CHAT_FORMAT_RAW_TEMPLATE,
   DEFAULT_FREQUENCY_PENALTY,
   DEFAULT_MAX_NEW_TOKENS,
   DEFAULT_PENALTY_WINDOW,
@@ -39,6 +35,8 @@ export class ChatViewModel {
   inputText: string = ''
   selectedImageUri: string = ''
   busy: boolean = false
+  generating: boolean = false
+  generationStopping: boolean = false
   loaded: boolean = false
   status: string = '模型未加载'
   maxNewTokens: number = DEFAULT_MAX_NEW_TOKENS
@@ -50,7 +48,6 @@ export class ChatViewModel {
   frequencyPenalty: number = DEFAULT_FREQUENCY_PENALTY
   presencePenalty: number = DEFAULT_PRESENCE_PENALTY
   penaltyWindow: number = DEFAULT_PENALTY_WINDOW
-  showAdvancedModelSettings: boolean = false
   showModelLoadDialog: boolean = false
   modelLoading: boolean = false
   modelLoadProgress: number = 0
@@ -71,11 +68,8 @@ export class ChatViewModel {
   importedModelNameInput: string = ''
   importedModelShortNameInput: string = ''
   importedModelSystemPromptInput: string = ''
-  importedModelChatFormatInput: string = CHAT_FORMAT_MNN_AUTO
-  importedModelPromptTemplateInput: string = ''
-  importedModelStopSequenceInput: string = ''
-  showDeleteImportedModelDialog: boolean = false
-  pendingDeleteImportedModelId: string = ''
+  showDeleteModelDialog: boolean = false
+  pendingDeleteModelId: string = ''
   stats: RuntimeStats = EMPTY_RUNTIME_STATS
   streamingChars: number = 0
   latestPerfMetrics?: PerfMetrics
@@ -93,6 +87,8 @@ export class ChatViewModel {
   private builtinModelInstallService: BuiltinModelInstallService = new BuiltinModelInstallService()
   private modelImportService: ModelImportService = new ModelImportService()
   private statsService: RuntimeStatsService = new RuntimeStatsService()
+  private readonly modelOrderPreferenceName: string = 'model-settings'
+  private readonly modelOrderPreferenceKey: string = 'model-order'
 
   get modelPath(): string {
     return this.modelManager.modelPath
@@ -118,6 +114,7 @@ export class ChatViewModel {
     this.context = context
     this.filesDir = context.filesDir
     this.modelManager.initialize(this.filesDir)
+    this.loadModelOrder()
     this.resetGenerationSettings(false)
     this.session.initializeWelcome(this.currentModel().shortName)
     this.syncMessages()
@@ -259,11 +256,6 @@ export class ChatViewModel {
     return this.currentModel().generationDefaults ?? {}
   }
 
-  toggleAdvancedModelSettings(): void {
-    this.showAdvancedModelSettings = !this.showAdvancedModelSettings
-    this.notify()
-  }
-
   importModelPackage(): void {
     if (this.busy || this.modelLoading || this.modelImporting || this.builtinModelInstalling) {
       return
@@ -335,7 +327,7 @@ export class ChatViewModel {
       } else {
         this.prepareImportedModelEditor(this.selectedModelId)
         this.modelImportMessage = result.skippedCount > 0 ?
-          '未发现新的可导入 MNN 目录，请确认目录中包含 config.json 和 .mnn 文件。' :
+          '未发现新的可导入 MNN 目录，请确认目录包含 config.json、.mnn 文件和可识别的对话模板。' :
           '未发现新的已推送模型目录。'
         this.status = this.loaded ? `${this.currentModel().shortName} 已加载` : this.status
       }
@@ -359,9 +351,6 @@ export class ChatViewModel {
       this.importedModelNameInput = ''
       this.importedModelShortNameInput = ''
       this.importedModelSystemPromptInput = ''
-      this.importedModelChatFormatInput = CHAT_FORMAT_MNN_AUTO
-      this.importedModelPromptTemplateInput = ''
-      this.importedModelStopSequenceInput = ''
       return
     }
     const draft = this.modelImportService.createDraft(profile)
@@ -369,9 +358,6 @@ export class ChatViewModel {
     this.importedModelNameInput = draft.name
     this.importedModelShortNameInput = draft.shortName
     this.importedModelSystemPromptInput = draft.systemPrompt
-    this.importedModelChatFormatInput = draft.chatFormat
-    this.importedModelPromptTemplateInput = draft.promptTemplate
-    this.importedModelStopSequenceInput = draft.stopSequence
   }
 
   updateImportedModelName(value: string): void {
@@ -389,29 +375,6 @@ export class ChatViewModel {
     this.notify()
   }
 
-  updateImportedModelChatFormat(value: string): void {
-    this.importedModelChatFormatInput = value
-    this.notify()
-  }
-
-  cycleImportedModelChatFormat(): void {
-    if (this.importedModelChatFormatInput === CHAT_FORMAT_MNN_AUTO) {
-      this.importedModelChatFormatInput = CHAT_FORMAT_RAW_TEMPLATE
-    } else if (this.importedModelChatFormatInput === CHAT_FORMAT_RAW_TEMPLATE) {
-      this.importedModelChatFormatInput = CHAT_FORMAT_QWEN_IM
-    } else if (this.importedModelChatFormatInput === CHAT_FORMAT_QWEN_IM) {
-      this.importedModelChatFormatInput = CHAT_FORMAT_MINICPM_THINKING
-    } else if (this.importedModelChatFormatInput === CHAT_FORMAT_MINICPM_THINKING) {
-      this.importedModelChatFormatInput = CHAT_FORMAT_GEMMA_TURN
-    } else if (this.importedModelChatFormatInput === CHAT_FORMAT_GEMMA_TURN) {
-      this.importedModelChatFormatInput = CHAT_FORMAT_MNN_AUTO
-    } else {
-      this.importedModelChatFormatInput = CHAT_FORMAT_MNN_AUTO
-    }
-    this.syncImportedTemplateFieldsForFormat()
-    this.notify()
-  }
-
   saveImportedModelProfile(): void {
     if (this.busy || this.modelLoading || this.modelImporting || this.editingImportedModelId.length <= 0) {
       return
@@ -426,10 +389,7 @@ export class ChatViewModel {
       name: this.importedModelNameInput,
       shortName: this.importedModelShortNameInput,
       supportsImage: profile.supportsImage,
-      systemPrompt: this.importedModelSystemPromptInput,
-      chatFormat: this.importedModelChatFormatInput,
-      promptTemplate: this.promptTemplateForImportedProfile(profile),
-      stopSequence: this.stopSequenceForImportedProfile(profile)
+      systemPrompt: this.importedModelSystemPromptInput
     }
     const updated = this.modelImportService.applyDraft(profile, draft)
     this.modelImportService.updateImportedProfile(this.filesDir, updated, this.modelProfiles()).then((profiles: ModelProfile[]) => {
@@ -447,63 +407,95 @@ export class ChatViewModel {
     })
   }
 
-  requestDeleteImportedModel(modelId: string): void {
+  requestDeleteModel(modelId: string): void {
     if (this.busy || this.modelLoading || this.modelImporting || this.builtinModelInstalling) {
       return
     }
     const profile = this.findProfile(modelId)
-    if (profile === undefined || profile.source !== 'imported') {
+    if (profile === undefined || !this.canDeleteModel(modelId)) {
       return
     }
-    this.pendingDeleteImportedModelId = modelId
-    this.showDeleteImportedModelDialog = true
+    this.pendingDeleteModelId = modelId
+    this.showDeleteModelDialog = true
     this.notify()
   }
 
-  cancelDeleteImportedModel(): void {
-    this.pendingDeleteImportedModelId = ''
-    this.showDeleteImportedModelDialog = false
+  cancelDeleteModel(): void {
+    this.pendingDeleteModelId = ''
+    this.showDeleteModelDialog = false
     this.notify()
   }
 
-  confirmDeleteImportedModel(): void {
-    if (this.pendingDeleteImportedModelId.length <= 0 || this.busy || this.modelLoading || this.modelImporting) {
+  confirmDeleteModel(): void {
+    if (this.pendingDeleteModelId.length <= 0 || this.busy || this.modelLoading || this.modelImporting || this.builtinModelInstalling) {
       return
     }
-    const modelId = this.pendingDeleteImportedModelId
+    const modelId = this.pendingDeleteModelId
     const profile = this.findProfile(modelId)
     if (profile === undefined) {
-      this.cancelDeleteImportedModel()
+      this.cancelDeleteModel()
       return
     }
 
     this.busy = true
     this.modelImporting = true
-    this.showDeleteImportedModelDialog = false
+    this.showDeleteModelDialog = false
     this.modelImportMessage = `正在删除 ${profile.shortName}...`
     this.notify()
 
-    this.modelImportService.deleteImportedProfile(this.filesDir, modelId).then((profiles: ModelProfile[]) => {
+    const deleteTask: Promise<ModelProfile[] | undefined> = profile.source === 'imported' ?
+      this.modelImportService.deleteImportedProfile(this.filesDir, modelId) :
+      this.builtinModelInstallService.deleteInstalled(this.filesDir, profile).then((_deleted: boolean) => undefined)
+
+    deleteTask.then((profiles: ModelProfile[] | undefined) => {
       const deletingCurrent = this.selectedModelId === modelId
       if (deletingCurrent && this.loaded) {
         this.nativeService.reset()
         this.loaded = false
       }
-      this.modelManager.updateImportedProfiles(profiles, this.filesDir)
+      if (profiles !== undefined) {
+        this.modelManager.updateImportedProfiles(profiles, this.filesDir)
+      }
       this.prepareImportedModelEditor(this.selectedModelId)
-      this.pendingDeleteImportedModelId = ''
+      this.pendingDeleteModelId = ''
       this.modelImportMessage = `${profile.shortName} 已删除`
-      this.status = deletingCurrent ? '导入模型已删除，请重新选择并加载模型。' : this.status
+      this.status = deletingCurrent ? `${profile.shortName} 已删除，请重新安装或选择其他模型。` : this.status
       this.busy = false
       this.modelImporting = false
       this.notify()
     }).catch((err: Error) => {
-      this.pendingDeleteImportedModelId = ''
+      this.pendingDeleteModelId = ''
       this.modelImportMessage = `删除失败：${formatError(err as Object)}`
       this.busy = false
       this.modelImporting = false
       this.notify()
     })
+  }
+
+  moveModelToIndex(modelId: string, targetIndex: number): void {
+    if (this.busy || this.modelLoading || this.modelImporting || this.builtinModelInstalling) {
+      return
+    }
+    if (!this.modelManager.moveProfile(modelId, targetIndex, this.filesDir)) {
+      return
+    }
+    this.saveModelOrder()
+    this.notify()
+  }
+
+  canDeleteModel(modelId: string): boolean {
+    const profile = this.findProfile(modelId)
+    if (profile === undefined) {
+      return false
+    }
+    return profile.source === 'imported' || this.builtinModelInstallService.getDownloadSpec(profile) !== undefined
+  }
+
+  pendingDeleteModel(): ModelProfile | undefined {
+    if (this.pendingDeleteModelId.length <= 0) {
+      return undefined
+    }
+    return this.findProfile(this.pendingDeleteModelId)
   }
 
   clearSelectedImage(): void {
@@ -552,7 +544,7 @@ export class ChatViewModel {
       }
       this.showModelLoadDialog = true
       this.modelLoadProgress = this.loaded ? 100 : 0
-      this.modelLoadMessage = this.loaded ? `${this.currentModel().shortName} 已加载，可以开始聊天。` : `正在准备加载 ${this.currentModel().shortName} 本地模型...`
+      this.modelLoadMessage = this.loaded ? `${this.currentModel().shortName} 已加载，可以开始聊天。` : `${this.currentModel().shortName} 尚未加载，点击加载模型开始。`
       this.notify()
       if (autoStart) {
         setTimeout(() => {
@@ -743,6 +735,8 @@ export class ChatViewModel {
     this.inputText = ''
     this.selectedImageUri = ''
     this.busy = true
+    this.generating = true
+    this.generationStopping = false
     this.streamingChars = 0
     this.latestPerfMetrics = undefined
     this.status = '等待首个字元...'
@@ -760,6 +754,13 @@ export class ChatViewModel {
         this.status = '正在读取图片...'
         this.notify()
         generation = this.imageService.buildImagePayload(attachedImage).then((payload) => {
+          if (this.generationStopping) {
+            return {
+              text: '',
+              generatedTokens: 0,
+              stopReason: 'user_stop'
+            } as GenerationResult
+          }
           this.status = '等待视觉模型...'
           this.notify()
           return this.nativeService.generateImage(
@@ -787,6 +788,8 @@ export class ChatViewModel {
       }
     } catch (err) {
       this.busy = false
+      this.generating = false
+      this.generationStopping = false
       this.status = `生成失败：${formatError(err as Object)}`
       this.notify()
       return
@@ -798,7 +801,8 @@ export class ChatViewModel {
         this.applyExpectedAssistantOutputPrefix(result.text, assistantOutputPrefix),
         this.shouldStripLeadingAssistantSeparator()
       ))
-      const answer = cleanedText.length > 0 ? cleanedText : '（原生层返回空内容）'
+      const answer = cleanedText.length > 0 ? cleanedText :
+        (result.stopReason === 'user_stop' ? '（已停止生成）' : '（原生层返回空内容）')
       const includeInContext = this.shouldIncludeAssistantInContext(answer, result)
 
       const ttft: number = firstTokenTime > 0 ? firstTokenTime - genStartTime : 0
@@ -815,10 +819,12 @@ export class ChatViewModel {
 
       this.latestPerfMetrics = perf
       this.streamingChars = answer.length
-      this.session.updateMessage(assistantId, answer, includeInContext, perf)
+      this.session.updateMessage(assistantId, answer, includeInContext, result.stopReason === 'user_stop' ? undefined : perf)
       this.syncMessages()
       this.status = this.formatGenerationStatus(answer, includeInContext, result)
       this.busy = false
+      this.generating = false
+      this.generationStopping = false
       this.refreshStats()
       this.notifyAndScroll()
     }).catch((err: Error) => {
@@ -828,9 +834,21 @@ export class ChatViewModel {
       this.status = message
       this.latestPerfMetrics = undefined
       this.busy = false
+      this.generating = false
+      this.generationStopping = false
       this.refreshStats()
       this.notifyAndScroll()
     })
+  }
+
+  stopGeneration(): void {
+    if (!this.generating || this.generationStopping) {
+      return
+    }
+    this.generationStopping = true
+    this.status = '正在停止生成...'
+    this.nativeService.stopGeneration()
+    this.notify()
   }
 
   scrollToBottom(): void {
@@ -935,49 +953,10 @@ export class ChatViewModel {
   }
 
   private shouldStripLeadingAssistantSeparator(): boolean {
-    const model = this.currentModel()
-    return model.source === 'imported' && (model.chatFormat ?? CHAT_FORMAT_MNN_AUTO) === CHAT_FORMAT_RAW_TEMPLATE
+    return false
   }
 
   private generateTextForCurrentModel(turns: ChatTurn[], onChunk: (chunk: string) => void): Promise<GenerationResult> {
-    const model = this.currentModel()
-    const chatFormat = model.chatFormat ?? CHAT_FORMAT_MNN_AUTO
-    if (chatFormat === CHAT_FORMAT_MINICPM_THINKING) {
-      return this.nativeService.generateRawPrompt(
-        this.composeMiniCpmThinkingPrompt(turns),
-        this.maxNewTokens,
-        '<|im_end|>',
-        this.currentGenerationSettings(),
-        onChunk
-      )
-    }
-    if (chatFormat === CHAT_FORMAT_GEMMA_TURN) {
-      return this.nativeService.generateRawPrompt(
-        this.composeGemmaTurnPrompt(turns),
-        this.maxNewTokens,
-        model.stopSequence ?? '<turn|>',
-        this.currentGenerationSettings(),
-        onChunk
-      )
-    }
-    if (chatFormat === CHAT_FORMAT_QWEN_IM) {
-      return this.nativeService.generateRawPrompt(
-        this.composeQwenPrompt(turns),
-        this.maxNewTokens,
-        model.stopSequence ?? '<|im_end|>',
-        this.currentGenerationSettings(),
-        onChunk
-      )
-    }
-    if (chatFormat === CHAT_FORMAT_RAW_TEMPLATE && model.promptTemplate !== undefined && model.promptTemplate.length > 0) {
-      return this.nativeService.generateRawPrompt(
-        this.composeRawTemplatePrompt(turns, model.promptTemplate, model),
-        this.maxNewTokens,
-        model.stopSequence ?? '',
-        this.currentGenerationSettings(),
-        onChunk
-      )
-    }
     return this.nativeService.generateText(turns, this.maxNewTokens, this.currentGenerationSettings(), onChunk)
   }
 
@@ -1008,162 +987,6 @@ export class ChatViewModel {
     }
   }
 
-  private syncImportedTemplateFieldsForFormat(): void {
-    const profile = this.findProfile(this.editingImportedModelId)
-    const originalTemplate = profile?.promptTemplate ?? ''
-    if (this.importedModelChatFormatInput === CHAT_FORMAT_MNN_AUTO) {
-      this.importedModelPromptTemplateInput = ''
-      this.importedModelStopSequenceInput = ''
-      return
-    }
-    if (this.importedModelChatFormatInput === CHAT_FORMAT_QWEN_IM) {
-      this.importedModelPromptTemplateInput = ''
-      this.importedModelStopSequenceInput = '<|im_end|>'
-      return
-    }
-    if (this.importedModelChatFormatInput === CHAT_FORMAT_MINICPM_THINKING) {
-      this.importedModelPromptTemplateInput = ''
-      this.importedModelStopSequenceInput = '</s>'
-      return
-    }
-    if (this.importedModelChatFormatInput === CHAT_FORMAT_GEMMA_TURN) {
-      this.importedModelPromptTemplateInput = ''
-      this.importedModelStopSequenceInput = '<turn|>'
-      return
-    }
-    this.importedModelPromptTemplateInput = originalTemplate
-    this.importedModelStopSequenceInput = this.inferStopSequenceForTemplate(originalTemplate, profile?.name ?? '')
-  }
-
-  private promptTemplateForImportedProfile(profile: ModelProfile): string {
-    if (this.importedModelChatFormatInput === CHAT_FORMAT_RAW_TEMPLATE) {
-      const currentTemplate = this.importedModelPromptTemplateInput.trim()
-      if (currentTemplate.length > 0) {
-        return currentTemplate
-      }
-      return profile.promptTemplate ?? ''
-    }
-    if (this.importedModelChatFormatInput === CHAT_FORMAT_QWEN_IM) {
-      return ''
-    }
-    if (this.importedModelChatFormatInput === CHAT_FORMAT_MINICPM_THINKING) {
-      return ''
-    }
-    return ''
-  }
-
-  private stopSequenceForImportedProfile(profile: ModelProfile): string {
-    if (this.importedModelChatFormatInput === CHAT_FORMAT_QWEN_IM) {
-      return '<|im_end|>'
-    }
-    if (this.importedModelChatFormatInput === CHAT_FORMAT_MINICPM_THINKING) {
-      return '</s>'
-    }
-    if (this.importedModelChatFormatInput === CHAT_FORMAT_GEMMA_TURN) {
-      return '<turn|>'
-    }
-    if (this.importedModelChatFormatInput === CHAT_FORMAT_RAW_TEMPLATE) {
-      const template = this.promptTemplateForImportedProfile(profile)
-      const currentStopSequence = this.importedModelStopSequenceInput.trim()
-      if (currentStopSequence.length > 0) {
-        return currentStopSequence
-      }
-      return this.inferStopSequenceForTemplate(template, profile.name)
-    }
-    return ''
-  }
-
-  private inferStopSequenceForTemplate(promptTemplate: string, modelName: string): string {
-    if (promptTemplate.indexOf('<|im_end|>') >= 0) {
-      return '<|im_end|>'
-    }
-    if (promptTemplate.indexOf('<|end_of_sentence|>') >= 0) {
-      return '<|end_of_sentence|>'
-    }
-    if (promptTemplate.indexOf('<|end_of_text|>') >= 0) {
-      return '<|end_of_text|>'
-    }
-    const lowerName = modelName.toLowerCase()
-    if (lowerName.indexOf('deepseek') >= 0) {
-      return '<|end_of_sentence|>'
-    }
-    if (lowerName.indexOf('qwen') >= 0 && lowerName.indexOf('deepseek') < 0) {
-      return '<|im_end|>'
-    }
-    return ''
-  }
-
-  private composeQwenPrompt(turns: ChatTurn[]): string {
-    let prompt = ''
-    turns.forEach((turn: ChatTurn) => {
-      const role = turn.role === 'assistant' ? 'assistant' : turn.role === 'system' ? 'system' : 'user'
-      const content = turn.content.trim()
-      if (content.length <= 0) {
-        return
-      }
-      prompt += `<|im_start|>${role}\n${content}<|im_end|>\n`
-    })
-    prompt += '<|im_start|>assistant\n'
-    return prompt
-  }
-
-  private composeGemmaTurnPrompt(turns: ChatTurn[]): string {
-    let prompt = '<bos>'
-    turns.forEach((turn: ChatTurn) => {
-      const role = turn.role === 'assistant' ? 'model' : turn.role === 'system' ? 'system' : 'user'
-      const content = turn.content.trim()
-      if (content.length <= 0) {
-        return
-      }
-      prompt += `<|turn>${role}\n${content}<turn|>\n`
-    })
-    prompt += '<|turn>model\n'
-    return prompt
-  }
-
-  private composeMiniCpmThinkingPrompt(turns: ChatTurn[]): string {
-    let prompt = '<s>'
-    turns.forEach((turn: ChatTurn) => {
-      const role = turn.role === 'assistant' ? 'assistant' : turn.role === 'system' ? 'system' : 'user'
-      const content = turn.content.trim()
-      if (content.length <= 0) {
-        return
-      }
-      prompt += `<|im_start|>${role}\n${content}<|im_end|>\n`
-    })
-    prompt += '<|im_start|>assistant\n'
-    return prompt
-  }
-
-  private composeRawTemplatePrompt(turns: ChatTurn[], promptTemplate: string, model: ModelProfile): string {
-    const conversation = this.composeRawTemplateUserText(turns, model)
-    if (promptTemplate.indexOf('%s') >= 0) {
-      return promptTemplate.replace('%s', conversation)
-    }
-    return `${promptTemplate}\n${conversation}`
-  }
-
-  private composeRawTemplateUserText(turns: ChatTurn[], model: ModelProfile): string {
-    let currentUserText = ''
-    turns.forEach((turn: ChatTurn) => {
-      const content = turn.content.trim()
-      if (content.length <= 0) {
-        return
-      }
-      if (turn.role === 'user') {
-        currentUserText = content
-      }
-    })
-    if (this.isDeepSeekModel(model)) {
-      return `请用简体中文回答用户问题。最终答案必须直接回答问题，不要在已经可以回答时说“我还没有学会回答这个问题”。\n\n用户问题：${currentUserText}`
-    }
-    return currentUserText
-  }
-
-  private isDeepSeekModel(model: ModelProfile): boolean {
-    return `${model.id} ${model.name} ${model.shortName}`.toLowerCase().indexOf('deepseek') >= 0
-  }
-
   private shouldIncludeAssistantInContext(answer: string, result: GenerationResult): boolean {
     if (answer.trim().length === 0) {
       return false
@@ -1171,7 +994,10 @@ export class ChatViewModel {
     if (result.stopReason === 'max_tokens') {
       return false
     }
-    if (result.stopReason === 'eos' || result.stopReason === 'user_stop') {
+    if (result.stopReason === 'user_stop') {
+      return false
+    }
+    if (result.stopReason === 'eos') {
       return true
     }
     if (result.stopReason === 'unknown') {
@@ -1184,6 +1010,9 @@ export class ChatViewModel {
     const tokenText = result.generatedTokens > 0 ? `，${result.generatedTokens} tokens` : ''
     if (result.stopReason === 'max_tokens') {
       return `生成完成（${answer.length} 字符${tokenText}，达到最大输出）`
+    }
+    if (result.stopReason === 'user_stop') {
+      return `已停止生成（${answer.length} 字符${tokenText}）`
     }
     if (!includeInContext) {
       return `生成完成（${answer.length} 字符${tokenText}，可能被截断）`
@@ -1199,6 +1028,34 @@ export class ChatViewModel {
       }
     }
     return undefined
+  }
+
+  private loadModelOrder(): void {
+    if (this.context === undefined) {
+      return
+    }
+    preferences.getPreferences(this.context, this.modelOrderPreferenceName).then((store: preferences.Preferences) => {
+      return store.get(this.modelOrderPreferenceKey, '')
+    }).then((value: preferences.ValueType) => {
+      if (typeof value !== 'string' || value.length <= 0) {
+        return
+      }
+      const order = JSON.parse(value.replace(/^\uFEFF/, '')) as string[]
+      this.modelManager.setModelOrder(order, this.filesDir)
+      this.notify()
+    }).catch((_err: Error) => {
+    })
+  }
+
+  private saveModelOrder(): void {
+    if (this.context === undefined) {
+      return
+    }
+    preferences.getPreferences(this.context, this.modelOrderPreferenceName).then((store: preferences.Preferences) => {
+      return store.put(this.modelOrderPreferenceKey, JSON.stringify(this.modelManager.modelOrderIds()))
+        .then(() => store.flush())
+    }).catch((_err: Error) => {
+    })
   }
 
   private handleStreamText(assistantId: number, streamedText: string, assistantOutputPrefix: string = ''): number {

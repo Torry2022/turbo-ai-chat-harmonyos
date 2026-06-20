@@ -1,8 +1,21 @@
 import { ChatViewModel } from '../state/ChatViewModel'
 
 @Component
-export struct DeleteImportedModelDialog {
+export struct DeleteModelDialog {
   @ObjectLink viewModel: ChatViewModel
+
+  private modelName(): string {
+    const model = this.viewModel.pendingDeleteModel()
+    return model === undefined ? '模型' : model.shortName
+  }
+
+  private description(): string {
+    const model = this.viewModel.pendingDeleteModel()
+    if (model !== undefined && model.source === 'builtin') {
+      return '删除后会清理该内置模型在 App 沙箱中的文件，模型条目仍会保留，可在需要时重新下载安装。当前对话不会被删除。'
+    }
+    return '删除后会移除该导入模型条目和 App 沙箱中的文件，当前对话不会被删除。'
+  }
 
   build() {
     Stack({ alignContent: Alignment.Center }) {
@@ -12,13 +25,13 @@ export struct DeleteImportedModelDialog {
         .backgroundColor('#00000099')
 
       Column({ space: 14 }) {
-        Text('删除导入模型')
+        Text(`删除 ${this.modelName()}`)
           .fontSize(20)
           .fontWeight(FontWeight.Bold)
           .fontColor('#F4FBFF')
           .width('100%')
 
-        Text('删除后会移除该模型在 App 沙箱中的文件，当前对话不会被删除。')
+        Text(this.description())
           .fontSize(14)
           .lineHeight(21)
           .fontColor('#B7CDE1')
@@ -28,22 +41,24 @@ export struct DeleteImportedModelDialog {
           Button('取消')
             .height(38)
             .layoutWeight(1)
+            .fontColor('#F4FBFF')
+            .backgroundColor('#14344A')
             .onClick(() => {
-              this.viewModel.cancelDeleteImportedModel()
+              this.viewModel.cancelDeleteModel()
             })
-          Button('删除')
+          Button('确认')
             .height(38)
             .layoutWeight(1)
             .backgroundColor('#B43B3B')
             .onClick(() => {
-              this.viewModel.confirmDeleteImportedModel()
+              this.viewModel.confirmDeleteModel()
             })
         }
         .width('100%')
       }
       .width('86%')
       .padding(18)
-      .backgroundColor('#0D1A28')
+      .backgroundColor('#152A3D')
       .borderRadius(10)
     }
     .width('100%')

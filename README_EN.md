@@ -25,10 +25,11 @@ In the HarmonyOS ecosystem, on-device AI inference today largely depends on Andr
 
 - Switched the default text model to Qwen3-4B-Instruct, with in-app ModelScope installation for Qwen3-4B-Instruct, MiniCPM5-1B, and Gemma-4-E2B-it.
 - Improved model import: in addition to zip import, you can push a complete MNN model directory into the app sandbox and scan it from the Model tab, which avoids large zip import failures.
-- Made model-page controls safer by disabling relevant actions while loading, importing, or generating.
+- Made model-page controls safer by disabling relevant actions while loading, importing, or generating; model ordering and deleting installed model directories are also supported.
+- Added generation interruption: during streaming output, the send button switches to a stop button, and stopped responses are not added to future conversation context.
 - Added a device status strip on the Chat tab for app CPU, app memory, and device temperature.
 - Added app storage usage, model state, and tighter device metrics to the Monitor tab.
-- Improved Markdown rendering, list parsing, thinking block display, and raw output logs for diagnosing repetition, stop tokens, and prompt template issues.
+- Improved Markdown rendering, list parsing, thinking block display, raw output logs, and MNN chat-template handling for diagnosing repetition, stop tokens, and prompt template issues.
 
 ## Quick Start
 
@@ -64,13 +65,14 @@ After the model loads, return to the Chat tab and send a message. MiniCPM5-1B di
 
 - Local inference: models run on-device, no network required
 - Streaming output: token-level real-time response
+- Stop generation: interrupt the current response while it is streaming
 - Model switching: Qwen3-4B-Instruct / MiniCPM5-1B / Gemma-4-E2B-it hot swap
 - Thinking blocks: MiniCPM5-1B displays reasoning process
 - Markdown rendering: code blocks (with copy button), tables, blockquotes, links, etc.
 - Generation parameter controls: temperature, Top-P/K, penalty terms, etc.
 - Performance metrics: TTFT, TPOT, tokens/s per assistant message
-- Built-in model management: one-click download, install, update
-- Import local MNN models via zip, or by pushing a directory and scanning it in the app
+- Model management: one-click built-in model download, model ordering, and deleting installed model directories
+- Import local MNN models via zip, or by pushing a directory and scanning it in the app; standard MNN export directories use `jinja.chat_template` from `llm_config.json`
 
 ## Screenshots
 
@@ -129,10 +131,12 @@ To register a pushed model as an imported model:
    The directory should contain `config.json`, `llm_config.json`, `llm.mnn`, `llm.mnn.weight`, and tokenizer files.
 
 5. Open the app → Model tab → expand "Model Management".
-6. Tap "Scan pushed directory". The app will find `config.json` and `.mnn` files, infer the prompt format, and update `model-imports/imported-models.json` automatically.
+6. Tap "Scan pushed directory". The app will find `config.json`, `.mnn` files, and a compatible chat template, then update `model-imports/imported-models.json` automatically.
 7. Select the new imported model from the model list and load it.
 
 The scanner only checks first-level subdirectories under `model-imports/`. Directory names must not contain `/`, `\`, or `..`. On Windows, run `hdc file send` from the parent directory of the model directory to avoid preserving extra parent paths or writing backslashes into the app sandbox. If your model is not under the repository `models/` directory, `cd` to that model directory's parent before pushing.
+
+Imported models are formatted by MNN by default. If `llm_config.json` contains `jinja.chat_template`, the app uses it directly. If that field is missing, the app only provides extra compatibility for automatically recognized legacy ChatML templates; otherwise, the directory is skipped as incompatible.
 
 ## PC-side Model Download Scripts
 
@@ -167,6 +171,7 @@ ArkTS calls N-API via `import entry from 'libentry.so'`:
 entry.loadModelAsync(configPath, threadNum, maxNewTokens, settings): Promise<string>
 entry.generateRawPromptStream(prompt, maxNewTokens, endWith, settings, onChunk): Promise<GenerationResult>
 entry.generateChatStream(messages, maxNewTokens, settings, onChunk): Promise<GenerationResult>
+entry.stopGeneration(): void
 entry.reset(): void
 entry.isLoaded(): boolean
 ```

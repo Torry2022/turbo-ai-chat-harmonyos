@@ -31,10 +31,6 @@ export interface GenerationDefaults {
 }
 
 export const CHAT_FORMAT_MNN_AUTO: string = 'mnn-auto'
-export const CHAT_FORMAT_RAW_TEMPLATE: string = 'raw-template'
-export const CHAT_FORMAT_QWEN_IM: string = 'qwen-im'
-export const CHAT_FORMAT_GEMMA_TURN: string = 'gemma-turn'
-export const CHAT_FORMAT_MINICPM_THINKING: string = 'minicpm-thinking'
 export const MAX_GENERATION_TOKENS: number = 2048
 export const DEFAULT_MAX_NEW_TOKENS: number = 512
 export const DEFAULT_THREAD_NUM: number = 6
@@ -81,8 +77,7 @@ export const MODEL_PROFILES: ModelProfile[] = [
     supportsImage: false,
     systemPrompt: '你是运行在本地设备上的 MiniCPM5-1B。请始终使用简体中文回答，表达简洁清楚。',
     source: 'builtin',
-    chatFormat: CHAT_FORMAT_MINICPM_THINKING,
-    stopSequence: '</s>',
+    chatFormat: CHAT_FORMAT_MNN_AUTO,
     contextMessageLimit: 0,
     generationDefaults: {
       temperature: 0.6,
@@ -107,7 +102,6 @@ export const MODEL_PROFILES: ModelProfile[] = [
     systemPrompt: '你是运行在本地设备上的 Gemma 4。请始终使用简体中文回答，表达简洁清楚。优先用一小段话直接回答，除非用户明确要求，不要分条列举、不要重复同一句话。用户提供图片时，请结合图片内容回答；如果用户要求提取文字，请尽量逐行转写图片中的可见文字。',
     source: 'builtin',
     chatFormat: CHAT_FORMAT_MNN_AUTO,
-    stopSequence: '<turn|>',
     contextMessageLimit: 6,
     generationDefaults: {
       temperature: 1.0,

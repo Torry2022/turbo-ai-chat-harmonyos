@@ -84,7 +84,8 @@ export class ChatSession {
           imageUri: message.imageUri,
           time: message.time,
           includeInContext: message.includeInContext,
-          thinkingExpanded: message.thinkingExpanded
+          thinkingExpanded: message.thinkingExpanded,
+          perfMetrics: message.perfMetrics
         }
       }
       return message
@@ -101,7 +102,8 @@ export class ChatSession {
           imageUri: message.imageUri,
           time: message.time,
           includeInContext: message.includeInContext,
-          thinkingExpanded: !message.thinkingExpanded
+          thinkingExpanded: !message.thinkingExpanded,
+          perfMetrics: message.perfMetrics
         }
       }
       return message

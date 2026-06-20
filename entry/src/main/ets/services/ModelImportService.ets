@@ -14,17 +14,16 @@ import {
   ModelImportResult
 } from '../models/ImportedModelTypes'
 import {
-  CHAT_FORMAT_GEMMA_TURN,
-  CHAT_FORMAT_MINICPM_THINKING,
   CHAT_FORMAT_MNN_AUTO,
-  CHAT_FORMAT_QWEN_IM,
-  CHAT_FORMAT_RAW_TEMPLATE,
   ModelProfile
 } from '../models/ModelProfile'
 import { formatError } from '../utils/formatters'
 
 interface MnnLlmConfig {
   prompt_template?: string
+  system_prompt_template?: string
+  user_prompt_template?: string
+  assistant_prompt_template?: string
   jinja?: MnnJinjaConfig
 }
 
@@ -33,11 +32,12 @@ interface MnnJinjaConfig {
   eos?: string
 }
 
-interface PromptTemplateProfile {
-  chatFormat: string
-  promptTemplate: string
-  stopSequence: string
-}
+const CHATML_JINJA_TEMPLATE: string = `{%- for message in messages %}
+{{- '<|im_start|>' + message.role + '\\n' + message.content + '<|im_end|>\\n' }}
+{%- endfor %}
+{%- if add_generation_prompt %}
+{{- '<|im_start|>assistant\\n' }}
+{%- endif %}`
 
 export class ModelImportService {
   async pickAndImport(context: common.UIAbilityContext, existingProfiles: ModelProfile[]): Promise<ModelImportResult | undefined> {
@@ -72,10 +72,10 @@ export class ModelImportService {
       if (!this.containsMnnFile(allFiles)) {
         throw new Error('模型包中未找到 .mnn 模型文件')
       }
+      await this.ensureChatMessagesTemplate(configPath)
 
       const inferredName = this.uniqueProfileName(this.inferName(zipUri, configPath, targetDir), existingProfiles)
       const inferredShortName = this.uniqueProfileShortName(this.toShortName(inferredName), existingProfiles)
-      const promptConfig = await this.readPromptTemplateProfile(configPath, inferredName)
       const profile: ModelProfile = {
         id: modelId,
         name: inferredName,
@@ -86,9 +86,9 @@ export class ModelImportService {
         systemPrompt: DEFAULT_IMPORTED_MODEL_PROMPT,
         source: IMPORTED_MODEL_SOURCE,
         configPath,
-        chatFormat: promptConfig.chatFormat,
-        promptTemplate: promptConfig.promptTemplate,
-        stopSequence: promptConfig.stopSequence,
+        chatFormat: CHAT_FORMAT_MNN_AUTO,
+        promptTemplate: '',
+        stopSequence: '',
         templateOverride: false,
         editable: true,
         removable: true
@@ -149,11 +149,14 @@ export class ModelImportService {
         skippedCount++
         continue
       }
+      if (!await this.isCompatibleChatMessagesTemplate(configPath)) {
+        skippedCount++
+        continue
+      }
 
       const profilePool = existingProfiles.concat(nextProfiles)
       const inferredName = this.uniqueProfileName(this.inferNameFromDirectory(configPath, targetDir, directoryName), profilePool)
       const inferredShortName = this.uniqueProfileShortName(this.toShortName(inferredName), profilePool)
-      const promptConfig = await this.readPromptTemplateProfile(configPath, inferredName)
       const profile: ModelProfile = {
         id: this.uniqueProfileId(`imported-${this.toSafeId(directoryName)}`, profilePool),
         name: inferredName,
@@ -164,9 +167,9 @@ export class ModelImportService {
         systemPrompt: DEFAULT_IMPORTED_MODEL_PROMPT,
         source: IMPORTED_MODEL_SOURCE,
         configPath,
-        chatFormat: promptConfig.chatFormat,
-        promptTemplate: promptConfig.promptTemplate,
-        stopSequence: promptConfig.stopSequence,
+        chatFormat: CHAT_FORMAT_MNN_AUTO,
+        promptTemplate: '',
+        stopSequence: '',
         templateOverride: false,
         editable: true,
         removable: true
@@ -237,10 +240,10 @@ export class ModelImportService {
         systemPrompt: updated.systemPrompt,
         source: IMPORTED_MODEL_SOURCE,
         configPath: profile.configPath,
-        chatFormat: updated.chatFormat,
-        promptTemplate: updated.promptTemplate,
-        stopSequence: updated.stopSequence,
-        templateOverride: updated.chatFormat !== CHAT_FORMAT_MNN_AUTO,
+        chatFormat: CHAT_FORMAT_MNN_AUTO,
+        promptTemplate: '',
+        stopSequence: '',
+        templateOverride: false,
         editable: true,
         removable: true
       } as ModelProfile
@@ -268,10 +271,7 @@ export class ModelImportService {
       name: profile.name,
       shortName: profile.shortName,
       supportsImage: profile.supportsImage,
-      systemPrompt: profile.systemPrompt,
-      chatFormat: profile.chatFormat ?? CHAT_FORMAT_MNN_AUTO,
-      promptTemplate: profile.promptTemplate ?? '',
-      stopSequence: profile.stopSequence ?? ''
+      systemPrompt: profile.systemPrompt
     }
   }
 
@@ -288,10 +288,10 @@ export class ModelImportService {
       systemPrompt: draft.systemPrompt.trim().length > 0 ? draft.systemPrompt.trim() : DEFAULT_IMPORTED_MODEL_PROMPT,
       source: IMPORTED_MODEL_SOURCE,
       configPath: profile.configPath,
-      chatFormat: draft.chatFormat,
-      promptTemplate: draft.promptTemplate,
-      stopSequence: draft.stopSequence,
-      templateOverride: draft.chatFormat !== CHAT_FORMAT_MNN_AUTO,
+      chatFormat: CHAT_FORMAT_MNN_AUTO,
+      promptTemplate: '',
+      stopSequence: '',
+      templateOverride: false,
       editable: true,
       removable: true
     }
@@ -533,6 +533,11 @@ export class ModelImportService {
   }
 
   private async normalizeImportedProfile(profile: ModelProfile): Promise<ModelProfile> {
+    if (profile.configPath !== undefined && profile.configPath.length > 0) {
+      try {
+        await this.ensureChatMessagesTemplate(profile.configPath)
+      } catch (_) {}
+    }
     const normalizedName = this.stripMnnSuffix(profile.name)
     const normalizedSystemPrompt = profile.systemPrompt === LEGACY_IMPORTED_MODEL_PROMPT ?
       DEFAULT_IMPORTED_MODEL_PROMPT :
@@ -542,13 +547,10 @@ export class ModelImportService {
       profile.shortName === this.legacyShortName(normalizedName) ||
       profile.shortName === normalizedName ||
       profile.shortName === profile.name
-    const hasTemplateOverride = profile.templateOverride === true
-    const inferredPromptConfig = profile.configPath === undefined || profile.configPath.length <= 0 ?
-      this.defaultPromptTemplateProfile(profile.name) :
-      await this.readPromptTemplateProfile(profile.configPath, profile.name)
-    const normalizedChatFormat = hasTemplateOverride ? profile.chatFormat ?? inferredPromptConfig.chatFormat : inferredPromptConfig.chatFormat
-    const normalizedPromptTemplate = hasTemplateOverride ? profile.promptTemplate ?? inferredPromptConfig.promptTemplate : inferredPromptConfig.promptTemplate
-    const normalizedStopSequence = hasTemplateOverride ? profile.stopSequence ?? inferredPromptConfig.stopSequence : inferredPromptConfig.stopSequence
+    const normalizedChatFormat = CHAT_FORMAT_MNN_AUTO
+    const normalizedPromptTemplate = ''
+    const normalizedStopSequence = ''
+    const hasTemplateOverride = false
     if (
       normalizedName !== profile.name ||
       normalizedSystemPrompt !== profile.systemPrompt ||
@@ -607,22 +609,56 @@ export class ModelImportService {
     return profiles.some((profile: ModelProfile) => profile.configPath === configPath)
   }
 
-  private async readPromptTemplateProfile(configPath: string, modelName: string): Promise<PromptTemplateProfile> {
+  private async ensureChatMessagesTemplate(configPath: string): Promise<void> {
+    await this.validateChatMessagesTemplate(configPath, true)
+  }
+
+  private async isCompatibleChatMessagesTemplate(configPath: string): Promise<boolean> {
+    try {
+      await this.validateChatMessagesTemplate(configPath, true)
+      return true
+    } catch (_) {
+      return false
+    }
+  }
+
+  private async validateChatMessagesTemplate(configPath: string, patchLegacyChatMl: boolean): Promise<void> {
     const llmConfigPath = this.llmConfigPath(configPath)
     if (llmConfigPath.length <= 0 || !await this.exists(llmConfigPath)) {
-      return this.defaultPromptTemplateProfile(modelName)
+      throw new Error('该 MNN 模型目录缺少 llm_config.json，无法确认对话模板。')
     }
-    try {
-      const text = await fs.readText(llmConfigPath)
-      const llmConfig = JSON.parse(text.replace(/^\uFEFF/, '')) as MnnLlmConfig
-      return this.inferPromptTemplateProfile(
-        llmConfig.prompt_template ?? llmConfig.jinja?.chat_template ?? '',
-        modelName,
-        llmConfig.jinja?.eos ?? ''
-      )
-    } catch (_) {
-      return this.defaultPromptTemplateProfile(modelName)
+    const text = await fs.readText(llmConfigPath)
+    const llmConfig = JSON.parse(text.replace(/^\uFEFF/, '')) as MnnLlmConfig
+    const existingJinjaTemplate = llmConfig.jinja?.chat_template ?? ''
+    if (existingJinjaTemplate.trim().length > 0) {
+      return
     }
+    const promptTemplate = llmConfig.prompt_template ?? ''
+    if (!this.isLegacyChatMlPromptTemplate(promptTemplate)) {
+      throw new Error('该 MNN 模型目录缺少 jinja.chat_template，且不是可自动兼容的 ChatML 旧模板。请使用新版 MNN 导出模型或补全 llm_config.json。')
+    }
+    if (!patchLegacyChatMl) {
+      return
+    }
+
+    llmConfig.system_prompt_template = this.valueOrDefault(
+      llmConfig.system_prompt_template,
+      '<|im_start|>system\n%s<|im_end|>\n'
+    )
+    llmConfig.user_prompt_template = this.valueOrDefault(
+      llmConfig.user_prompt_template,
+      '<|im_start|>user\n%s<|im_end|>\n'
+    )
+    llmConfig.assistant_prompt_template = this.valueOrDefault(
+      llmConfig.assistant_prompt_template,
+      '<|im_start|>assistant\n%s<|im_end|>\n'
+    )
+    const existingEos = llmConfig.jinja?.eos ?? ''
+    llmConfig.jinja = {
+      chat_template: CHATML_JINJA_TEMPLATE,
+      eos: existingEos.length > 0 ? existingEos : '<|im_end|>'
+    }
+    await this.writeText(llmConfigPath, JSON.stringify(llmConfig, undefined, 2))
   }
 
   private llmConfigPath(configPath: string): string {
@@ -633,69 +669,18 @@ export class ModelImportService {
     return `${configPath.substring(0, configPath.length - '/config.json'.length)}/llm_config.json`
   }
 
-  private defaultPromptTemplateProfile(modelName: string): PromptTemplateProfile {
-    return this.inferPromptTemplateProfile('', modelName, '')
+  private isLegacyChatMlPromptTemplate(promptTemplate: string): boolean {
+    return promptTemplate.indexOf('%s') >= 0 &&
+      promptTemplate.indexOf('<|im_start|>user') >= 0 &&
+      promptTemplate.indexOf('<|im_start|>assistant') >= 0 &&
+      promptTemplate.indexOf('<|im_end|>') >= 0
   }
 
-  private inferPromptTemplateProfile(promptTemplate: string, modelName: string, eos: string): PromptTemplateProfile {
-    const template = promptTemplate.trim()
-    const lowerTemplate = template.toLowerCase()
-    const lowerName = modelName.toLowerCase()
-    if (lowerTemplate.indexOf('<|im_start|>') >= 0 && lowerTemplate.indexOf('<|im_end|>') >= 0) {
-      if (lowerName.indexOf('minicpm') >= 0) {
-        return {
-          chatFormat: CHAT_FORMAT_MINICPM_THINKING,
-          promptTemplate: template,
-          stopSequence: eos.length > 0 ? eos : '</s>'
-        }
-      }
-      return {
-        chatFormat: CHAT_FORMAT_QWEN_IM,
-        promptTemplate: template,
-        stopSequence: '<|im_end|>'
-      }
+  private valueOrDefault(value: string | undefined, defaultValue: string): string {
+    if (value !== undefined && value.length > 0) {
+      return value
     }
-    if (lowerTemplate.indexOf('<|turn>') >= 0 && lowerTemplate.indexOf('<turn|>') >= 0) {
-      return {
-        chatFormat: CHAT_FORMAT_GEMMA_TURN,
-        promptTemplate: template,
-        stopSequence: '<turn|>'
-      }
-    }
-    if (template.indexOf('%s') >= 0) {
-      return {
-        chatFormat: CHAT_FORMAT_RAW_TEMPLATE,
-        promptTemplate: template,
-        stopSequence: this.inferStopSequence(template, lowerName, eos)
-      }
-    }
-    return {
-      chatFormat: CHAT_FORMAT_MNN_AUTO,
-      promptTemplate: template,
-      stopSequence: this.inferStopSequence(template, lowerName, eos)
-    }
-  }
-
-  private inferStopSequence(promptTemplate: string, lowerName: string, eos: string): string {
-    if (promptTemplate.indexOf('<|im_end|>') >= 0) {
-      return '<|im_end|>'
-    }
-    if (promptTemplate.indexOf('<|end_of_sentence|>') >= 0) {
-      return '<|end_of_sentence|>'
-    }
-    if (promptTemplate.indexOf('<|end_of_text|>') >= 0) {
-      return '<|end_of_text|>'
-    }
-    if (eos.length > 0) {
-      return eos
-    }
-    if (lowerName.indexOf('deepseek') >= 0) {
-      return '<|end_of_sentence|>'
-    }
-    if (lowerName.indexOf('qwen') >= 0 && lowerName.indexOf('deepseek') < 0) {
-      return '<|im_end|>'
-    }
-    return ''
+    return defaultValue
   }
 
   private async deletePathRecursive(path: string): Promise<void> {

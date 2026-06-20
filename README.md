@@ -27,10 +27,11 @@
 
 - 默认文本模型切换为 Qwen3-4B-Instruct，并支持在 App 内从 ModelScope 安装 Qwen3-4B-Instruct、MiniCPM5-1B 和 Gemma-4-E2B-it。
 - 模型导入流程更完整：除 zip 导入外，支持将完整 MNN 模型目录推送到 App 沙箱后，在模型页一键扫描注册，适合绕过大 zip 导入失败的问题。
-- 模型页和运行配置更稳健：模型生成、加载、导入期间会禁用相关控件，避免推理中途修改参数造成状态不一致。
+- 模型页和运行配置更稳健：模型生成、加载、导入期间会禁用相关控件，支持模型排序、删除已安装模型目录，并避免推理中途修改参数造成状态不一致。
+- 聊天页支持中断生成：模型流式输出过程中，发送按钮会切换为停止按钮；被停止的回答不会写入后续上下文。
 - 聊天页新增设备状态条，可快速查看应用 CPU、应用内存和设备温度等运行状态。
 - 监控页新增 App 存储占用、模型状态和更紧凑的设备指标展示。
-- 优化 Markdown 渲染、列表解析、思考块展示和原始输出日志，便于排查模型复读、停止符和模板问题。
+- 优化 Markdown 渲染、列表解析、思考块展示、原始输出日志和 MNN 对话模板处理，便于排查模型复读、停止符和模板问题。
 
 ## 快速开始
 
@@ -66,13 +67,14 @@ App 和 HAP 均不内置模型权重。打开 App → 模型页 → 选 Qwen3-4B
 
 - 本地推理：模型在设备端运行，无网络依赖
 - 流式输出：token 级实时响应
+- 停止生成：输出过程中可中断本轮回复
 - 模型切换：Qwen3-4B-Instruct / MiniCPM5-1B / Gemma-4-E2B-it 热切换
 - 思考块：MiniCPM5-1B 展示推理思考过程
 - Markdown 渲染：代码块（含复制按钮）、表格、引用、链接等
 - 生成参数调节：温度、Top-P/K、惩罚项等
 - 性能指标：TTFT、TPOT、tokens/s 实时显示
-- 内置模型管理：一键下载、安装、更新
-- 导入本地 MNN 模型：支持 zip 导入，也支持 hdc 推送目录后扫描注册
+- 模型管理：一键下载内置模型、调整模型排序、删除已安装模型目录
+- 导入本地 MNN 模型：支持 zip 导入，也支持 hdc 推送目录后扫描注册；正式 MNN 导出目录优先使用 `llm_config.json` 中的 `jinja.chat_template`
 
 ## 截图
 
@@ -133,10 +135,12 @@ hdc file send -b com.example.gemma4mnn Qwen3-4B-Instruct-2507-MNN /data/storage/
    目录中应能看到 `config.json`、`llm_config.json`、`llm.mnn`、`llm.mnn.weight` 和 tokenizer 文件。
 
 5. 打开 App → 模型页 → 展开“模型管理”。
-6. 点击“扫描已推送目录”。App 会自动查找 `config.json` 和 `.mnn` 文件，生成导入模型配置并保存到 `model-imports/imported-models.json`。
+6. 点击“扫描已推送目录”。App 会自动查找 `config.json`、`.mnn` 文件和可识别的对话模板，生成导入模型配置并保存到 `model-imports/imported-models.json`。
 7. 在模型列表中选择新增的导入模型并加载。
 
 扫描只识别 `model-imports/` 下的一级子目录；目录名不要包含 `/`、`\` 或 `..`。在 Windows 终端中建议从模型目录的父目录执行 `hdc file send`，避免把更多上级路径或反斜杠写入 App 沙箱。若你的模型不在仓库 `models/` 下，也可以 `cd` 到该模型目录的父目录后再推送。
+
+导入模型的对话格式默认交给 MNN 处理：如果 `llm_config.json` 中已有 `jinja.chat_template`，App 会直接使用；如果缺少该字段，App 仅额外兼容可自动识别的旧 ChatML 模板，否则会跳过该目录并提示模板不兼容。
 
 ## PC 侧下载模型脚本
 
@@ -171,6 +175,7 @@ ArkTS 通过 `import entry from 'libentry.so'` 调用 N-API：
 entry.loadModelAsync(configPath, threadNum, maxNewTokens, settings): Promise<string>
 entry.generateRawPromptStream(prompt, maxNewTokens, endWith, settings, onChunk): Promise<GenerationResult>
 entry.generateChatStream(messages, maxNewTokens, settings, onChunk): Promise<GenerationResult>
+entry.stopGeneration(): void
 entry.reset(): void
 entry.isLoaded(): boolean
 ```

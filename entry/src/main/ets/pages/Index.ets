@@ -5,7 +5,7 @@ import { BottomTabs } from '../components/BottomTabs'
 import { BuiltinModelInstallDialog } from '../components/BuiltinModelInstallDialog'
 import { ChatTab } from '../components/ChatTab'
 import { ChatRunTicker } from '../components/ChatRunTicker'
-import { DeleteImportedModelDialog } from '../components/DeleteImportedModelDialog'
+import { DeleteModelDialog } from '../components/DeleteImportedModelDialog'
 import { LaunchScreen } from '../components/LaunchScreen'
 import { ModelLoadDialog } from '../components/ModelLoadDialog'
 import { ModelTab } from '../components/ModelTab'
@@ -45,7 +45,7 @@ struct Index {
     setTimeout(() => {
       this.showLaunch = false
       if (!this.viewModel.loaded) {
-        this.viewModel.openModelLoadDialog(true)
+        this.viewModel.openModelLoadDialog(false)
       }
     }, 1200)
   }
@@ -96,7 +96,8 @@ struct Index {
             .padding({ left: 14, right: 14 })
           } else if (this.activeTab === 1) {
             ModelTab({
-              viewModel: this.viewModel
+              viewModel: this.viewModel,
+              renderVersion: this.stateVersion
             })
             .padding({ left: 14, right: 14 })
           } else {
@@ -131,8 +132,8 @@ struct Index {
           viewModel: this.viewModel
         })
       }
-      if (this.viewModel.showDeleteImportedModelDialog) {
-        DeleteImportedModelDialog({
+      if (this.viewModel.showDeleteModelDialog) {
+        DeleteModelDialog({
           viewModel: this.viewModel
         })
       }

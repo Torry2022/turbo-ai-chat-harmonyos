@@ -1,6 +1,7 @@
 #include "gemma_runner.h"
 
 #include <algorithm>
+#include <exception>
 #include <fstream>
 #include <functional>
 #include <ostream>
@@ -15,6 +16,13 @@ using MNN::Transformer::MultimodalPrompt;
 using MNN::Transformer::PromptImagePart;
 
 namespace {
+
+class UserStopException : public std::exception {
+public:
+    const char* what() const noexcept override {
+        return "user stopped generation";
+    }
+};
 
 bool IsUtf8Continuation(unsigned char value) {
     return (value & 0xC0) == 0x80;
@@ -90,7 +98,10 @@ size_t ValidUtf8PrefixLength(const std::string& text) {
 
 class ChunkStreamBuffer : public std::streambuf {
 public:
-    explicit ChunkStreamBuffer(const std::function<void(const std::string&)>& onChunk) : onChunk_(onChunk) {}
+    explicit ChunkStreamBuffer(
+        const std::function<void(const std::string&)>& onChunk,
+        const std::function<bool()>& shouldStop = nullptr)
+        : onChunk_(onChunk), shouldStop_(shouldStop) {}
 
     const std::string& output() const {
         return output_;
@@ -101,10 +112,16 @@ protected:
         if (n <= 0) {
             return 0;
         }
+        if (ShouldStop()) {
+            throw UserStopException();
+        }
         std::string chunk(s, static_cast<size_t>(n));
         output_ += chunk;
         pendingChunk_ += chunk;
         FlushPendingChunk(false);
+        if (ShouldStop()) {
+            throw UserStopException();
+        }
         return n;
     }
 
@@ -112,17 +129,30 @@ protected:
         if (c == EOF) {
             return c;
         }
+        if (ShouldStop()) {
+            throw UserStopException();
+        }
         char value = static_cast<char>(c);
         xsputn(&value, 1);
+        if (ShouldStop()) {
+            throw UserStopException();
+        }
         return c;
     }
 
     int sync() override {
         FlushPendingChunk(true);
+        if (ShouldStop()) {
+            throw UserStopException();
+        }
         return 0;
     }
 
 private:
+    bool ShouldStop() const {
+        return shouldStop_ && shouldStop_();
+    }
+
     void FlushPendingChunk(bool force) {
         if (!onChunk_) {
             pendingChunk_.clear();
@@ -141,6 +171,7 @@ private:
     }
 
     std::function<void(const std::string&)> onChunk_;
+    std::function<bool()> shouldStop_;
     std::string output_;
     std::string pendingChunk_;
 };
@@ -273,6 +304,12 @@ GemmaRunner::GenerationResult BuildGenerationResult(Llm* llm, const std::string&
     return result;
 }
 
+void ApplyUserStop(GemmaRunner::GenerationResult& result, bool stopped) {
+    if (stopped) {
+        result.stopReason = "user_stop";
+    }
+}
+
 } // namespace
 
 GemmaRunner::GemmaRunner() = default;
@@ -285,6 +322,7 @@ bool GemmaRunner::load(
     std::string& error) {
     std::lock_guard<std::mutex> lock(mutex_);
     error.clear();
+    stopRequested_.store(false);
 
     std::ifstream configFile(configPath);
     if (!configFile.good()) {
@@ -322,6 +360,7 @@ std::string GemmaRunner::generate(const std::string& prompt, const SamplingConfi
         llm_->set_config(BuildGenerationConfig(sampling));
     }
 
+    stopRequested_.store(false);
     llm_->reset();
     std::ostringstream output;
     llm_->response(prompt, &output, nullptr, sampling.maxNewTokens);
@@ -345,12 +384,28 @@ GemmaRunner::GenerationResult GemmaRunner::generateStreaming(
         llm_->set_config(BuildGenerationConfig(sampling));
     }
 
+    stopRequested_.store(false);
     llm_->reset();
-    ChunkStreamBuffer buffer(onChunk);
+    ChunkStreamBuffer buffer(onChunk, [this]() {
+        return stopRequested_.load();
+    });
     std::ostream output(&buffer);
-    llm_->response(prompt, &output, nullptr, sampling.maxNewTokens);
-    output.flush();
-    return BuildGenerationResult(llm_.get(), buffer.output(), sampling.maxNewTokens);
+    output.exceptions(std::ios::badbit | std::ios::failbit);
+    try {
+        llm_->response(prompt, &output, nullptr, sampling.maxNewTokens);
+        output.flush();
+    } catch (const UserStopException&) {
+    } catch (const std::ios_base::failure& ex) {
+        if (!stopRequested_.load()) {
+            error = ex.what();
+            return {};
+        }
+    }
+    GenerationResult result = BuildGenerationResult(llm_.get(), buffer.output(), sampling.maxNewTokens);
+    const bool stopped = stopRequested_.load();
+    ApplyUserStop(result, stopped);
+    stopRequested_.store(false);
+    return result;
 }
 
 GemmaRunner::GenerationResult GemmaRunner::generateRawPromptStreaming(
@@ -375,6 +430,7 @@ GemmaRunner::GenerationResult GemmaRunner::generateRawPromptStreaming(
         llm_->set_config(BuildGenerationConfig(sampling));
     }
 
+    stopRequested_.store(false);
     llm_->reset();
     const std::vector<int> inputIds = llm_->tokenizer_encode(prompt);
     if (inputIds.empty()) {
@@ -382,12 +438,26 @@ GemmaRunner::GenerationResult GemmaRunner::generateRawPromptStreaming(
         return {};
     }
 
-    ChunkStreamBuffer buffer(onChunk);
+    ChunkStreamBuffer buffer(onChunk, [this]() {
+        return stopRequested_.load();
+    });
     std::ostream output(&buffer);
+    output.exceptions(std::ios::badbit | std::ios::failbit);
     const char* endWithPtr = endWith.empty() ? nullptr : endWith.c_str();
-    llm_->response(inputIds, &output, endWithPtr, sampling.maxNewTokens);
-    output.flush();
+    try {
+        llm_->response(inputIds, &output, endWithPtr, sampling.maxNewTokens);
+        output.flush();
+    } catch (const UserStopException&) {
+    } catch (const std::ios_base::failure& ex) {
+        if (!stopRequested_.load()) {
+            error = ex.what();
+            return {};
+        }
+    }
     GenerationResult result = BuildGenerationResult(llm_.get(), buffer.output(), sampling.maxNewTokens);
+    const bool stopped = stopRequested_.load();
+    ApplyUserStop(result, stopped);
+    stopRequested_.store(false);
     DumpRawPromptDebug(prompt, result.text, inputIds, sampling, result, llm_.get());
 
     return result;
@@ -431,12 +501,27 @@ GemmaRunner::GenerationResult GemmaRunner::generateChatStreaming(
         return {};
     }
 
-    ChunkStreamBuffer buffer(onChunk);
+    stopRequested_.store(false);
+    ChunkStreamBuffer buffer(onChunk, [this]() {
+        return stopRequested_.load();
+    });
     std::ostream output(&buffer);
+    output.exceptions(std::ios::badbit | std::ios::failbit);
     llm_->reset();
-    llm_->response(chatMessages, &output, nullptr, sampling.maxNewTokens);
-    output.flush();
+    try {
+        llm_->response(chatMessages, &output, nullptr, sampling.maxNewTokens);
+        output.flush();
+    } catch (const UserStopException&) {
+    } catch (const std::ios_base::failure& ex) {
+        if (!stopRequested_.load()) {
+            error = ex.what();
+            return {};
+        }
+    }
     GenerationResult result = BuildGenerationResult(llm_.get(), buffer.output(), sampling.maxNewTokens);
+    const bool stopped = stopRequested_.load();
+    ApplyUserStop(result, stopped);
+    stopRequested_.store(false);
     DumpRawPromptDebug(
         debugPrompt.str(),
         result.text,
@@ -505,24 +590,45 @@ GemmaRunner::GenerationResult GemmaRunner::generateImageChatStreaming(
     imagePart.height = image.height;
     prompt.images["image_0"] = imagePart;
 
-    ChunkStreamBuffer buffer(onChunk);
+    stopRequested_.store(false);
+    ChunkStreamBuffer buffer(onChunk, [this]() {
+        return stopRequested_.load();
+    });
     std::ostream output(&buffer);
+    output.exceptions(std::ios::badbit | std::ios::failbit);
     llm_->reset();
     const auto* contextBefore = llm_->getContext();
     const auto visionUsBefore = contextBefore == nullptr ? 0 : contextBefore->vision_us;
-    llm_->response(prompt, &output, "<turn|>", sampling.maxNewTokens);
-    output.flush();
+    try {
+        llm_->response(prompt, &output, "<turn|>", sampling.maxNewTokens);
+        output.flush();
+    } catch (const UserStopException&) {
+    } catch (const std::ios_base::failure& ex) {
+        if (!stopRequested_.load()) {
+            error = ex.what();
+            return {};
+        }
+    }
     const auto* contextAfter = llm_->getContext();
     const auto visionUsAfter = contextAfter == nullptr ? 0 : contextAfter->vision_us;
-    if (visionUsAfter <= visionUsBefore) {
+    const bool stopped = stopRequested_.load();
+    if (!stopped && visionUsAfter <= visionUsBefore) {
         error = "MNN vision encoder did not run. Rebuild libMNN.so with LLM_SUPPORT_VISION=ON and MNN_BUILD_OPENCV=ON.";
         return {};
     }
-    return BuildGenerationResult(llm_.get(), buffer.output(), sampling.maxNewTokens);
+    GenerationResult result = BuildGenerationResult(llm_.get(), buffer.output(), sampling.maxNewTokens);
+    ApplyUserStop(result, stopped);
+    stopRequested_.store(false);
+    return result;
+}
+
+void GemmaRunner::requestStop() {
+    stopRequested_.store(true);
 }
 
 void GemmaRunner::reset() {
     std::lock_guard<std::mutex> lock(mutex_);
+    stopRequested_.store(false);
     llm_.reset();
 }
 
