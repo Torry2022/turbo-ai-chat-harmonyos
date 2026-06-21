@@ -1,6 +1,7 @@
 import { ChatViewModel } from '../state/ChatViewModel'
 import { EMPTY_RUNTIME_STATS, RuntimeStats } from '../models/RuntimeStats'
 import { RuntimeStatsService } from '../services/RuntimeStatsService'
+import { colorForAppCpu, colorForMemoryUsage, colorForTemperature } from '../utils/runtimeStatColors'
 
 @Component
 export struct ChatRunTicker {
@@ -39,24 +40,46 @@ export struct ChatRunTicker {
     this.statsTimer = -1
   }
 
-  private tickerText(): string {
-    return `CPU占用 ${this.stats.appCpu} · 内存占用 ${this.stats.appPss} · 设备温度 ${this.stats.socTemp}`
-  }
-
   build() {
     Row() {
-      Text(this.tickerText())
+      Text('应用CPU ')
         .fontSize(11)
         .fontColor('#8CA2B8')
-        .textAlign(TextAlign.Center)
         .maxLines(1)
-        .textOverflow({ overflow: TextOverflow.Ellipsis })
-        .width('100%')
+      Text(this.stats.appCpu)
+        .fontSize(11)
+        .fontColor(colorForAppCpu(this.stats.appCpu))
+        .maxLines(1)
+      Text(' · ')
+        .fontSize(11)
+        .fontColor('#8CA2B8')
+        .maxLines(1)
+      Text('应用内存 ')
+        .fontSize(11)
+        .fontColor('#8CA2B8')
+        .maxLines(1)
+      Text(this.stats.appPss)
+        .fontSize(11)
+        .fontColor(colorForMemoryUsage(this.stats.appPss))
+        .maxLines(1)
+      Text(' · ')
+        .fontSize(11)
+        .fontColor('#8CA2B8')
+        .maxLines(1)
+      Text('设备温度 ')
+        .fontSize(11)
+        .fontColor('#8CA2B8')
+        .maxLines(1)
+      Text(this.stats.socTemp)
+        .fontSize(11)
+        .fontColor(colorForTemperature(this.stats.socTemp))
+        .maxLines(1)
     }
     .width('100%')
     .height(20)
     .padding({ left: 8, right: 8 })
     .margin({ top: 6 })
     .backgroundColor('#0D2232')
+    .justifyContent(FlexAlign.Center)
   }
 }

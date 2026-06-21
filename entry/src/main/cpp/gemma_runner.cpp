@@ -651,6 +651,7 @@ GemmaRunner::GenerationResult GemmaRunner::generateImageChatStreaming(
     MultimodalPrompt prompt;
     prompt.prompt_template = "<img>image_0</img>\n"
                              "请始终使用简体中文回答。"
+                             "回答结尾请使用与回答语言匹配的句末标点。"
                              "如果问题要求识别或提取图片中的文字，请只根据图片中可见内容回答，不要翻译成其他语言。"
                              "不要使用 Markdown 列表；如果只能识别到部分内容，就只输出识别到的文字，不要输出空项目或占位符。\n"
                              + userContent;
@@ -670,7 +671,7 @@ GemmaRunner::GenerationResult GemmaRunner::generateImageChatStreaming(
     const auto* contextBefore = llm_->getContext();
     const auto visionUsBefore = contextBefore == nullptr ? 0 : contextBefore->vision_us;
     try {
-        llm_->response(prompt, &output, "<turn|>", sampling.maxNewTokens);
+        llm_->response(prompt, &output, nullptr, sampling.maxNewTokens);
         output.flush();
     } catch (const UserStopException&) {
     } catch (const std::ios_base::failure& ex) {
@@ -687,7 +688,7 @@ GemmaRunner::GenerationResult GemmaRunner::generateImageChatStreaming(
         return {};
     }
     const std::string rawOutput = buffer.output();
-    GenerationResult result = BuildGenerationResult(llm_.get(), rawOutput, sampling.maxNewTokens, "<turn|>");
+    GenerationResult result = BuildGenerationResult(llm_.get(), rawOutput, sampling.maxNewTokens);
     ApplyUserStop(result, stopped);
     stopRequested_.store(false);
     return result;

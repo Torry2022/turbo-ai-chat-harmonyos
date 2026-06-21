@@ -28,8 +28,9 @@ In the HarmonyOS ecosystem, on-device AI inference today largely depends on Andr
 - Made model-page controls safer by disabling relevant actions while loading, importing, or generating; model ordering and deleting installed model directories are also supported.
 - Added generation interruption: during streaming output, the send button switches to a stop button, and stopped responses are not added to future conversation context.
 - Improved Chat tab scrolling: Markdown and thinking-block parsing results are cached, completed generations no longer pull the view back to the bottom while the user is reading history, and the chat list scrollbar is hidden.
-- Added a device status strip on the Chat tab for app CPU, app memory, and device temperature.
-- Added app storage usage, model state, and tighter device metrics to the Monitor tab.
+- Added a device status strip on the Chat tab for app CPU, app memory, and device temperature, with threshold-based value colors.
+- Added app storage usage, model state, and tighter device metrics to the Monitor tab, including highlighted CPU, memory, and temperature values.
+- Model load failures now keep the error in the load dialog and reset inference state, making low-memory or failed-load recovery clearer.
 - Improved Markdown rendering, list parsing, thinking block display, raw output logs, and MNN chat-template handling for diagnosing repetition, stop tokens, and prompt template issues.
 
 ## Quick Start

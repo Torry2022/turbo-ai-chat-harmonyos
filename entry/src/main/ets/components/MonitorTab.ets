@@ -1,6 +1,13 @@
 import { ChatViewModel } from '../state/ChatViewModel'
 import { EMPTY_RUNTIME_STATS, EMPTY_STORAGE_STATS, RuntimeStats, StorageStats } from '../models/RuntimeStats'
 import { RuntimeStatsService } from '../services/RuntimeStatsService'
+import {
+  colorForAppCpu,
+  colorForAvailableMemory,
+  colorForMemoryUsage,
+  colorForSystemCpu,
+  colorForTemperature
+} from '../utils/runtimeStatColors'
 
 @Component
 struct MonitorStatItem {
@@ -156,14 +163,29 @@ export struct MonitorTab {
         Column({ space: 6 }) {
           this.SectionTitle('CPU')
           Row({ space: 8 }) {
-            MonitorStatItem({ label: '应用 CPU', value: this.stats.appCpu, itemWidth: '48%' })
-            MonitorStatItem({ label: '系统 CPU', value: this.stats.systemCpu, itemWidth: '48%' })
+            MonitorStatItem({
+              label: '应用 CPU',
+              value: this.stats.appCpu,
+              itemWidth: '48%',
+              valueColor: colorForAppCpu(this.stats.appCpu)
+            })
+            MonitorStatItem({
+              label: '系统 CPU',
+              value: this.stats.systemCpu,
+              itemWidth: '48%',
+              valueColor: colorForSystemCpu(this.stats.systemCpu)
+            })
           }
           .width('100%')
           .alignItems(VerticalAlign.Top)
           Row({ space: 8 }) {
             MonitorStatItem({ label: '线程数', value: this.stats.threadCount, itemWidth: '48%' })
-            MonitorStatItem({ label: '电池温度', value: this.stats.socTemp, itemWidth: '48%' })
+            MonitorStatItem({
+              label: '电池温度',
+              value: this.stats.socTemp,
+              itemWidth: '48%',
+              valueColor: colorForTemperature(this.stats.socTemp)
+            })
           }
           .width('100%')
           .alignItems(VerticalAlign.Top)
@@ -177,8 +199,18 @@ export struct MonitorTab {
         Column({ space: 6 }) {
           this.SectionTitle('应用内存')
           Row({ space: 8 }) {
-            MonitorStatItem({ label: '进程占用', value: this.stats.appPss, itemWidth: '48%' })
-            MonitorStatItem({ label: '原生堆占用', value: this.stats.nativeHeapAllocated, itemWidth: '48%' })
+            MonitorStatItem({
+              label: '进程占用',
+              value: this.stats.appPss,
+              itemWidth: '48%',
+              valueColor: colorForMemoryUsage(this.stats.appPss)
+            })
+            MonitorStatItem({
+              label: '原生堆占用',
+              value: this.stats.nativeHeapAllocated,
+              itemWidth: '48%',
+              valueColor: colorForMemoryUsage(this.stats.nativeHeapAllocated)
+            })
           }
           .width('100%')
           .alignItems(VerticalAlign.Top)
@@ -193,7 +225,12 @@ export struct MonitorTab {
           this.SectionTitle('系统内存')
           Row({ space: 8 }) {
             MonitorStatItem({ label: '总内存', value: this.stats.systemMemTotal, itemWidth: '48%' })
-            MonitorStatItem({ label: '可用', value: this.stats.systemMemAvailable, itemWidth: '48%' })
+            MonitorStatItem({
+              label: '可用',
+              value: this.stats.systemMemAvailable,
+              itemWidth: '48%',
+              valueColor: colorForAvailableMemory(this.stats.systemMemAvailable)
+            })
           }
           .width('100%')
           .alignItems(VerticalAlign.Top)

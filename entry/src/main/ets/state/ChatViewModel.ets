@@ -617,12 +617,13 @@ export class ChatViewModel {
         this.notifyAndScroll()
       }, 450)
     }).catch((err: Error) => {
+      this.nativeService.reset()
+      this.loaded = false
       this.status = `加载失败：${formatError(err as Object)}`
-      this.modelLoadMessage = this.status
+      const loadErrorMessage = `${this.currentModel().shortName} 加载失败，可能是设备可用内存不足。请关闭后台应用、释放其他模型或重启 App 后重试。\n\n${this.status}`
       this.stopModelLoadProgress()
       this.modelLoadProgress = 0
-      this.session.appendMessage('assistant', this.status, '', false)
-      this.syncMessages()
+      this.modelLoadMessage = loadErrorMessage
       this.busy = false
       this.modelLoading = false
       this.refreshStats()
