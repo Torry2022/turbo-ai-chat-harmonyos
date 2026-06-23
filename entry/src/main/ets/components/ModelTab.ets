@@ -29,13 +29,14 @@ export struct ModelTab {
   @State visibleModelProfiles: ModelProfile[] = []
   @State draggingModelId: string = ''
   @State dragOffsetY: number = 0
+  private modelScroller: Scroller = new Scroller()
   private readonly modelDragStep: number = 78
   private dragStartIndex: number = -1
   private dragLatestIndex: number = -1
 
   aboutToAppear(): void {
     this.syncGenerationSlidersFromViewModel()
-    this.refreshModelProfiles()
+    this.onRenderVersionChange()
   }
 
   private onRenderVersionChange(): void {
@@ -241,8 +242,8 @@ export struct ModelTab {
         .enabled(this.controlsEnabled())
         .height(38)
         .width('100%')
-        .fontColor(this.viewModel.loaded ? '#B7CDE1' : '#F4FBFF')
-        .backgroundColor(this.viewModel.loaded ? '#14344A' : '#0F62FE')
+        .fontColor('#F4FBFF')
+        .backgroundColor(this.viewModel.loaded ? '#26384D' : '#0F62FE')
         .onClick(() => {
           if (this.viewModel.loaded) {
             this.viewModel.unloadModel()
@@ -560,6 +561,15 @@ export struct ModelTab {
           .width('100%')
       }
       .width('100%')
+        Button(this.viewModel.loaded ? '应用并重新加载' : '应用并加载')
+          .enabled(this.controlsEnabled())
+          .height(38)
+          .width('100%')
+          .fontColor('#F4FBFF')
+          .backgroundColor('#0F62FE')
+          .onClick(() => {
+            this.viewModel.applyRuntimeConfigAndLoad()
+          })
       }
     }
     .width('100%')
@@ -680,8 +690,8 @@ export struct ModelTab {
         .enabled(this.controlsEnabled())
         .height(38)
         .width('100%')
-        .fontColor('#B7CDE1')
-        .backgroundColor('#14344A')
+        .fontColor('#F4FBFF')
+        .backgroundColor('#26384D')
         .onClick(() => {
           this.viewModel.scanPushedModelDirectories()
         })
@@ -720,7 +730,7 @@ export struct ModelTab {
   }
 
   build() {
-    Scroll() {
+    Scroll(this.modelScroller) {
       Column({ space: 12 }) {
         this.ModelListCard()
         this.GenerationSettingsCard()
@@ -735,5 +745,6 @@ export struct ModelTab {
     .width('100%')
     .align(Alignment.Top)
     .scrollBar(BarState.Off)
+    .edgeEffect(EdgeEffect.Spring)
   }
 }

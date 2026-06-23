@@ -18,26 +18,7 @@ import {
   ModelProfile
 } from '../models/ModelProfile'
 import { formatError } from '../utils/formatters'
-
-interface MnnLlmConfig {
-  prompt_template?: string
-  system_prompt_template?: string
-  user_prompt_template?: string
-  assistant_prompt_template?: string
-  jinja?: MnnJinjaConfig
-}
-
-interface MnnJinjaConfig {
-  chat_template?: string
-  eos?: string
-}
-
-const CHATML_JINJA_TEMPLATE: string = `{%- for message in messages %}
-{{- '<|im_start|>' + message.role + '\\n' + message.content + '<|im_end|>\\n' }}
-{%- endfor %}
-{%- if add_generation_prompt %}
-{{- '<|im_start|>assistant\\n' }}
-{%- endif %}`
+import { MnnTemplateService } from './MnnTemplateService'
 
 export class ModelImportService {
   async pickAndImport(context: common.UIAbilityContext, existingProfiles: ModelProfile[]): Promise<ModelImportResult | undefined> {
@@ -610,77 +591,11 @@ export class ModelImportService {
   }
 
   private async ensureChatMessagesTemplate(configPath: string): Promise<void> {
-    await this.validateChatMessagesTemplate(configPath, true)
+    await MnnTemplateService.ensureChatMessagesTemplate(configPath)
   }
 
   private async isCompatibleChatMessagesTemplate(configPath: string): Promise<boolean> {
-    try {
-      await this.validateChatMessagesTemplate(configPath, true)
-      return true
-    } catch (_) {
-      return false
-    }
-  }
-
-  private async validateChatMessagesTemplate(configPath: string, patchLegacyChatMl: boolean): Promise<void> {
-    const llmConfigPath = this.llmConfigPath(configPath)
-    if (llmConfigPath.length <= 0 || !await this.exists(llmConfigPath)) {
-      throw new Error('该 MNN 模型目录缺少 llm_config.json，无法确认对话模板。')
-    }
-    const text = await fs.readText(llmConfigPath)
-    const llmConfig = JSON.parse(text.replace(/^\uFEFF/, '')) as MnnLlmConfig
-    const existingJinjaTemplate = llmConfig.jinja?.chat_template ?? ''
-    if (existingJinjaTemplate.trim().length > 0) {
-      return
-    }
-    const promptTemplate = llmConfig.prompt_template ?? ''
-    if (!this.isLegacyChatMlPromptTemplate(promptTemplate)) {
-      throw new Error('该 MNN 模型目录缺少 jinja.chat_template，且不是可自动兼容的 ChatML 旧模板。请使用新版 MNN 导出模型或补全 llm_config.json。')
-    }
-    if (!patchLegacyChatMl) {
-      return
-    }
-
-    llmConfig.system_prompt_template = this.valueOrDefault(
-      llmConfig.system_prompt_template,
-      '<|im_start|>system\n%s<|im_end|>\n'
-    )
-    llmConfig.user_prompt_template = this.valueOrDefault(
-      llmConfig.user_prompt_template,
-      '<|im_start|>user\n%s<|im_end|>\n'
-    )
-    llmConfig.assistant_prompt_template = this.valueOrDefault(
-      llmConfig.assistant_prompt_template,
-      '<|im_start|>assistant\n%s<|im_end|>\n'
-    )
-    const existingEos = llmConfig.jinja?.eos ?? ''
-    llmConfig.jinja = {
-      chat_template: CHATML_JINJA_TEMPLATE,
-      eos: existingEos.length > 0 ? existingEos : '<|im_end|>'
-    }
-    await this.writeText(llmConfigPath, JSON.stringify(llmConfig, undefined, 2))
-  }
-
-  private llmConfigPath(configPath: string): string {
-    const lowerPath = configPath.toLowerCase()
-    if (!lowerPath.endsWith('/config.json')) {
-      return ''
-    }
-    return `${configPath.substring(0, configPath.length - '/config.json'.length)}/llm_config.json`
-  }
-
-  private isLegacyChatMlPromptTemplate(promptTemplate: string): boolean {
-    return promptTemplate.indexOf('%s') >= 0 &&
-      promptTemplate.indexOf('<|im_start|>user') >= 0 &&
-      promptTemplate.indexOf('<|im_start|>assistant') >= 0 &&
-      promptTemplate.indexOf('<|im_end|>') >= 0
-  }
-
-  private valueOrDefault(value: string | undefined, defaultValue: string): string {
-    if (value !== undefined && value.length > 0) {
-      return value
-    }
-    return defaultValue
+    return MnnTemplateService.isCompatibleChatMessagesTemplate(configPath)
   }
 
   private async deletePathRecursive(path: string): Promise<void> {

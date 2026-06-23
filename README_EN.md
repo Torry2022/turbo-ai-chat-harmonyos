@@ -4,7 +4,7 @@
 
 ![Turbo AI Chat hero](docs/images/hero.png)
 
-**HarmonyOS NEXT native on-device LLM chat application**. Built with ArkTS + C++ N-API + MNN Runtime, running Qwen3-4B-Instruct (text), MiniCPM5-1B (text), and Gemma-4-E2B-it (multimodal) locally on HarmonyOS devices with streaming chat, model switching, and one-click built-in model download.
+**HarmonyOS NEXT native on-device LLM chat application**. Built with ArkTS + C++ N-API + MNN Runtime, running Qwen3-4B-Instruct (text), MiniCPM5-1B (text), and Gemma-4-E2B-it (multimodal) locally on HarmonyOS devices with streaming chat, model switching, model-market downloads, and local model import.
 
 This repository is forked from [Turbo1123/turbo-ai-chat-harmonyos](https://github.com/Turbo1123/turbo-ai-chat-harmonyos).
 
@@ -13,7 +13,7 @@ This repository is forked from [Turbo1123/turbo-ai-chat-harmonyos](https://githu
 In the HarmonyOS ecosystem, on-device AI inference today largely depends on Android compatibility layers running Android apps. Turbo AI Chat validates a different path with a fully native pipeline (ArkTS → N-API → MNN → CPU):
 
 - **Native architecture**: inference directly via HarmonyOS NDK, no Android compatibility layer overhead
-- **Reproducible out of the box**: built-in models downloaded from ModelScope with one click, no HuggingFace required (China-network friendly)
+- **Reproducible out of the box**: preset models downloaded from ModelScope through the model market, no HuggingFace required (China-network friendly)
 - **Reusable engineering**: MNN Runtime wrapper, streaming pipeline, Markdown rendering as integration references for other HarmonyOS AI apps
 - **Developer-friendly**: one hdc command to inspect raw inference logs (`raw_output_debug.txt`) containing prompt, model output, sampling parameters, and token statistics
 
@@ -23,7 +23,8 @@ In the HarmonyOS ecosystem, on-device AI inference today largely depends on Andr
 
 ## Recent Highlights
 
-- Switched the default text model to Qwen3-4B-Instruct, with in-app ModelScope installation for Qwen3-4B-Instruct, MiniCPM5-1B, and Gemma-4-E2B-it.
+- Switched the default text model to Qwen3-4B-Instruct, with in-app model-market installation from ModelScope for preset models and additional MNN model entries.
+- Model-market downloads can be stopped and resumed. Closing a stopped install dialog clears unfinished temporary download files to avoid sandbox leftovers.
 - Improved model import: in addition to zip import, you can push a complete MNN model directory into the app sandbox and scan it from the Model tab, which avoids large zip import failures.
 - Made model-page controls safer by disabling relevant actions while loading, importing, or generating; model ordering and deleting installed model directories are also supported.
 - Added generation interruption: during streaming output, the send button switches to a stop button, and stopped responses are not added to future conversation context.
@@ -49,9 +50,9 @@ node ./node_modules/@ohos/hvigor/bin/hvigor.js assembleHap --no-daemon
 hdc install -r entry/build/default/outputs/default/entry-default-signed.hap
 ```
 
-### 2. Install built-in models
+### 2. Install models
 
-The app and HAP do not include model weights. Open the app → Model tab → select Qwen3-4B-Instruct, MiniCPM5-1B, or Gemma-4-E2B-it → load. The app will guide you to download from ModelScope into the app sandbox.
+The app and HAP do not include model weights. Open the app → Model tab → Model Market, or select Qwen3-4B-Instruct, MiniCPM5-1B, or Gemma-4-E2B-it and tap load. The app will guide you to download from ModelScope into the app sandbox.
 
 | Model | Size | Capability |
 |------|------|------|
@@ -68,13 +69,13 @@ After the model loads, return to the Chat tab and send a message. MiniCPM5-1B di
 - Local inference: models run on-device, no network required
 - Streaming output: token-level real-time response
 - Stop generation: interrupt the current response while it is streaming
-- Model switching: Qwen3-4B-Instruct / MiniCPM5-1B / Gemma-4-E2B-it hot swap
+- Model switching: switch between preset models, installed market models, and imported models
 - Thinking blocks: MiniCPM5-1B displays reasoning process
 - Markdown rendering: code blocks (with copy button), tables, blockquotes, links, etc.
 - Long-conversation scrolling optimization: caches Markdown / thinking-block parsing and pauses auto-follow while the user is scrolling
 - Generation parameter controls: temperature, Top-P/K, penalty terms, etc.
 - Performance metrics: TTFT, TPOT, tokens/s per assistant message
-- Model management: one-click built-in model download, model ordering, and deleting installed model directories
+- Model management: model-market download, model ordering, and deleting installed model directories
 - Import local MNN models via zip, or by pushing a directory and scanning it in the app; standard MNN export directories use `jinja.chat_template` from `llm_config.json`
 
 ## Screenshots
@@ -95,7 +96,7 @@ You can also use [Xiaobai Debug Assistant](https://github.com/likuai2010/auto-in
 
 ## Fallback: Manual Model Push
 
-In-app download and zip import are the recommended approaches. Manual `hdc` push is kept as a debugging fallback.
+Model-market download and in-app zip import are the recommended approaches. Manual `hdc` push is kept as a debugging fallback.
 
 The model directory must be in **MNN format** — exported via MNN `llmexport.py` from HuggingFace weights, containing `config.json`, `llm_config.json`, tokenizer file, `llm.mnn`, `llm.mnn.weight`, etc. Original HuggingFace safetensors, GGUF, and MLX weights cannot be used directly.
 
@@ -110,7 +111,7 @@ hdc file send -b com.example.gemma4mnn MiniCPM5-1B-MNN /data/storage/el2/base/ha
 hdc file send -b com.example.gemma4mnn Qwen3-4B-Instruct-2507-MNN /data/storage/el2/base/haps/entry/files/
 ```
 
-> The `-b` flag specifies the bundle name and is required to write into the app sandbox. Zip files larger than ~2 GB may fail due to system ZIP compatibility — use `file send` to push the directory directly instead.
+> The `-b` flag specifies the bundle name and is required to write into the app sandbox.
 
 ### Registering a pushed model as an import
 
@@ -139,7 +140,7 @@ To register a pushed model as an imported model:
 
 The scanner only checks first-level subdirectories under `model-imports/`. Directory names must not contain `/`, `\`, or `..`. On Windows, run `hdc file send` from the parent directory of the model directory to avoid preserving extra parent paths or writing backslashes into the app sandbox. If your model is not under the repository `models/` directory, `cd` to that model directory's parent before pushing.
 
-Imported models are formatted by MNN by default. If `llm_config.json` contains `jinja.chat_template`, the app uses it directly. If that field is missing, the app only provides extra compatibility for automatically recognized legacy ChatML templates; otherwise, the directory is skipped as incompatible.
+The app checks MNN chat templates consistently across model-market downloads, preset model installation, and imported model scanning. If `llm_config.json` contains `jinja.chat_template`, the app uses it directly. If that field is missing, the app only provides extra compatibility for automatically recognized legacy ChatML templates; otherwise, the directory is skipped as incompatible.
 
 ## PC-side Model Download Scripts
 
@@ -165,6 +166,12 @@ Requires the Python modelscope package: `pip install modelscope`.
 ## Model Format
 
 The app uses **MNN model directory** format. Built-in models are downloaded from ModelScope: Qwen3-4B-Instruct and Gemma-4-E2B-it from the [MNN organization](https://modelscope.cn/organization/MNN), MiniCPM5-1B BF16 from [TorryJi](https://modelscope.cn/models/TorryJi/MiniCPM5-1B-MNN-BF16). Original HuggingFace weights must be converted via MNN `llmexport.py` before use.
+
+## Inference Backend and Performance
+
+The current version runs local inference with the **MNN CPU backend**. GPU / NPU backends are not integrated yet. The "inference threads" setting on the Model tab is passed to the native layer as the MNN CPU thread count, with a default value of 6.
+
+On-device LLM decoding includes token-by-token serial stages, and actual throughput can also be limited by memory bandwidth, cache contention, and system thermal control. For performance evaluation, prefer the TTFT, ms/tok, and tokens/s metrics shown at the bottom of assistant messages, together with app CPU, app memory, and device temperature.
 
 ## Native API
 

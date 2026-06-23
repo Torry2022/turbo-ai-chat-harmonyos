@@ -15,6 +15,15 @@ export interface BuiltinModelDownloadSpec {
   totalBytes: number
 }
 
+export interface ModelCatalogItem extends BuiltinModelDownloadSpec {
+  shortName: string
+  description: string
+  provider: string
+  supportsImage: boolean
+  capabilities: string[]
+  recommended: boolean
+}
+
 export interface BuiltinModelInstallProgress {
   modelName: string
   fileName: string
@@ -29,6 +38,8 @@ interface BuiltinModelFileInput {
   sizeBytes: number
 }
 
+export const MODEL_CATALOG_FILTER_ALL: string = '全部'
+
 const MODELSCOPE_BASE_URL: string = 'https://modelscope.cn/models'
 
 function modelScopeFileUrl(repo: string, relativePath: string): string {
@@ -42,7 +53,7 @@ function createSpec(
   displayName: string,
   repo: string,
   files: BuiltinModelFileInput[]
-): BuiltinModelDownloadSpec {
+): ModelCatalogItem {
   const resolvedFiles = files.map((file: BuiltinModelFileInput): BuiltinModelFileSpec => {
     return {
       relativePath: file.relativePath,
@@ -59,15 +70,48 @@ function createSpec(
     modelId,
     directoryName,
     displayName,
+    shortName: displayName,
+    description: '',
+    provider: '',
     sourceName: 'ModelScope',
     sourceUrl: `${MODELSCOPE_BASE_URL}/${repo}`,
+    supportsImage: false,
+    capabilities: ['文本'],
+    recommended: true,
     files: resolvedFiles,
     totalBytes
   }
 }
 
-export const BUILTIN_MODEL_DOWNLOADS: BuiltinModelDownloadSpec[] = [
-  createSpec(
+function withCatalogMeta(
+  spec: ModelCatalogItem,
+  shortName: string,
+  description: string,
+  provider: string,
+  supportsImage: boolean,
+  capabilities: string[],
+  recommended: boolean = true
+): ModelCatalogItem {
+  return {
+    id: spec.id,
+    modelId: spec.modelId,
+    directoryName: spec.directoryName,
+    displayName: spec.displayName,
+    shortName,
+    description,
+    provider,
+    sourceName: spec.sourceName,
+    sourceUrl: spec.sourceUrl,
+    supportsImage,
+    capabilities,
+    recommended,
+    files: spec.files,
+    totalBytes: spec.totalBytes
+  }
+}
+
+export const MODEL_CATALOG_ITEMS: ModelCatalogItem[] = [
+  withCatalogMeta(createSpec(
     'qwen3-4b-instruct',
     'qwen3-4b-instruct',
     'Qwen3-4B-Instruct-2507-MNN',
@@ -80,8 +124,8 @@ export const BUILTIN_MODEL_DOWNLOADS: BuiltinModelDownloadSpec[] = [
       { relativePath: 'llm.mnn', sizeBytes: 592336 },
       { relativePath: 'llm.mnn.weight', sizeBytes: 2709972658 }
     ]
-  ),
-  createSpec(
+  ), 'Qwen3-4B-Instruct', '通用中文文本模型，适合作为默认本地对话。', 'MNN', false, ['文本', '通用']),
+  withCatalogMeta(createSpec(
     'gemma4',
     'gemma4',
     'gemma-4-E2B-it-MNN',
@@ -99,8 +143,8 @@ export const BUILTIN_MODEL_DOWNLOADS: BuiltinModelDownloadSpec[] = [
       { relativePath: 'audio.mnn', sizeBytes: 1428288 },
       { relativePath: 'audio.mnn.weight', sizeBytes: 589877376 }
     ]
-  ),
-  createSpec(
+  ), 'Gemma-4-E2B', '图片理解实验模型，支持文本和图片输入。', 'MNN', true, ['文本', '图片']),
+  withCatalogMeta(createSpec(
     'minicpm5-1b',
     'minicpm5-1b',
     'MiniCPM5-1B-MNN',
@@ -114,27 +158,105 @@ export const BUILTIN_MODEL_DOWNLOADS: BuiltinModelDownloadSpec[] = [
       { relativePath: 'llm.mnn.weight', sizeBytes: 1760636928 },
       { relativePath: 'embeddings_bf16.bin', sizeBytes: 401080320 }
     ]
-  )
+  ), 'MiniCPM5-1B', '超小参数文本模型，适合轻量本地对话与快速验证。', 'TorryJi', false, ['文本', '轻量']),
+  withCatalogMeta(createSpec(
+    'qwen3-0.6b',
+    'qwen3-0.6b',
+    'Qwen3-0.6B-MNN',
+    'Qwen3-0.6B',
+    'MNN/Qwen3-0.6B-MNN',
+    [
+      { relativePath: 'config.json', sizeBytes: 403 },
+      { relativePath: 'llm_config.json', sizeBytes: 4880 },
+      { relativePath: 'tokenizer.txt', sizeBytes: 3193569 },
+      { relativePath: 'llm.mnn', sizeBytes: 461520 },
+      { relativePath: 'llm.mnn.weight', sizeBytes: 450810338 }
+    ]
+  ), 'Qwen3-0.6B', '超轻量 Qwen3 文本模型，适合快速响应和低存储占用。', 'MNN', false, ['文本', '超轻量'], false),
+  withCatalogMeta(createSpec(
+    'qwen3-1.7b',
+    'qwen3-1.7b',
+    'Qwen3-1.7B-MNN',
+    'Qwen3-1.7B',
+    'MNN/Qwen3-1.7B-MNN',
+    [
+      { relativePath: 'config.json', sizeBytes: 403 },
+      { relativePath: 'llm_config.json', sizeBytes: 4881 },
+      { relativePath: 'tokenizer.txt', sizeBytes: 3193569 },
+      { relativePath: 'llm.mnn', sizeBytes: 461520 },
+      { relativePath: 'llm.mnn.weight', sizeBytes: 1231860194 }
+    ]
+  ), 'Qwen3-1.7B', '轻量 Qwen3 文本模型，兼顾速度、效果和占用。', 'MNN', false, ['文本', '轻量'], false),
+  withCatalogMeta(createSpec(
+    'qwen2.5-1.5b-instruct',
+    'qwen2.5-1.5b-instruct',
+    'Qwen2.5-1.5B-Instruct-MNN',
+    'Qwen2.5-1.5B-Instruct',
+    'MNN/Qwen2.5-1.5B-Instruct-MNN',
+    [
+      { relativePath: 'config.json', sizeBytes: 159 },
+      { relativePath: 'llm_config.json', sizeBytes: 384 },
+      { relativePath: 'tokenizer.txt', sizeBytes: 3193477 },
+      { relativePath: 'llm.mnn', sizeBytes: 1145128 },
+      { relativePath: 'llm.mnn.weight', sizeBytes: 868491506 }
+    ]
+  ), 'Qwen2.5-1.5B', '低内存 Qwen2.5 指令模型，适合常规文本对话。', 'MNN', false, ['文本', '低内存'], false),
+  withCatalogMeta(createSpec(
+    'qwen2.5-3b-instruct',
+    'qwen2.5-3b-instruct',
+    'Qwen2.5-3B-Instruct-MNN',
+    'Qwen2.5-3B-Instruct',
+    'MNN/Qwen2.5-3B-Instruct-MNN',
+    [
+      { relativePath: 'config.json', sizeBytes: 159 },
+      { relativePath: 'llm_config.json', sizeBytes: 274 },
+      { relativePath: 'tokenizer.txt', sizeBytes: 3193477 },
+      { relativePath: 'llm.mnn', sizeBytes: 1180432 },
+      { relativePath: 'llm.mnn.weight', sizeBytes: 1736078786 },
+      { relativePath: 'embeddings_bf16.bin', sizeBytes: 622329856 }
+    ]
+  ), 'Qwen2.5-3B', '中档 Qwen2.5 指令模型，适合对话、摘要和轻量写作。', 'MNN', false, ['文本', '中档'], false),
+  withCatalogMeta(createSpec(
+    'qwen3-8b',
+    'qwen3-8b',
+    'Qwen3-8B-MNN',
+    'Qwen3-8B',
+    'MNN/Qwen3-8B-MNN',
+    [
+      { relativePath: 'config.json', sizeBytes: 417 },
+      { relativePath: 'llm_config.json', sizeBytes: 413 },
+      { relativePath: 'tokenizer.txt', sizeBytes: 3193569 },
+      { relativePath: 'llm.mnn', sizeBytes: 592328 },
+      { relativePath: 'llm.mnn.weight', sizeBytes: 4259526082 },
+      { relativePath: 'embeddings_bf16.bin', sizeBytes: 1244659712 }
+    ]
+  ), 'Qwen3-8B', '较大参数 Qwen3 文本模型，适合大内存设备尝试。', 'MNN', false, ['文本', '大内存'], false)
 ]
 
-export function findBuiltinModelDownloadSpec(downloadId: string | undefined): BuiltinModelDownloadSpec | undefined {
-  if (downloadId === undefined || downloadId.length <= 0) {
+export const BUILTIN_MODEL_DOWNLOADS: BuiltinModelDownloadSpec[] = MODEL_CATALOG_ITEMS
+
+export function findModelCatalogItem(catalogItemId: string | undefined): ModelCatalogItem | undefined {
+  if (catalogItemId === undefined || catalogItemId.length <= 0) {
     return undefined
   }
-  for (let index = 0; index < BUILTIN_MODEL_DOWNLOADS.length; index++) {
-    if (BUILTIN_MODEL_DOWNLOADS[index].id === downloadId) {
-      return BUILTIN_MODEL_DOWNLOADS[index]
+  for (let index = 0; index < MODEL_CATALOG_ITEMS.length; index++) {
+    if (MODEL_CATALOG_ITEMS[index].id === catalogItemId) {
+      return MODEL_CATALOG_ITEMS[index]
     }
   }
   return undefined
 }
 
+export function findBuiltinModelDownloadSpec(downloadId: string | undefined): BuiltinModelDownloadSpec | undefined {
+  return findModelCatalogItem(downloadId)
+}
+
 export function formatBytes(bytes: number): string {
   if (bytes >= 1024 * 1024 * 1024) {
-    return `${Math.round(bytes / 1024 / 1024 / 1024 * 10) / 10} GB`
+    return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`
   }
   if (bytes >= 1024 * 1024) {
-    return `${Math.round(bytes / 1024 / 1024 * 10) / 10} MB`
+    return `${(bytes / 1024 / 1024).toFixed(2)} MB`
   }
-  return `${Math.round(bytes / 1024 * 10) / 10} KB`
+  return `${(bytes / 1024).toFixed(2)} KB`
 }

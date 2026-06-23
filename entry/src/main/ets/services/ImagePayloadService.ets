@@ -1,25 +1,29 @@
-import { common } from '@kit.AbilityKit'
-import picker from '@ohos.file.picker'
+import photoAccessHelper from '@ohos.file.photoAccessHelper'
 import fs from '@ohos.file.fs'
 import image from '@ohos.multimedia.image'
 import { ImagePayload, VISION_MAX_PIXELS } from '../models/ChatTypes'
 
 export class ImagePayloadService {
-  pickImage(context: common.UIAbilityContext): Promise<string | undefined> {
-    const photoPicker = new picker.PhotoViewPicker(context)
-    const options = new picker.PhotoSelectOptions()
-    options.MIMEType = picker.PhotoViewMIMETypes.IMAGE_TYPE
+  async pickImage(): Promise<string | undefined> {
+    const photoPicker = new photoAccessHelper.PhotoViewPicker()
+    const options = new photoAccessHelper.PhotoSelectOptions()
+    options.MIMEType = photoAccessHelper.PhotoViewMIMETypes.IMAGE_TYPE
     options.maxSelectNumber = 1
-    return photoPicker.select(options).then((result: picker.PhotoSelectResult) => {
+    try {
+      const result = await photoPicker.select(options)
       return result.photoUris.length > 0 ? result.photoUris[0] : undefined
-    })
+    } catch (_) {
+      return undefined
+    }
   }
 
   async buildImagePayload(uri: string): Promise<ImagePayload> {
-    const file = fs.openSync(uri, fs.OpenMode.READ_ONLY)
-    const source = image.createImageSource(file.fd)
+    let file: fs.File | undefined = undefined
+    let source: image.ImageSource | undefined = undefined
     let pixelMap: image.PixelMap | undefined = undefined
     try {
+      file = fs.openSync(uri, fs.OpenMode.READ_ONLY)
+      source = image.createImageSource(file.fd)
       const sourceInfo = await source.getImageInfo()
       const sourceWidth = sourceInfo.size.width
       const sourceHeight = sourceInfo.size.height
@@ -49,12 +53,21 @@ export class ImagePayloadService {
       const pixels = new ArrayBuffer(width * height * 4)
       await pixelMap.readPixelsToBuffer(pixels)
       return { pixels, width, height }
+    } catch (err) {
+      throw new Error(`图片读取失败：${err}`)
     } finally {
       if (pixelMap) {
         await pixelMap.release()
       }
-      source.release()
-      fs.closeSync(file)
+      if (source) {
+        source.release()
+      }
+      if (file) {
+        try {
+          fs.closeSync(file)
+        } catch (_) {
+        }
+      }
     }
   }
 }

@@ -10,6 +10,9 @@ export struct ModelLoadDialog {
         .width('100%')
         .height('100%')
         .backgroundColor('#00000099')
+        .onClick(() => {
+          this.viewModel.dismissTopDialogIfIdle()
+        })
 
       Column({ space: 14 }) {
         Row({ space: 10 }) {
@@ -37,11 +40,19 @@ export struct ModelLoadDialog {
           .fontColor('#B7CDE1')
           .width('100%')
 
-        Progress({ value: this.viewModel.modelLoadProgress, total: 100, type: ProgressType.Linear })
-          .width('100%')
-          .height(8)
-          .color('#45D6A4')
-          .style({ strokeWidth: 8, strokeRadius: 4, enableScanEffect: this.viewModel.modelLoading })
+        if (this.viewModel.modelLoadProgress <= 0) {
+          Row()
+            .width('100%')
+            .height(8)
+            .backgroundColor('#26384D')
+            .borderRadius(4)
+        } else {
+          Progress({ value: this.viewModel.modelLoadProgress, total: 100, type: ProgressType.Linear })
+            .width('100%')
+            .height(8)
+            .color('#45D6A4')
+            .style({ strokeWidth: 8, strokeRadius: 4, enableScanEffect: this.viewModel.modelLoading })
+        }
 
         Row() {
           Text(`${Math.round(this.viewModel.modelLoadProgress)}%`)
@@ -60,7 +71,7 @@ export struct ModelLoadDialog {
               .height(38)
               .layoutWeight(1)
               .fontColor('#F4FBFF')
-              .backgroundColor('#14344A')
+              .backgroundColor('#26384D')
               .onClick(() => {
                 this.viewModel.closeModelLoadDialog()
               })
@@ -76,7 +87,8 @@ export struct ModelLoadDialog {
       }
       .width('90%')
       .padding(18)
-      .backgroundColor('#152A3D')
+      .backgroundColor('#102235')
+      .border({ width: 1, color: '#23445F' })
       .borderRadius(10)
     }
     .width('100%')

@@ -3,7 +3,13 @@ import fs from '@ohos.file.fs'
 import preferences from '@ohos.data.preferences'
 import { ChatMessage, ChatTurn, GenerationResult, GenerationSettings, PerfMetrics } from '../models/ChatTypes'
 import { ImportedModelDraft } from '../models/ImportedModelTypes'
-import { BuiltinModelDownloadSpec, BuiltinModelInstallProgress } from '../models/BuiltinModelDownloadTypes'
+import {
+  BuiltinModelDownloadSpec,
+  BuiltinModelInstallProgress,
+  MODEL_CATALOG_FILTER_ALL,
+  MODEL_CATALOG_ITEMS,
+  ModelCatalogItem
+} from '../models/BuiltinModelDownloadTypes'
 import {
   DEFAULT_FREQUENCY_PENALTY,
   DEFAULT_MAX_NEW_TOKENS,
@@ -48,6 +54,7 @@ export class ChatViewModel {
   frequencyPenalty: number = DEFAULT_FREQUENCY_PENALTY
   presencePenalty: number = DEFAULT_PRESENCE_PENALTY
   penaltyWindow: number = DEFAULT_PENALTY_WINDOW
+  runtimeConfigDirty: boolean = false
   showModelLoadDialog: boolean = false
   modelLoading: boolean = false
   modelLoadProgress: number = 0
@@ -62,6 +69,11 @@ export class ChatViewModel {
   builtinModelInstallDownloadedBytes: number = 0
   builtinModelInstallTotalBytes: number = 0
   builtinModelInstallError: string = ''
+  builtinModelInstallCanceled: boolean = false
+  showModelMarketDialog: boolean = false
+  modelMarketSearchText: string = ''
+  modelMarketCapabilityFilter: string = MODEL_CATALOG_FILTER_ALL
+  modelMarketInstalledIds: string[] = []
   modelImporting: boolean = false
   modelImportMessage: string = '可导入 MNN 模型 zip 包'
   editingImportedModelId: string = ''
@@ -88,6 +100,9 @@ export class ChatViewModel {
   private builtinModelInstallService: BuiltinModelInstallService = new BuiltinModelInstallService()
   private modelImportService: ModelImportService = new ModelImportService()
   private statsService: RuntimeStatsService = new RuntimeStatsService()
+  private pendingInstallCatalogItemId: string = ''
+  private autoLoadAfterInstall: boolean = false
+  private builtinModelInstallCancelRequested: boolean = false
   private readonly modelOrderPreferenceName: string = 'model-settings'
   private readonly modelOrderPreferenceKey: string = 'model-order'
 
@@ -120,6 +135,7 @@ export class ChatViewModel {
     this.session.initializeWelcome(this.currentModel().shortName)
     this.syncMessages()
     this.refreshStats()
+    this.refreshModelMarketInstallStates()
     this.notify()
     this.modelImportService.loadImportedProfiles(this.filesDir).then((profiles: ModelProfile[]) => {
       this.modelManager.updateImportedProfiles(profiles, this.filesDir)
@@ -136,11 +152,87 @@ export class ChatViewModel {
   }
 
   modelProfiles(): ModelProfile[] {
-    return this.modelManager.profiles()
+    return this.modelManager.profiles().filter((profile: ModelProfile) => this.shouldShowModelProfile(profile))
   }
 
   currentModel(): ModelProfile {
     return this.modelManager.currentModel()
+  }
+
+  modelCatalogItems(): ModelCatalogItem[] {
+    const searchText = this.modelMarketSearchText.trim().toLowerCase()
+    const filter = this.modelMarketCapabilityFilter
+    return MODEL_CATALOG_ITEMS.filter((item: ModelCatalogItem) => {
+      if (filter !== MODEL_CATALOG_FILTER_ALL && item.capabilities.indexOf(filter) < 0) {
+        return false
+      }
+      if (searchText.length <= 0) {
+        return true
+      }
+      return item.displayName.toLowerCase().indexOf(searchText) >= 0 ||
+        item.shortName.toLowerCase().indexOf(searchText) >= 0 ||
+        item.provider.toLowerCase().indexOf(searchText) >= 0
+    })
+  }
+
+  modelCatalogFilterTags(): string[] {
+    const tags: string[] = [MODEL_CATALOG_FILTER_ALL]
+    MODEL_CATALOG_ITEMS.forEach((item: ModelCatalogItem) => {
+      item.capabilities.forEach((capability: string) => {
+        if (tags.indexOf(capability) < 0) {
+          tags.push(capability)
+        }
+      })
+    })
+    return tags
+  }
+
+  isCatalogItemInstalled(catalogItemId: string): boolean {
+    return this.modelMarketInstalledIds.indexOf(catalogItemId) >= 0
+  }
+
+  openModelMarketDialog(): void {
+    if (this.modelLoading || this.modelImporting || this.builtinModelInstalling) {
+      return
+    }
+    this.showModelMarketDialog = true
+    this.refreshModelMarketInstallStates()
+    this.notify()
+  }
+
+  closeModelMarketDialog(): void {
+    if (this.builtinModelInstalling) {
+      return
+    }
+    this.showModelMarketDialog = false
+    this.notify()
+  }
+
+  updateModelMarketSearchText(value: string): void {
+    this.modelMarketSearchText = value
+    this.notify()
+  }
+
+  updateModelMarketCapabilityFilter(value: string): void {
+    this.modelMarketCapabilityFilter = value
+    this.notify()
+  }
+
+  installCatalogItem(catalogItemId: string): void {
+    if (this.busy || this.modelLoading || this.modelImporting || this.builtinModelInstalling || this.context === undefined) {
+      return
+    }
+    const item = this.builtinModelInstallService.getCatalogItem(catalogItemId)
+    if (item === undefined) {
+      this.status = '安装失败：模型市场条目不存在'
+      this.notify()
+      return
+    }
+    this.pendingInstallCatalogItemId = item.id
+    this.autoLoadAfterInstall = item.modelId === this.selectedModelId
+    this.showModelMarketDialog = false
+    this.openBuiltinModelInstallDialog(item, this.autoLoadAfterInstall)
+    this.startBuiltinModelInstall()
   }
 
   switchModel(modelId: string): void {
@@ -158,17 +250,17 @@ export class ChatViewModel {
     this.resetGenerationSettings(false)
     this.session.resetForModelSwitch(model.shortName)
     this.syncMessages()
+    this.runtimeConfigDirty = false
     this.resetLoadedModel(`已切换至 ${model.shortName}，请加载模型。`)
-    this.notifyAndScroll()
+    this.notify()
   }
 
   updateModelPath(value: string): void {
     if (!this.modelManager.updateModelPath(value)) {
       return
     }
-    if (!this.modelLoading) {
-      this.resetLoadedModel('模型路径已修改，请重新加载。')
-    }
+    this.runtimeConfigDirty = true
+    this.status = this.loaded ? '运行配置已修改，应用并重新加载后生效。' : '运行配置已修改，应用并加载后生效。'
     this.notify()
   }
 
@@ -185,7 +277,13 @@ export class ChatViewModel {
   }
 
   updateThreadNum(value: number): void {
-    this.threadNum = Math.round(value)
+    const nextThreadNum = Math.round(value)
+    if (this.threadNum === nextThreadNum) {
+      return
+    }
+    this.threadNum = nextThreadNum
+    this.runtimeConfigDirty = true
+    this.status = this.loaded ? '运行配置已修改，应用并重新加载后生效。' : '运行配置已修改，应用并加载后生效。'
     this.notify()
   }
 
@@ -439,9 +537,8 @@ export class ChatViewModel {
     }
 
     this.busy = true
-    this.modelImporting = true
     this.showDeleteModelDialog = false
-    this.modelImportMessage = `正在删除 ${profile.shortName}...`
+    this.status = `正在删除 ${profile.shortName}...`
     this.notify()
 
     const deleteTask: Promise<ModelProfile[] | undefined> = profile.source === 'imported' ?
@@ -456,20 +553,39 @@ export class ChatViewModel {
       }
       if (profiles !== undefined) {
         this.modelManager.updateImportedProfiles(profiles, this.filesDir)
+      } else {
+        this.removeInstalledCatalogState(profile)
       }
       this.prepareImportedModelEditor(this.selectedModelId)
       this.pendingDeleteModelId = ''
-      this.modelImportMessage = `${profile.shortName} 已删除`
       this.status = deletingCurrent ? `${profile.shortName} 已删除，请重新安装或选择其他模型。` : this.status
       this.busy = false
       this.modelImporting = false
+      this.refreshModelMarketInstallStates()
       this.notify()
     }).catch((err: Error) => {
       this.pendingDeleteModelId = ''
-      this.modelImportMessage = `删除失败：${formatError(err as Object)}`
+      this.status = `删除失败：${formatError(err as Object)}`
       this.busy = false
       this.modelImporting = false
       this.notify()
+    })
+  }
+
+  refreshModelMarketInstallStates(): void {
+    const installedIds: string[] = []
+    const checks = MODEL_CATALOG_ITEMS.map((item: ModelCatalogItem) => {
+      return this.builtinModelInstallService.isCatalogItemInstalled(this.filesDir, item).then((installed: boolean) => {
+        if (installed) {
+          installedIds.push(item.id)
+        }
+      }).catch((_err: Error) => {
+      })
+    })
+    Promise.all(checks).then(() => {
+      this.modelMarketInstalledIds = installedIds
+      this.notify()
+    }).catch((_err: Error) => {
     })
   }
 
@@ -489,7 +605,11 @@ export class ChatViewModel {
     if (profile === undefined) {
       return false
     }
-    return profile.source === 'imported' || this.builtinModelInstallService.getDownloadSpec(profile) !== undefined
+    if (profile.source === 'imported') {
+      return true
+    }
+    const catalogItemId = this.catalogItemIdForProfile(profile)
+    return catalogItemId.length > 0 && this.modelMarketInstalledIds.indexOf(catalogItemId) >= 0
   }
 
   pendingDeleteModel(): ModelProfile | undefined {
@@ -497,6 +617,81 @@ export class ChatViewModel {
       return undefined
     }
     return this.findProfile(this.pendingDeleteModelId)
+  }
+
+  dismissTopDialogIfIdle(): boolean {
+    if (!this.hasVisibleDialog()) {
+      return false
+    }
+    if (this.isDialogDismissBlocked()) {
+      return true
+    }
+    if (this.showDeleteModelDialog) {
+      this.cancelDeleteModel()
+      return true
+    }
+    if (this.showModelMarketDialog) {
+      this.closeModelMarketDialog()
+      return true
+    }
+    if (this.showBuiltinModelInstallDialog) {
+      this.closeBuiltinModelInstallDialog()
+      return true
+    }
+    if (this.showModelLoadDialog) {
+      this.closeModelLoadDialog()
+      return true
+    }
+    return true
+  }
+
+  private hasVisibleDialog(): boolean {
+    return this.showDeleteModelDialog ||
+      this.showModelMarketDialog ||
+      this.showBuiltinModelInstallDialog ||
+      this.showModelLoadDialog
+  }
+
+  private isDialogDismissBlocked(): boolean {
+    return this.busy ||
+      this.generating ||
+      this.generationStopping ||
+      this.modelLoading ||
+      this.modelImporting ||
+      this.builtinModelInstalling
+  }
+
+  private removeInstalledCatalogState(profile: ModelProfile): void {
+    const catalogItemId = this.catalogItemIdForProfile(profile)
+    if (catalogItemId.length <= 0) {
+      return
+    }
+    this.modelMarketInstalledIds = this.modelMarketInstalledIds.filter((itemId: string) => itemId !== catalogItemId)
+  }
+
+  private shouldShowModelProfile(profile: ModelProfile): boolean {
+    if (profile.source !== 'builtin') {
+      return true
+    }
+    const catalogItemId = this.catalogItemIdForProfile(profile)
+    if (catalogItemId.length <= 0) {
+      return true
+    }
+    const catalogItem = this.builtinModelInstallService.getCatalogItem(catalogItemId)
+    if (catalogItem === undefined || catalogItem.recommended) {
+      return true
+    }
+    return this.modelMarketInstalledIds.indexOf(catalogItemId) >= 0
+  }
+
+  private catalogItemIdForProfile(profile: ModelProfile): string {
+    if (profile.catalogItemId !== undefined && profile.catalogItemId.length > 0) {
+      return profile.catalogItemId
+    }
+    if (profile.downloadId !== undefined && profile.downloadId.length > 0) {
+      return profile.downloadId
+    }
+    return ''
   }
 
   clearSelectedImage(): void {
@@ -580,6 +775,26 @@ export class ChatViewModel {
     })
   }
 
+  applyRuntimeConfigAndLoad(): void {
+    if (this.busy || this.modelLoading || this.modelImporting || this.builtinModelInstalling) {
+      return
+    }
+    if (this.loaded) {
+      this.nativeService.reset()
+      this.loaded = false
+    }
+    this.ensureCurrentModelInstalled().then((installed: boolean) => {
+      if (!installed) {
+        return
+      }
+      this.openModelLoadDialog(false)
+      this.startModelLoad()
+    }).catch((err: Error) => {
+      this.status = `检查模型失败：${formatError(err as Object)}`
+      this.notify()
+    })
+  }
+
   startModelLoad(): void {
     if (this.modelLoading) {
       return
@@ -602,6 +817,7 @@ export class ChatViewModel {
       this.currentGenerationSettings()
     ).then((loaded: boolean) => {
       this.loaded = loaded
+      this.runtimeConfigDirty = false
       this.status = `${this.currentModel().shortName} 已加载`
       this.modelLoadMessage = `${this.currentModel().shortName} 加载完成，可以开始聊天。`
       this.stopModelLoadProgress()
@@ -635,7 +851,18 @@ export class ChatViewModel {
     if (this.builtinModelInstalling) {
       return
     }
+    if (this.builtinModelInstallCanceled) {
+      const spec = this.currentBuiltinModelInstallSpec()
+      if (spec !== undefined) {
+        this.builtinModelInstallService.clearPartialDownload(this.filesDir, spec)
+          .then((_removedBytes: number) => undefined)
+          .catch((_err: Error) => undefined)
+      }
+    }
     this.showBuiltinModelInstallDialog = false
+    this.pendingInstallCatalogItemId = ''
+    this.autoLoadAfterInstall = false
+    this.builtinModelInstallCanceled = false
     this.notify()
   }
 
@@ -643,56 +870,130 @@ export class ChatViewModel {
     if (this.builtinModelInstalling || this.context === undefined) {
       return
     }
-    const model = this.currentModel()
-    const spec = this.builtinModelInstallService.getDownloadSpec(model)
+    const spec = this.currentBuiltinModelInstallSpec()
     if (spec === undefined) {
       this.showBuiltinModelInstallDialog = false
       this.loadModel()
       return
     }
-
     this.busy = true
     this.builtinModelInstalling = true
+    this.builtinModelInstallCancelRequested = false
+    this.builtinModelInstallCanceled = false
     this.showBuiltinModelInstallDialog = true
     this.builtinModelInstallError = ''
-    this.builtinModelInstallProgress = 0
-    this.builtinModelInstallDownloadedBytes = 0
     this.builtinModelInstallTotalBytes = spec.totalBytes
-    this.builtinModelInstallFileName = ''
     this.builtinModelInstallModelName = spec.displayName
     this.builtinModelInstallSourceName = spec.sourceName
-    this.builtinModelInstallMessage = `正在从 ${spec.sourceName} 下载 ${spec.displayName}。请保持 App 在前台。`
+    this.builtinModelInstallMessage = this.builtinModelInstallDownloadedBytes > 0 ?
+      `正在继续下载 ${spec.displayName}。请保持 App 在前台。` :
+      `正在从 ${spec.sourceName} 下载 ${spec.displayName}。请保持 App 在前台。`
     this.status = `正在安装 ${spec.displayName}...`
     this.notify()
+    this.syncActiveBuiltinModelInstallPartialProgress(spec)
 
-    this.builtinModelInstallService.install(this.context, model, (progress: BuiltinModelInstallProgress) => {
+    this.builtinModelInstallService.installCatalogItem(this.context, spec, (progress: BuiltinModelInstallProgress) => {
+      if (this.builtinModelInstallCancelRequested) {
+        return
+      }
       this.builtinModelInstallProgress = progress.progress
       this.builtinModelInstallDownloadedBytes = progress.downloadedBytes
       this.builtinModelInstallTotalBytes = progress.totalBytes
       this.builtinModelInstallFileName = progress.fileName
       this.builtinModelInstallMessage = `${progress.message}：${progress.fileName}`
-      this.status = `正在安装 ${progress.modelName}... ${Math.round(progress.progress)}%`
+      this.status = `正在安装 ${progress.modelName}...`
       this.notify()
     }).then(() => {
       this.builtinModelInstalling = false
       this.busy = false
       this.builtinModelInstallProgress = 100
-      this.builtinModelInstallMessage = `${spec.displayName} 安装完成，正在加载模型。`
+      this.builtinModelInstallMessage = this.autoLoadAfterInstall ?
+        `${spec.displayName} 安装完成，正在加载模型。` :
+        `${spec.displayName} 安装完成，可在模型列表中选择并加载。`
       this.status = `${spec.displayName} 安装完成`
+      this.refreshModelMarketInstallStates()
       this.notify()
       setTimeout(() => {
         this.showBuiltinModelInstallDialog = false
-        this.openModelLoadDialog(false)
-        this.startModelLoad()
+        this.pendingInstallCatalogItemId = ''
+        if (this.autoLoadAfterInstall) {
+          this.autoLoadAfterInstall = false
+          this.openModelLoadDialog(false)
+          this.startModelLoad()
+        } else {
+          this.autoLoadAfterInstall = false
+          this.notify()
+        }
       }, 350)
     }).catch((err: Error) => {
+      const canceled = this.builtinModelInstallCancelRequested
       this.builtinModelInstalling = false
       this.busy = false
-      this.builtinModelInstallError = `安装失败：${formatError(err as Object)}`
-      this.builtinModelInstallMessage = `${spec.displayName} 未安装完成，可以重试。`
-      this.status = this.builtinModelInstallError
+      this.builtinModelInstallCancelRequested = false
+      if (canceled) {
+        this.builtinModelInstallError = ''
+        this.builtinModelInstallCanceled = true
+        this.builtinModelInstallMessage = `${spec.displayName} 下载已停止；继续下载会断点续传，关闭弹窗会清理未完成文件。`
+        this.status = `${spec.displayName} 下载已停止`
+      } else {
+        this.builtinModelInstallCanceled = false
+        this.builtinModelInstallError = `安装失败：${formatError(err as Object)}`
+        this.builtinModelInstallMessage = `${spec.displayName} 未安装完成，可以重试。`
+        this.status = this.builtinModelInstallError
+      }
       this.notify()
     })
+  }
+
+  cancelBuiltinModelInstall(): void {
+    if (!this.builtinModelInstalling) {
+      return
+    }
+    this.builtinModelInstallCancelRequested = true
+    this.builtinModelInstallMessage = '正在停止下载，请稍候...'
+    this.status = '正在停止模型下载...'
+    this.builtinModelInstallService.cancelInstall()
+    this.notify()
+  }
+
+  private syncBuiltinModelInstallPartialProgress(spec: BuiltinModelDownloadSpec): void {
+    this.builtinModelInstallService.existingPartialDownloadBytes(this.filesDir, spec).then((downloadedBytes: number) => {
+      if (this.builtinModelInstalling) {
+        return
+      }
+      this.builtinModelInstallDownloadedBytes = downloadedBytes
+      this.builtinModelInstallProgress = spec.totalBytes > 0 ?
+        Math.round(downloadedBytes / spec.totalBytes * 1000) / 10 :
+        0
+      if (downloadedBytes > 0 && this.builtinModelInstallFileName.length <= 0) {
+        this.builtinModelInstallMessage = `${spec.displayName} 检测到未完成下载，可继续下载或关闭弹窗清理。`
+      }
+      this.notify()
+    }).catch((_err: Error) => undefined)
+  }
+
+  private syncActiveBuiltinModelInstallPartialProgress(spec: BuiltinModelDownloadSpec): void {
+    this.builtinModelInstallService.existingPartialDownloadBytes(this.filesDir, spec).then((downloadedBytes: number) => {
+      if (!this.builtinModelInstalling || this.builtinModelInstallModelName !== spec.displayName) {
+        return
+      }
+      if (downloadedBytes <= this.builtinModelInstallDownloadedBytes) {
+        return
+      }
+      this.builtinModelInstallDownloadedBytes = downloadedBytes
+      this.builtinModelInstallProgress = spec.totalBytes > 0 ?
+        Math.round(downloadedBytes / spec.totalBytes * 1000) / 10 :
+        0
+      this.builtinModelInstallMessage = `正在继续下载 ${spec.displayName}。请保持 App 在前台。`
+      this.notify()
+    }).catch((_err: Error) => undefined)
+  }
+
+  private currentBuiltinModelInstallSpec(): BuiltinModelDownloadSpec | undefined {
+    if (this.pendingInstallCatalogItemId.length > 0) {
+      return this.builtinModelInstallService.getCatalogItem(this.pendingInstallCatalogItemId)
+    }
+    return this.builtinModelInstallService.getDownloadSpec(this.currentModel())
   }
 
   chooseImage(): void {
@@ -707,7 +1008,7 @@ export class ChatViewModel {
       return
     }
 
-    this.imageService.pickImage(this.context).then((uri: string | undefined) => {
+    this.imageService.pickImage().then((uri: string | undefined) => {
       if (uri !== undefined && uri.length > 0) {
         this.selectedImageUri = uri
         this.notify()
@@ -749,7 +1050,6 @@ export class ChatViewModel {
 
     const genStartTime: number = Date.now()
     let firstTokenTime: number = 0
-    let streamedChars = 0
     let streamedText = ''
     let generation: Promise<GenerationResult>
     const assistantOutputPrefix = this.expectedAssistantOutputPrefixForCurrentModel()
@@ -777,7 +1077,7 @@ export class ChatViewModel {
                 firstTokenTime = Date.now()
               }
               streamedText += chunk
-              streamedChars = this.handleStreamText(assistantId, streamedText, assistantOutputPrefix)
+              this.handleStreamText(assistantId, streamedText, assistantOutputPrefix)
             }
           )
         })
@@ -787,7 +1087,7 @@ export class ChatViewModel {
             firstTokenTime = Date.now()
           }
           streamedText += chunk
-          streamedChars = this.handleStreamText(assistantId, streamedText, assistantOutputPrefix)
+          this.handleStreamText(assistantId, streamedText, assistantOutputPrefix)
         })
       }
     } catch (err) {
@@ -912,17 +1212,20 @@ export class ChatViewModel {
       if (installed) {
         return true
       }
-      this.openBuiltinModelInstallDialog(spec)
+      this.pendingInstallCatalogItemId = spec.id
+      this.autoLoadAfterInstall = true
+      this.openBuiltinModelInstallDialog(spec, true)
       return false
     })
   }
 
-  private openBuiltinModelInstallDialog(spec: BuiltinModelDownloadSpec): void {
+  private openBuiltinModelInstallDialog(spec: BuiltinModelDownloadSpec, autoLoadAfterInstall: boolean = false): void {
     this.showModelLoadDialog = false
     this.stopModelLoadProgress()
     this.modelLoadProgress = 0
     this.showBuiltinModelInstallDialog = true
     this.builtinModelInstalling = false
+    this.builtinModelInstallCanceled = false
     this.builtinModelInstallProgress = 0
     this.builtinModelInstallDownloadedBytes = 0
     this.builtinModelInstallTotalBytes = spec.totalBytes
@@ -930,9 +1233,12 @@ export class ChatViewModel {
     this.builtinModelInstallModelName = spec.displayName
     this.builtinModelInstallSourceName = spec.sourceName
     this.builtinModelInstallError = ''
-    this.builtinModelInstallMessage = `${spec.displayName} 内置模型目录缺失或不完整，请先下载模型文件。`
+    this.builtinModelInstallMessage = autoLoadAfterInstall ?
+      `${spec.displayName} 模型目录缺失或不完整，请先下载模型文件。` :
+      `准备从 ${spec.sourceName} 安装 ${spec.displayName}。`
     this.status = `${spec.displayName} 未安装`
     this.notify()
+    this.syncBuiltinModelInstallPartialProgress(spec)
   }
 
   private async currentModelConfigExists(): Promise<boolean> {

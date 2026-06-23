@@ -13,6 +13,7 @@ export interface ModelProfile {
   stopSequence?: string
   contextMessageLimit?: number
   templateOverride?: boolean
+  catalogItemId?: string
   downloadId?: string
   editable?: boolean
   removable?: boolean
@@ -64,6 +65,7 @@ export const MODEL_PROFILES: ModelProfile[] = [
       presencePenalty: 0.0,
       penaltyWindow: 256
     },
+    catalogItemId: 'qwen3-4b-instruct',
     downloadId: 'qwen3-4b-instruct',
     editable: false,
     removable: false
@@ -88,7 +90,133 @@ export const MODEL_PROFILES: ModelProfile[] = [
       presencePenalty: 0.0,
       penaltyWindow: 256
     },
+    catalogItemId: 'minicpm5-1b',
     downloadId: 'minicpm5-1b',
+    editable: false,
+    removable: false
+  },
+  {
+    id: 'qwen3-0.6b',
+    name: 'Qwen3-0.6B',
+    shortName: 'Qwen3-0.6B',
+    directoryName: 'Qwen3-0.6B-MNN',
+    description: '超轻量 Qwen3 文本模型，适合快速响应和低存储占用。',
+    supportsImage: false,
+    systemPrompt: '你是运行在本地设备上的 Qwen3-0.6B。请始终使用简体中文回答，表达简洁清楚。',
+    source: 'builtin',
+    chatFormat: CHAT_FORMAT_MNN_AUTO,
+    contextMessageLimit: 6,
+    generationDefaults: {
+      temperature: 0.7,
+      topP: 0.8,
+      topK: 20,
+      repetitionPenalty: 1.05,
+      frequencyPenalty: 0.0,
+      presencePenalty: 0.0,
+      penaltyWindow: 256
+    },
+    catalogItemId: 'qwen3-0.6b',
+    downloadId: 'qwen3-0.6b',
+    editable: false,
+    removable: false
+  },
+  {
+    id: 'qwen3-1.7b',
+    name: 'Qwen3-1.7B',
+    shortName: 'Qwen3-1.7B',
+    directoryName: 'Qwen3-1.7B-MNN',
+    description: '轻量 Qwen3 文本模型，兼顾速度、效果和占用。',
+    supportsImage: false,
+    systemPrompt: '你是运行在本地设备上的 Qwen3-1.7B。请始终使用简体中文回答，表达简洁清楚。',
+    source: 'builtin',
+    chatFormat: CHAT_FORMAT_MNN_AUTO,
+    contextMessageLimit: 6,
+    generationDefaults: {
+      temperature: 0.7,
+      topP: 0.8,
+      topK: 20,
+      repetitionPenalty: 1.05,
+      frequencyPenalty: 0.0,
+      presencePenalty: 0.0,
+      penaltyWindow: 256
+    },
+    catalogItemId: 'qwen3-1.7b',
+    downloadId: 'qwen3-1.7b',
+    editable: false,
+    removable: false
+  },
+  {
+    id: 'qwen2.5-1.5b-instruct',
+    name: 'Qwen2.5-1.5B-Instruct',
+    shortName: 'Qwen2.5-1.5B',
+    directoryName: 'Qwen2.5-1.5B-Instruct-MNN',
+    description: '低内存 Qwen2.5 指令模型，适合常规文本对话。',
+    supportsImage: false,
+    systemPrompt: '你是运行在本地设备上的 Qwen2.5-1.5B-Instruct。请始终使用简体中文回答，表达简洁清楚。',
+    source: 'builtin',
+    chatFormat: CHAT_FORMAT_MNN_AUTO,
+    contextMessageLimit: 6,
+    generationDefaults: {
+      temperature: 0.6,
+      topP: 0.9,
+      topK: 40,
+      repetitionPenalty: 1.05,
+      frequencyPenalty: 0.0,
+      presencePenalty: 0.0,
+      penaltyWindow: 256
+    },
+    catalogItemId: 'qwen2.5-1.5b-instruct',
+    downloadId: 'qwen2.5-1.5b-instruct',
+    editable: false,
+    removable: false
+  },
+  {
+    id: 'qwen2.5-3b-instruct',
+    name: 'Qwen2.5-3B-Instruct',
+    shortName: 'Qwen2.5-3B',
+    directoryName: 'Qwen2.5-3B-Instruct-MNN',
+    description: '中档 Qwen2.5 指令模型，适合对话、摘要和轻量写作。',
+    supportsImage: false,
+    systemPrompt: '你是运行在本地设备上的 Qwen2.5-3B-Instruct。请始终使用简体中文回答，表达简洁清楚。',
+    source: 'builtin',
+    chatFormat: CHAT_FORMAT_MNN_AUTO,
+    contextMessageLimit: 6,
+    generationDefaults: {
+      temperature: 0.6,
+      topP: 0.9,
+      topK: 40,
+      repetitionPenalty: 1.05,
+      frequencyPenalty: 0.0,
+      presencePenalty: 0.0,
+      penaltyWindow: 256
+    },
+    catalogItemId: 'qwen2.5-3b-instruct',
+    downloadId: 'qwen2.5-3b-instruct',
+    editable: false,
+    removable: false
+  },
+  {
+    id: 'qwen3-8b',
+    name: 'Qwen3-8B',
+    shortName: 'Qwen3-8B',
+    directoryName: 'Qwen3-8B-MNN',
+    description: '较大参数 Qwen3 文本模型，适合大内存设备尝试。',
+    supportsImage: false,
+    systemPrompt: '你是运行在本地设备上的 Qwen3-8B。请始终使用简体中文回答，表达简洁清楚。',
+    source: 'builtin',
+    chatFormat: CHAT_FORMAT_MNN_AUTO,
+    contextMessageLimit: 6,
+    generationDefaults: {
+      temperature: 0.7,
+      topP: 0.8,
+      topK: 20,
+      repetitionPenalty: 1.05,
+      frequencyPenalty: 0.0,
+      presencePenalty: 0.0,
+      penaltyWindow: 256
+    },
+    catalogItemId: 'qwen3-8b',
+    downloadId: 'qwen3-8b',
     editable: false,
     removable: false
   },
@@ -112,6 +240,7 @@ export const MODEL_PROFILES: ModelProfile[] = [
       presencePenalty: 0.0,
       penaltyWindow: 0
     },
+    catalogItemId: 'gemma4',
     downloadId: 'gemma4',
     editable: false,
     removable: false

@@ -1,5 +1,4 @@
 import { common } from '@kit.AbilityKit'
-import { promptAction } from '@kit.ArkUI'
 import { AppHeader } from '../components/AppHeader'
 import { BottomTabs } from '../components/BottomTabs'
 import { BuiltinModelInstallDialog } from '../components/BuiltinModelInstallDialog'
@@ -8,6 +7,7 @@ import { ChatRunTicker } from '../components/ChatRunTicker'
 import { DeleteModelDialog } from '../components/DeleteImportedModelDialog'
 import { LaunchScreen } from '../components/LaunchScreen'
 import { ModelLoadDialog } from '../components/ModelLoadDialog'
+import { ModelMarketDialog } from '../components/ModelMarketDialog'
 import { ModelTab } from '../components/ModelTab'
 import { MonitorTab } from '../components/MonitorTab'
 import { ChatViewModel } from '../state/ChatViewModel'
@@ -23,15 +23,18 @@ struct Index {
   private abilityContext?: common.UIAbilityContext
 
   onBackPress(): boolean {
+    if (this.viewModel.dismissTopDialogIfIdle()) {
+      return true
+    }
     const now: number = Date.now()
     if (now - this.lastBackTime < 2000) {
       this.abilityContext?.terminateSelf().catch((_err: Error) => {
-        promptAction.showToast({ message: '退出失败', duration: 1500, bottom: 80 })
+        this.showToast('退出失败', 1500)
       })
       return true
     }
     this.lastBackTime = now
-    promptAction.showToast({ message: '再按一次退出', duration: 2000, bottom: 80 })
+    this.showToast('再按一次退出', 2000)
     return true
   }
 
@@ -39,7 +42,7 @@ struct Index {
     this.viewModel.bindNotify(() => {
       this.stateVersion++
     })
-    const context = getContext(this) as common.UIAbilityContext
+    const context = this.getUIContext().getHostContext() as common.UIAbilityContext
     this.abilityContext = context
     this.viewModel.initialize(context)
     setTimeout(() => {
@@ -66,6 +69,13 @@ struct Index {
     this.activeTab = 0
   }
 
+  private showToast(message: string, duration: number): void {
+    try {
+      this.getUIContext().getPromptAction().showToast({ message, duration, bottom: 80 })
+    } catch (_) {
+    }
+  }
+
   @Builder
   private MainScreen() {
     Stack() {
@@ -75,8 +85,15 @@ struct Index {
             status: this.viewModel.status,
             loaded: this.viewModel.loaded,
             busy: this.viewModel.busy,
+            showNewChat: this.activeTab === 0,
+            actionLabel: this.activeTab === 1 ? '模型市场' : '',
             onNewChat: () => {
               this.newChat()
+            },
+            onAction: () => {
+              if (this.activeTab === 1) {
+                this.viewModel.openModelMarketDialog()
+              }
             }
           })
           .padding({ left: 14, right: 14 })
@@ -87,24 +104,29 @@ struct Index {
           }
         }
         .width('100%')
-        Column() {
-          if (this.activeTab === 0) {
-            ChatTab({
-              viewModel: this.viewModel,
-              renderVersion: this.stateVersion
-            })
-            .padding({ left: 14, right: 14 })
-          } else if (this.activeTab === 1) {
-            ModelTab({
-              viewModel: this.viewModel,
-              renderVersion: this.stateVersion
-            })
-            .padding({ left: 14, right: 14 })
-          } else {
+        Stack() {
+          ChatTab({
+            viewModel: this.viewModel,
+            renderVersion: this.stateVersion
+          })
+          .padding({ left: 14, right: 14 })
+          .height('100%')
+          .visibility(this.activeTab === 0 ? Visibility.Visible : Visibility.Hidden)
+
+          ModelTab({
+            viewModel: this.viewModel,
+            renderVersion: this.stateVersion
+          })
+          .padding({ left: 14, right: 14 })
+          .height('100%')
+          .visibility(this.activeTab === 1 ? Visibility.Visible : Visibility.Hidden)
+
+          if (this.activeTab === 2) {
             MonitorTab({
               viewModel: this.viewModel
             })
             .padding({ left: 14, right: 14 })
+            .height('100%')
           }
         }
         .layoutWeight(1)
@@ -129,6 +151,11 @@ struct Index {
       }
       if (this.viewModel.showBuiltinModelInstallDialog) {
         BuiltinModelInstallDialog({
+          viewModel: this.viewModel
+        })
+      }
+      if (this.viewModel.showModelMarketDialog) {
+        ModelMarketDialog({
           viewModel: this.viewModel
         })
       }

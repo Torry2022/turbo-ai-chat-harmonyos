@@ -11,6 +11,9 @@ export struct BuiltinModelInstallDialog {
         .width('100%')
         .height('100%')
         .backgroundColor('#00000099')
+        .onClick(() => {
+          this.viewModel.dismissTopDialogIfIdle()
+        })
 
       Column({ space: 14 }) {
         Row({ space: 10 }) {
@@ -19,7 +22,7 @@ export struct BuiltinModelInstallDialog {
             .height(42)
             .borderRadius(12)
           Column({ space: 2 }) {
-            Text('安装内置模型')
+            Text('安装模型')
               .fontSize(20)
               .fontWeight(FontWeight.Bold)
               .fontColor('#F4FBFF')
@@ -46,11 +49,19 @@ export struct BuiltinModelInstallDialog {
             .width('100%')
         }
 
-        Progress({ value: this.viewModel.builtinModelInstallProgress, total: 100, type: ProgressType.Linear })
-          .width('100%')
-          .height(8)
-          .color('#45D6A4')
-          .style({ strokeWidth: 8, strokeRadius: 4, enableScanEffect: this.viewModel.builtinModelInstalling })
+        if (this.viewModel.builtinModelInstallProgress <= 0) {
+          Row()
+            .width('100%')
+            .height(8)
+            .backgroundColor('#26384D')
+            .borderRadius(4)
+        } else {
+          Progress({ value: this.viewModel.builtinModelInstallProgress, total: 100, type: ProgressType.Linear })
+            .width('100%')
+            .height(8)
+            .color('#45D6A4')
+            .style({ strokeWidth: 8, strokeRadius: 4, enableScanEffect: this.viewModel.builtinModelInstalling })
+        }
 
         Row() {
           Text(`${Math.round(this.viewModel.builtinModelInstallProgress)}%`)
@@ -63,41 +74,36 @@ export struct BuiltinModelInstallDialog {
         }
         .width('100%')
 
-        Text(this.viewModel.builtinModelInstallFileName)
-          .fontSize(12)
-          .fontColor('#6F86A0')
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-          .width('100%')
-
         Row({ space: 10 }) {
-          Button(this.viewModel.builtinModelInstalling ? '下载中...' : '下载并安装')
-            .height(46)
+          Button(this.viewModel.builtinModelInstalling ? '停止下载' : (this.viewModel.builtinModelInstallCanceled ? '关闭' : '稍后'))
+            .height(38)
+            .layoutWeight(1)
+            .fontColor('#F4FBFF')
+            .backgroundColor(this.viewModel.builtinModelInstalling ? '#B43B3B' : '#26384D')
+            .onClick(() => {
+              if (this.viewModel.builtinModelInstalling) {
+                this.viewModel.cancelBuiltinModelInstall()
+                return
+              }
+              this.viewModel.closeBuiltinModelInstallDialog()
+            })
+
+          Button(this.viewModel.builtinModelInstalling ? '下载中...' : (this.viewModel.builtinModelInstallCanceled ? '继续下载' : '下载并安装'))
+            .height(38)
             .layoutWeight(1)
             .enabled(!this.viewModel.builtinModelInstalling)
             .fontColor('#F7FCFF')
             .backgroundColor('#1466F4')
-            .borderRadius(8)
             .onClick(() => {
               this.viewModel.startBuiltinModelInstall()
-            })
-
-          Button('稍后')
-            .height(46)
-            .layoutWeight(1)
-            .enabled(!this.viewModel.builtinModelInstalling)
-            .fontColor('#B7CDE1')
-            .backgroundColor('#132338')
-            .borderRadius(8)
-            .onClick(() => {
-              this.viewModel.closeBuiltinModelInstallDialog()
             })
         }
         .width('100%')
       }
       .width('90%')
       .padding(18)
-      .backgroundColor('#0D1A28')
+      .backgroundColor('#102235')
+      .border({ width: 1, color: '#23445F' })
       .borderRadius(10)
     }
     .width('100%')

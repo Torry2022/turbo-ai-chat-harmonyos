@@ -23,6 +23,9 @@ export struct DeleteModelDialog {
         .width('100%')
         .height('100%')
         .backgroundColor('#00000099')
+        .onClick(() => {
+          this.viewModel.dismissTopDialogIfIdle()
+        })
 
       Column({ space: 14 }) {
         Text(`删除 ${this.modelName()}`)
@@ -42,7 +45,7 @@ export struct DeleteModelDialog {
             .height(38)
             .layoutWeight(1)
             .fontColor('#F4FBFF')
-            .backgroundColor('#14344A')
+            .backgroundColor('#26384D')
             .onClick(() => {
               this.viewModel.cancelDeleteModel()
             })
@@ -58,7 +61,8 @@ export struct DeleteModelDialog {
       }
       .width('90%')
       .padding(18)
-      .backgroundColor('#152A3D')
+      .backgroundColor('#102235')
+      .border({ width: 1, color: '#23445F' })
       .borderRadius(10)
     }
     .width('100%')

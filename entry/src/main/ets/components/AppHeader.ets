@@ -3,7 +3,10 @@ export struct AppHeader {
   @Prop status: string = ''
   @Prop loaded: boolean = false
   @Prop busy: boolean = false
+  @Prop showNewChat: boolean = true
+  @Prop actionLabel: string = ''
   onNewChat: () => void = () => {}
+  onAction: () => void = () => {}
 
   build() {
     Row({ space: 10 }) {
@@ -31,15 +34,25 @@ export struct AppHeader {
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)
 
-      Button('新对话')
-        .enabled(!this.busy)
-        .fontColor('#F4FBFF')
-        .backgroundColor('#14344A')
-        .borderRadius(12)
-        .padding({ left: 14, right: 14 })
-        .onClick(() => {
-          this.onNewChat()
-        })
+      if (this.showNewChat || this.actionLabel.length > 0) {
+        Button(this.showNewChat ? '新对话' : this.actionLabel)
+          .enabled(!this.busy)
+          .height(40)
+          .width(78)
+          .fontSize(this.showNewChat ? 16 : 15)
+          .fontColor(this.showNewChat ? '#F4FBFF' : '#8DE4C3')
+          .backgroundColor(this.showNewChat ? '#26384D' : '#12372E')
+          .borderRadius(8)
+          .padding(0)
+          .margin({ right: 4 })
+          .onClick(() => {
+            if (this.showNewChat) {
+              this.onNewChat()
+              return
+            }
+            this.onAction()
+          })
+      }
     }
     .width('100%')
     .height(50)
