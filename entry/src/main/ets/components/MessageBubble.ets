@@ -48,7 +48,7 @@ export struct MessageBubble {
   @Builder
   private MarkdownLine(text: string, color: ResourceColor = '#EAF4FF') {
     Text() {
-      ForEach(parseInlineMarkdown(text), (span: MarkdownSpan, index: number) => {
+      ForEach(parseInlineMarkdown(text), (span: MarkdownSpan) => {
         if (span.code) {
           Span(span.text)
             .fontColor('#D7E8F7')
@@ -79,7 +79,7 @@ export struct MessageBubble {
   private MarkdownBlock(block: MarkdownBlock, blockIndex: number) {
     if (block.type === 'heading') {
       Text() {
-        ForEach(parseInlineMarkdown(block.text), (span: MarkdownSpan, index: number) => {
+        ForEach(parseInlineMarkdown(block.text), (span: MarkdownSpan) => {
           Span(span.text)
             .fontWeight(FontWeight.Bold)
             .fontColor('#F4FBFF')
@@ -134,31 +134,31 @@ export struct MessageBubble {
       Column({ space: 0 }) {
         if (block.headers !== undefined) {
           Row() {
-            ForEach(block.headers, (h: string, hi: number) => {
+            ForEach(block.headers, (h: string) => {
               Column() {
                 this.MarkdownLine(h, '#F4FBFF')
               }
               .padding({ left: 8, right: 8, top: 4, bottom: 4 })
               .layoutWeight(1)
-              .backgroundColor('#14283E')
-            }, (h: string, hi: number) => `h-${blockIndex}-${hi}`)
+            }, (_h: string, hi: number) => `h-${blockIndex}-${hi}`)
           }
           .width('100%')
+          .backgroundColor('#14283E')
         }
         if (block.rows !== undefined) {
           ForEach(block.rows, (row: string[], ri: number) => {
             Row() {
-              ForEach(row, (cell: string, ci: number) => {
+              ForEach(row, (cell: string) => {
                 Column() {
                   this.MarkdownLine(cell, '#D7E8F7')
                 }
                 .padding({ left: 8, right: 8, top: 3, bottom: 3 })
                 .layoutWeight(1)
-                .backgroundColor(ri % 2 === 0 ? '#0D1A28' : '#111E2C')
-              }, (cell: string, ci: number) => `c-${blockIndex}-${ri}-${ci}`)
+              }, (_cell: string, ci: number) => `c-${blockIndex}-${ri}-${ci}`)
             }
             .width('100%')
-          }, (row: string[], ri: number) => `r-${blockIndex}-${ri}`)
+            .backgroundColor(ri % 2 === 0 ? '#0D1A28' : '#111E2C')
+          }, (_row: string[], ri: number) => `r-${blockIndex}-${ri}`)
         }
       }
       .width('100%')
@@ -179,7 +179,7 @@ export struct MessageBubble {
               .fontColor('#9FBDD5')
               .textAlign(TextAlign.End)
             Text() {
-              ForEach(parseInlineMarkdown(item), (span: MarkdownSpan, spanIndex: number) => {
+              ForEach(parseInlineMarkdown(item), (span: MarkdownSpan) => {
                 Span(span.text)
                   .fontWeight(span.bold ? FontWeight.Bold : FontWeight.Normal)
                   .fontColor('#EAF4FF')

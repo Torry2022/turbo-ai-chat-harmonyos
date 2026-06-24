@@ -86,41 +86,107 @@ function isTableAlignLine(line: string): boolean {
 }
 
 function parseTableHeader(line: string): string[] {
-  return line.trim().split('|').map((c: string) => c.trim()).filter((c: string) => c.length > 0)
+  return parseTableCells(line)
 }
 
 function parseTableRow(line: string): string[] {
-  return line.trim().split('|').map((c: string) => c.trim()).filter((c: string) => c.length > 0)
+  return parseTableCells(line)
 }
 
-interface InlineMatch {
-  kind: string
-  start: number
-  end: number
-}
-
-function findNearestMatch(text: string, index: number, markers: string[]): InlineMatch {
-  let bestKind: string = ''
-  let bestStart: number = -1
-  let bestEnd: number = -1
-  for (const m of markers) {
-    const s: number = text.indexOf(m, index)
-    if (s >= 0 && (bestStart < 0 || s < bestStart)) {
-      const e: number = text.indexOf(m, s + m.length)
-      if (e >= 0) {
-        bestKind = m
-        bestStart = s
-        bestEnd = e
-      }
-    }
+function parseTableCells(line: string): string[] {
+  const cells = line.trim().split('|').map((c: string) => c.trim())
+  if (cells.length > 0 && cells[0].length <= 0) {
+    cells.shift()
   }
-  const result: InlineMatch = { kind: bestKind, start: bestStart, end: bestEnd }
-  return result
+  if (cells.length > 0 && cells[cells.length - 1].length <= 0) {
+    cells.pop()
+  }
+  return cells
 }
 
 interface CandidateMarker {
   m: string
   weight: number
+}
+
+function isPartOfTripleBacktick(text: string, index: number): boolean {
+  const isTripleStart = text.substring(index, index + 3) === '```'
+  const isTripleMiddle = index > 0 && text.substring(index - 1, index + 2) === '```'
+  const isTripleEnd = index > 1 && text.substring(index - 2, index + 1) === '```'
+  return isTripleStart || isTripleMiddle || isTripleEnd
+}
+
+function countSingleBackticks(text: string): number {
+  let count = 0
+  for (let i = 0; i < text.length; i += 1) {
+    if (text[i] === '`' && !isPartOfTripleBacktick(text, i)) {
+      count += 1
+    }
+  }
+  return count
+}
+
+function isInsideIncompleteCodeFence(text: string): boolean {
+  const matches = text.match(/```/g)
+  return matches !== null && matches.length % 2 === 1
+}
+
+function completeIncompleteInlineCode(text: string): string {
+  if (isInsideIncompleteCodeFence(text) || countSingleBackticks(text) % 2 === 0) {
+    return text
+  }
+
+  const lastBacktick = text.lastIndexOf('`')
+  if (lastBacktick < 0) {
+    return text
+  }
+
+  const trailing = text.substring(lastBacktick + 1)
+  if (trailing.trim().length <= 0 || /^[\s*_~`]*$/.test(trailing)) {
+    return text
+  }
+
+  return `${text}\``
+}
+
+function sameSpanStyle(left: MarkdownSpan, right: MarkdownSpan): boolean {
+  return left.bold === right.bold &&
+    left.italic === right.italic &&
+    left.code === right.code &&
+    left.strikethrough === right.strikethrough &&
+    left.link === right.link
+}
+
+function cloneSpan(span: MarkdownSpan): MarkdownSpan {
+  const cloned: MarkdownSpan = {
+    text: span.text,
+    bold: span.bold
+  }
+  cloned.italic = span.italic
+  cloned.code = span.code
+  cloned.link = span.link
+  cloned.strikethrough = span.strikethrough
+  return cloned
+}
+
+function mergeAdjacentSpans(spans: MarkdownSpan[]): MarkdownSpan[] {
+  if (spans.length <= 1) {
+    return spans
+  }
+
+  const result: MarkdownSpan[] = []
+  let current: MarkdownSpan = cloneSpan(spans[0])
+  for (let i = 1; i < spans.length; i += 1) {
+    const next = spans[i]
+    if (sameSpanStyle(current, next)) {
+      current.text += next.text
+      continue
+    }
+    result.push(current)
+    current = cloneSpan(next)
+  }
+  result.push(current)
+  return result
 }
 
 export function parseInlineMarkdown(text: string): MarkdownSpan[] {
@@ -132,6 +198,7 @@ export function parseInlineMarkdown(text: string): MarkdownSpan[] {
 }
 
 function parseInlineMarkdownUncached(text: string): MarkdownSpan[] {
+  text = completeIncompleteInlineCode(text)
   const spans: MarkdownSpan[] = []
   let i: number = 0
   while (i < text.length) {
@@ -140,9 +207,10 @@ function parseInlineMarkdownUncached(text: string): MarkdownSpan[] {
     let bestEnd: number = -1
 
     const candidates: CandidateMarker[] = [
-      { m: '**', weight: 1 } as CandidateMarker,
-      { m: '`', weight: 2 } as CandidateMarker,
-      { m: '~~', weight: 3 } as CandidateMarker,
+      { m: '***', weight: 1 } as CandidateMarker,
+      { m: '**', weight: 2 } as CandidateMarker,
+      { m: '`', weight: 3 } as CandidateMarker,
+      { m: '~~', weight: 4 } as CandidateMarker,
       { m: '*', weight: 5 } as CandidateMarker,
     ]
 
@@ -201,7 +269,10 @@ function parseInlineMarkdownUncached(text: string): MarkdownSpan[] {
 
     let nextIndex: number = bestEnd + bestKind.length
 
-    if (bestKind === '**' && inner.length > 0) {
+    if (bestKind === '***' && inner.length > 0) {
+      const s: MarkdownSpan = { text: inner, bold: true, italic: true }
+      spans.push(s)
+    } else if (bestKind === '**' && inner.length > 0) {
       const s: MarkdownSpan = { text: inner, bold: true }
       spans.push(s)
     } else if (bestKind === '*' && inner.length > 0) {
@@ -233,7 +304,7 @@ function parseInlineMarkdownUncached(text: string): MarkdownSpan[] {
 
     i = nextIndex
   }
-  return spans.filter((span: MarkdownSpan) => span.text.length > 0)
+  return mergeAdjacentSpans(spans.filter((span: MarkdownSpan) => span.text.length > 0))
 }
 
 export function parseLightMarkdown(content: string): MarkdownBlock[] {
@@ -252,7 +323,6 @@ function parseLightMarkdownUncached(content: string): MarkdownBlock[] {
   const tableLines: string[] = []
   let inCode = false
   let codeLanguage = ''
-  let inQuote = false
   let inTable = false
   let parentListItems: string[] = []
   let parentListOrdered: boolean | undefined = undefined
@@ -281,7 +351,6 @@ function parseLightMarkdownUncached(content: string): MarkdownBlock[] {
       blocks.push(block)
       quoteLines.length = 0
     }
-    inQuote = false
   }
 
   const flushTable = () => {
@@ -298,11 +367,9 @@ function parseLightMarkdownUncached(content: string): MarkdownBlock[] {
         return
       }
       let headerIdx = startIdx
-      let hasAlign = false
       if (startIdx + 1 < tableLines.length && isTableAlignLine(tableLines[startIdx + 1])) {
         block.headers = parseTableHeader(tableLines[startIdx])
         headerIdx = startIdx + 2
-        hasAlign = true
       } else {
         block.headers = undefined
         headerIdx = startIdx
@@ -386,7 +453,6 @@ function parseLightMarkdownUncached(content: string): MarkdownBlock[] {
       flushParagraph(blocks, paragraphLines)
       flushLists()
       flushTable()
-      inQuote = true
       const q = trimmed.substring(1).trim()
       quoteLines.push(q.length > 0 ? q : '')
       return

@@ -24,15 +24,15 @@ In the HarmonyOS ecosystem, on-device AI inference today largely depends on Andr
 ## Recent Highlights
 
 - Switched the default text model to Qwen3-4B-Instruct, with in-app model-market installation from ModelScope for preset models and additional MNN model entries.
-- Model-market downloads can be stopped and resumed. Closing a stopped install dialog clears unfinished temporary download files to avoid sandbox leftovers.
+- Model-market downloads support stop-and-resume behavior, keeping downloaded size and progress visible when reopening the install dialog. Closing a stopped install dialog clears unfinished temporary download files to avoid sandbox leftovers.
 - Improved model import: in addition to zip import, you can push a complete MNN model directory into the app sandbox and scan it from the Model tab, which avoids large zip import failures.
 - Made model-page controls safer by disabling relevant actions while loading, importing, or generating; model ordering and deleting installed model directories are also supported.
 - Added generation interruption: during streaming output, the send button switches to a stop button, and stopped responses are not added to future conversation context.
 - Improved Chat tab scrolling: Markdown and thinking-block parsing results are cached, completed generations no longer pull the view back to the bottom while the user is reading history, and the chat list scrollbar is hidden.
 - Added a device status strip on the Chat tab for app CPU, app memory, and device temperature, with threshold-based value colors.
-- Added app storage usage, model state, and tighter device metrics to the Monitor tab, including highlighted CPU, memory, and temperature values.
+- Added app storage usage, model state, version/license text, and tighter device metrics to the Monitor tab, including highlighted CPU, memory, and temperature values.
 - Model load failures now keep the error in the load dialog and reset inference state, making low-memory or failed-load recovery clearer.
-- Improved Markdown rendering, list parsing, thinking block display, raw output logs, and MNN chat-template handling for diagnosing repetition, stop tokens, and prompt template issues.
+- Improved Markdown tables, lists, code snippets, thinking block display, raw output logs, and MNN chat-template handling for diagnosing repetition, stop tokens, and prompt template issues.
 
 ## Quick Start
 
@@ -71,7 +71,7 @@ After the model loads, return to the Chat tab and send a message. MiniCPM5-1B di
 - Stop generation: interrupt the current response while it is streaming
 - Model switching: switch between preset models, installed market models, and imported models
 - Thinking blocks: MiniCPM5-1B displays reasoning process
-- Markdown rendering: code blocks (with copy button), tables, blockquotes, links, etc.
+- Markdown rendering: code blocks (with copy button), tables, blockquotes, links, etc., with compatibility handling for incomplete inline code and empty table cells during streaming output
 - Long-conversation scrolling optimization: caches Markdown / thinking-block parsing and pauses auto-follow while the user is scrolling
 - Generation parameter controls: temperature, Top-P/K, penalty terms, etc.
 - Performance metrics: TTFT, TPOT, tokens/s per assistant message

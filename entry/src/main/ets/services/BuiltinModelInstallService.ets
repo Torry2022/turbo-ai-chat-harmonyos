@@ -166,6 +166,17 @@ export class BuiltinModelInstallService {
       }
       if (await this.isOversizedFile(tempPath, file.sizeBytes)) {
         await fs.unlink(tempPath)
+        await this.unlinkIfExists(`${tempPath}.range`)
+      }
+      await this.mergePartialRangeIfPresent(tempPath, `${tempPath}.range`, file.sizeBytes)
+      if (await this.isCompleteFile(tempPath, file.sizeBytes)) {
+        if (await this.exists(targetPath)) {
+          await fs.unlink(targetPath)
+        }
+        await fs.rename(tempPath, targetPath)
+        completedBytes += file.sizeBytes
+        this.emitProgress(spec, file, completedBytes, 0, onProgress, '下载完成')
+        continue
       }
       const partialBytes = await this.partialFileSize(tempPath, file.sizeBytes)
       this.emitProgress(spec, file, completedBytes, partialBytes, onProgress, partialBytes > 0 ? '继续下载' : '开始下载')
@@ -322,6 +333,20 @@ export class BuiltinModelInstallService {
       fs.closeSync(input)
       fs.closeSync(output)
     }
+  }
+
+  private async mergePartialRangeIfPresent(targetPath: string, rangePath: string, expectedSize: number): Promise<void> {
+    if (!await this.exists(rangePath)) {
+      return
+    }
+    const partialBytes = await this.partialFileSize(targetPath, expectedSize)
+    const rangeBytes = await this.partialRangeFileSize(rangePath, expectedSize - partialBytes)
+    if (partialBytes <= 0 || rangeBytes <= 0 || partialBytes + rangeBytes > expectedSize) {
+      await this.unlinkIfExists(rangePath)
+      return
+    }
+    await this.appendFile(rangePath, targetPath)
+    await this.unlinkIfExists(rangePath)
   }
 
   private throwIfCanceled(): void {

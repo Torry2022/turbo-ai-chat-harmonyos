@@ -255,6 +255,11 @@ export struct MonitorTab {
         .backgroundColor('#0D1A28')
         .borderRadius(8)
 
+        Text('Turbo AI Chat v1.4.0 · Apache-2.0')
+          .width('100%')
+          .textAlign(TextAlign.Center)
+          .fontSize(11)
+          .fontColor('#5E748A')
       }
       .width('100%')
     }

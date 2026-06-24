@@ -876,6 +876,13 @@ export class ChatViewModel {
       this.loadModel()
       return
     }
+    this.prepareAndStartBuiltinModelInstall(this.context, spec)
+  }
+
+  private async prepareAndStartBuiltinModelInstall(
+    context: common.UIAbilityContext,
+    spec: BuiltinModelDownloadSpec
+  ): Promise<void> {
     this.busy = true
     this.builtinModelInstalling = true
     this.builtinModelInstallCancelRequested = false
@@ -885,15 +892,27 @@ export class ChatViewModel {
     this.builtinModelInstallTotalBytes = spec.totalBytes
     this.builtinModelInstallModelName = spec.displayName
     this.builtinModelInstallSourceName = spec.sourceName
-    this.builtinModelInstallMessage = this.builtinModelInstallDownloadedBytes > 0 ?
+    let existingBytes = 0
+    try {
+      existingBytes = await this.builtinModelInstallService.existingPartialDownloadBytes(this.filesDir, spec)
+    } catch (_err) {
+      existingBytes = 0
+    }
+    this.builtinModelInstallDownloadedBytes = existingBytes
+    this.builtinModelInstallProgress = spec.totalBytes > 0 ?
+      Math.round(existingBytes / spec.totalBytes * 1000) / 10 :
+      0
+    this.builtinModelInstallMessage = existingBytes > 0 ?
       `正在继续下载 ${spec.displayName}。请保持 App 在前台。` :
       `正在从 ${spec.sourceName} 下载 ${spec.displayName}。请保持 App 在前台。`
     this.status = `正在安装 ${spec.displayName}...`
     this.notify()
-    this.syncActiveBuiltinModelInstallPartialProgress(spec)
 
-    this.builtinModelInstallService.installCatalogItem(this.context, spec, (progress: BuiltinModelInstallProgress) => {
+    this.builtinModelInstallService.installCatalogItem(context, spec, (progress: BuiltinModelInstallProgress) => {
       if (this.builtinModelInstallCancelRequested) {
+        return
+      }
+      if (progress.downloadedBytes < this.builtinModelInstallDownloadedBytes) {
         return
       }
       this.builtinModelInstallProgress = progress.progress
@@ -968,23 +987,6 @@ export class ChatViewModel {
       if (downloadedBytes > 0 && this.builtinModelInstallFileName.length <= 0) {
         this.builtinModelInstallMessage = `${spec.displayName} 检测到未完成下载，可继续下载或关闭弹窗清理。`
       }
-      this.notify()
-    }).catch((_err: Error) => undefined)
-  }
-
-  private syncActiveBuiltinModelInstallPartialProgress(spec: BuiltinModelDownloadSpec): void {
-    this.builtinModelInstallService.existingPartialDownloadBytes(this.filesDir, spec).then((downloadedBytes: number) => {
-      if (!this.builtinModelInstalling || this.builtinModelInstallModelName !== spec.displayName) {
-        return
-      }
-      if (downloadedBytes <= this.builtinModelInstallDownloadedBytes) {
-        return
-      }
-      this.builtinModelInstallDownloadedBytes = downloadedBytes
-      this.builtinModelInstallProgress = spec.totalBytes > 0 ?
-        Math.round(downloadedBytes / spec.totalBytes * 1000) / 10 :
-        0
-      this.builtinModelInstallMessage = `正在继续下载 ${spec.displayName}。请保持 App 在前台。`
       this.notify()
     }).catch((_err: Error) => undefined)
   }
