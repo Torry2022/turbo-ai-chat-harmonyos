@@ -104,6 +104,14 @@ function parseTableCells(line: string): string[] {
   return cells
 }
 
+function normalizeTableCells(cells: string[], columnCount: number): string[] {
+  const normalized: string[] = []
+  for (let index = 0; index < columnCount; index += 1) {
+    normalized.push(index < cells.length ? cells[index] : '')
+  }
+  return normalized
+}
+
 interface CandidateMarker {
   m: string
   weight: number
@@ -377,11 +385,27 @@ function parseLightMarkdownUncached(content: string): MarkdownBlock[] {
           headerIdx = startIdx + 1
         }
       }
+      let columnCount = block.headers !== undefined ? block.headers.length : 0
+      if (columnCount <= 0) {
+        for (let ti = headerIdx; ti < tableLines.length; ti++) {
+          if (!isTableAlignLine(tableLines[ti])) {
+            columnCount = Math.max(columnCount, parseTableRow(tableLines[ti]).length)
+          }
+        }
+      }
+      if (columnCount <= 0) {
+        tableLines.length = 0
+        inTable = false
+        return
+      }
+      if (block.headers !== undefined) {
+        block.headers = normalizeTableCells(block.headers, columnCount)
+      }
       block.rows = []
       for (let ti = headerIdx; ti < tableLines.length; ti++) {
         const cells = parseTableRow(tableLines[ti])
         if (cells.length > 0 && !isTableAlignLine(tableLines[ti])) {
-          (block.rows as string[][]).push(cells)
+          (block.rows as string[][]).push(normalizeTableCells(cells, columnCount))
         }
       }
       blocks.push(block)

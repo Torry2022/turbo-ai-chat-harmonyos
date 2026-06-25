@@ -141,7 +141,7 @@ GemmaRunner::SamplingConfig ReadSamplingConfig(
     sampling.maxNewTokens = std::clamp(
         ReadOptionalInt(env, args, argc, maxTokensIndex, fallbackMaxTokens),
         1,
-        2048);
+        4096);
 
     if (settingsIndex >= argc || args[settingsIndex] == nullptr) {
         return sampling;

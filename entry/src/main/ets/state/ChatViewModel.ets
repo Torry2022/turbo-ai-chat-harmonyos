@@ -1046,7 +1046,7 @@ export class ChatViewModel {
     this.generationStopping = false
     this.streamingChars = 0
     this.latestPerfMetrics = undefined
-    this.status = '等待首个字元...'
+    this.status = '等待首个输出片段...'
     this.refreshStats()
     this.notifyAndScroll()
 

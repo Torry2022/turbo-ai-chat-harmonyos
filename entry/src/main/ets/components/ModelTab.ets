@@ -282,7 +282,7 @@ export struct ModelTab {
           .fontColor('#EAF4FF')
       }
       .width('100%')
-      Slider({ value: this.sliderMaxNewTokens, min: 64, max: this.viewModel.maxGenerationTokens, step: 64 })
+      Slider({ value: this.sliderMaxNewTokens, min: 128, max: this.viewModel.maxGenerationTokens, step: 128 })
         .enabled(this.controlsEnabled())
         .onChange((value: number, _mode: SliderChangeMode) => {
           this.sliderMaxNewTokens = Math.round(value)
@@ -678,14 +678,6 @@ export struct ModelTab {
   private ModelManagementCard() {
     Column({ space: 8 }) {
       this.SectionTitle('模型管理')
-      Button(this.viewModel.modelImporting ? '正在导入' : '导入模型包')
-        .enabled(this.controlsEnabled())
-        .height(38)
-        .width('100%')
-        .fontColor('#F4FBFF')
-        .onClick(() => {
-          this.viewModel.importModelPackage()
-        })
       Button('扫描已推送目录')
         .enabled(this.controlsEnabled())
         .height(38)
@@ -694,6 +686,14 @@ export struct ModelTab {
         .backgroundColor('#26384D')
         .onClick(() => {
           this.viewModel.scanPushedModelDirectories()
+        })
+      Button(this.viewModel.modelImporting ? '正在导入' : '导入模型压缩包')
+        .enabled(this.controlsEnabled())
+        .height(38)
+        .width('100%')
+        .fontColor('#F4FBFF')
+        .onClick(() => {
+          this.viewModel.importModelPackage()
         })
       Text(this.viewModel.modelImportMessage)
         .fontSize(12)

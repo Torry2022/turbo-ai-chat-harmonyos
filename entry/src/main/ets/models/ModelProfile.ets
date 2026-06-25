@@ -32,7 +32,7 @@ export interface GenerationDefaults {
 }
 
 export const CHAT_FORMAT_MNN_AUTO: string = 'mnn-auto'
-export const MAX_GENERATION_TOKENS: number = 2048
+export const MAX_GENERATION_TOKENS: number = 4096
 export const DEFAULT_MAX_NEW_TOKENS: number = 512
 export const DEFAULT_THREAD_NUM: number = 6
 export const DEFAULT_TEMPERATURE: number = 0.6

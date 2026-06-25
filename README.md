@@ -2,11 +2,30 @@
 
 [English](README_EN.md) | 中文
 
+![License](https://img.shields.io/badge/license-Apache--2.0-blue)
+![HarmonyOS](https://img.shields.io/badge/HarmonyOS-NEXT-orange)
+![Runtime](https://img.shields.io/badge/runtime-MNN%20CPU-green)
+
 ![Turbo AI Chat hero](docs/images/hero.png)
 
-**HarmonyOS NEXT 原生端侧大模型聊天应用**。基于 ArkTS + C++ N-API + MNN Runtime，在设备本地运行 Qwen3-4B-Instruct（默认文本）、MiniCPM5-1B（文本）和 Gemma-4-E2B-it（多模态）模型，支持流式对话、模型切换、模型市场下载和本地模型导入。
+**Turbo AI Chat 是一个 HarmonyOS NEXT 原生端侧大模型聊天应用**，用于验证在鸿蒙设备上直接运行本地 LLM 的完整链路。项目基于 ArkTS、C++ N-API 和 MNN Runtime 构建，当前支持 Qwen3-4B-Instruct 默认文本对话、MiniCPM5-1B 轻量文本验证，以及 Gemma-4-E2B-it 多模态图片理解实验；同时提供流式对话、模型切换、模型市场下载和本地 MNN 模型导入能力。
 
 本仓库 fork 自 [Turbo1123/turbo-ai-chat-harmonyos](https://github.com/Turbo1123/turbo-ai-chat-harmonyos)。
+
+## 目录
+
+- [项目背景](#项目背景)
+- [近期重要改进](#近期重要改进)
+- [系统要求](#系统要求)
+- [快速开始](#快速开始)
+- [功能](#功能)
+- [截图](#截图)
+- [模型管理](#模型管理)
+- [模型格式说明](#模型格式说明)
+- [推理后端与性能](#推理后端与性能)
+- [架构](#架构)
+- [原生接口](#原生接口)
+- [许可证](#许可证)
 
 ## 项目背景
 
@@ -25,16 +44,34 @@
 
 ## 近期重要改进
 
+**模型与市场**
+
 - 默认文本模型切换为 Qwen3-4B-Instruct，并支持在 App 内通过模型市场从 ModelScope 安装预置模型和更多 MNN 模型条目。
-- 模型市场下载支持停止后断点续传，并在重新打开安装弹窗时保持已下载大小与进度展示；关闭已停止的安装弹窗会清理未完成的临时下载文件，避免沙箱残留。
-- 模型导入流程更完整：除 zip 导入外，支持将完整 MNN 模型目录推送到 App 沙箱后，在模型页一键扫描注册，适合绕过大 zip 导入失败的问题。
-- 模型页和运行配置更稳健：模型生成、加载、导入期间会禁用相关控件，支持模型排序、删除已安装模型目录，并避免推理中途修改参数造成状态不一致。
-- 聊天页支持中断生成：模型流式输出过程中，发送按钮会切换为停止按钮；被停止的回答不会写入后续上下文。
-- 聊天页滚动体验更顺畅：缓存 Markdown 与思考块解析结果，用户查看历史消息时不会在生成结束后被自动拉回底部，并隐藏聊天列表滚动条。
+- 模型市场下载支持停止后断点续传；关闭已停止的安装弹窗会清理未完成的临时下载文件，避免沙箱残留。
+- 除 zip 导入外，支持将完整 MNN 模型目录推送到 App 沙箱后，在模型页一键扫描注册，适合绕过大 zip 导入失败的问题。
+- 模型页支持排序、删除已安装模型目录，并在模型生成、加载、导入期间禁用相关控件，避免状态不一致。
+
+**聊天体验**
+
+- 模型流式输出过程中可中断生成；被停止的回答不会写入后续上下文。
+- 缓存 Markdown 与思考块解析结果，优化流式输出中的 UTF-8 片段和表格列宽稳定性；用户查看历史消息时不会在生成结束后被自动拉回底部，并隐藏聊天列表滚动条。
 - 聊天页新增设备状态条，可快速查看应用 CPU、应用内存和设备温度等运行状态，并按指标风险动态调整数值颜色。
-- 监控页新增 App 存储占用、模型状态、版本/许可证信息和更紧凑的设备指标展示，CPU、内存、温度等关键数值支持阈值高亮。
+
+**稳定性与调试**
+
+- 监控页新增 App 存储占用、模型状态、版本/许可证信息和更紧凑的设备指标展示。
 - 模型加载失败时会保留加载弹窗中的错误提示并清理推理状态，便于用户识别可用内存不足等加载问题后重试。
 - 优化 Markdown 表格、列表、代码片段、思考块展示、原始输出日志和 MNN 对话模板处理，便于排查模型复读、停止符和模板问题。
+
+## 系统要求
+
+| 项目 | 建议配置 |
+|------|----------|
+| 系统 | HarmonyOS NEXT，项目当前 `compatibleSdkVersion` 为 `6.1.0(23)`，`targetSdkVersion` 为 `6.1.1(24)` |
+| 设备 | 真机设备。模拟器不作为本项目的本地 MNN 推理目标 |
+| 运存 | 建议 8 GB 及以上运行 Qwen3-4B-Instruct / Gemma-4-E2B-it；MiniCPM5-1B 可作为较低内存设备的轻量验证模型 |
+| 存储 | HAP 体积较小，模型权重占用为主要部分；单个 MNN 模型目录通常需要数 GB 存储空间 |
+| 网络 | App 内模型市场从 ModelScope 下载模型，首次安装模型需要可访问 ModelScope 的网络环境 |
 
 ## 快速开始
 
@@ -73,7 +110,7 @@ App 和 HAP 均不内置模型权重。打开 App → 模型页 → 模型市场
 - 停止生成：输出过程中可中断本轮回复
 - 模型切换：可在预置模型、已安装市场模型和导入模型之间切换
 - 思考块：MiniCPM5-1B 展示推理思考过程
-- Markdown 渲染：代码块（含复制按钮）、表格、引用、链接等，并针对流式输出中的未闭合行内代码和表格空单元格做了兼容处理
+- Markdown 渲染：代码块（含复制按钮）、表格、引用、链接等，并针对流式输出中的未闭合行内代码、表格空单元格和表格列宽抖动做了兼容处理
 - 长对话滚动优化：缓存 Markdown / 思考块解析结果，并在用户滚动查看时暂停自动跟随底部
 - 生成参数调节：温度、Top-P/K、惩罚项等
 - 性能指标：TTFT、TPOT、tokens/s 实时显示
@@ -96,13 +133,21 @@ hdc install -r turbo-ai-chat-harmonyos-vX.Y.Z-signed.hap
 
 也可通过[小白调试助手](https://github.com/likuai2010/auto-installer)图形化安装。调试签名包仅限当前 profile 内设备；其他设备请下载未签名包自行签名。
 
-## 手动推送模型目录
+## 模型管理
+
+推荐优先使用 App 内模型市场安装模型；如果模型包较大或需要调试本地转换结果，再使用 zip 导入或手动推送目录。
+
+- **模型市场**：在模型页打开模型市场，从 ModelScope 下载并安装预置或扩展模型。
+- **导入 zip**：适合体积较小、结构完整的 MNN 模型目录压缩包。
+- **手动推送目录**：适合大模型、离线调试或 zip 导入失败时使用，推送后在模型页扫描注册。
+
+### 手动推送模型目录
 
 App 内通过模型市场下载模型、App 内选择 zip 导入模型是推荐方式。以下 `hdc` 推送仅作调试备用。
 
 推送的模型目录必须是 **MNN 格式**，即通过 MNN `llmexport.py` 从 HuggingFace 权重导出的目录，包含 `config.json`、`llm_config.json`、tokenizer 文件、`llm.mnn`、`llm.mnn.weight` 等。原始 HuggingFace safetensors、GGUF、MLX 权重不能直接使用。
 
-### 内置模型目录备用推送
+#### 内置模型目录备用推送
 
 以下命令用于补齐 App 已内置在模型列表中的模型目录，是 App 内下载失败或离线调试时的备用方案。
 
@@ -115,7 +160,7 @@ hdc file send -b com.example.gemma4mnn Qwen3-4B-Instruct-2507-MNN /data/storage/
 
 > `-b` 指定 bundle 名称，是写入 App 沙箱的必需参数。
 
-### 导入模型目录手动推送
+#### 导入模型目录手动推送
 
 如果 App 内导入大 zip 包失败，可以绕过 zip 解压，直接用 `hdc` 推送 MNN 模型目录，并在 App 内扫描注册。
 
@@ -177,6 +222,25 @@ App 使用 **MNN 模型目录**格式。内置模型当前从 ModelScope 下载�
 
 端侧 LLM 解码包含 token-by-token 的串行阶段，实际吞吐还会受到内存带宽、缓存争用和系统温控影响。评估推理性能时，建议优先参考聊天气泡底部的 TTFT、ms/tok 和 tokens/s，并结合应用 CPU、应用内存和设备温度观察整体运行状态。
 
+## 架构
+
+```text
+ArkTS UI Layer
+ChatTab / ModelTab / MonitorTab / ...
+        |
+NativeInferenceService (ArkTS)
+        |
+N-API Bridge (libentry.so)
+        |
+GemmaRunner (gemma_runner.cpp)
+        |
+MNN Runtime (libMNN.so)
+        |
+CPU Backend
+```
+
+`GemmaRunner` 命名保留自早期 Gemma 原型阶段；当前 native 封装已用于 Qwen、MiniCPM、Gemma 以及其他兼容 MNN LLM 目录的模型。
+
 ## 原生接口
 
 ArkTS 通过 `import entry from 'libentry.so'` 调用 N-API：
@@ -192,4 +256,11 @@ entry.isLoaded(): boolean
 
 ## 许可证
 
-Apache-2.0. MNN 和模型文件遵循各自上游许可证。本仓库不提交模型权重。
+本仓库源码使用 Apache-2.0 许可证。
+
+MNN Runtime 和模型权重遵循各自上游许可证或模型卡说明。本仓库和 Release HAP 均不提交模型权重，用户通过模型市场、脚本或手动推送获得的模型文件需自行遵守对应来源的使用条款。
+
+- [MNN](https://github.com/alibaba/MNN)
+- [Qwen3-4B-Instruct-2507-MNN](https://modelscope.cn/models/MNN/Qwen3-4B-Instruct-2507-MNN)
+- [Gemma-4-E2B-it-MNN](https://modelscope.cn/models/MNN/Gemma-4-E2B-it-MNN)
+- [MiniCPM5-1B-MNN-BF16](https://modelscope.cn/models/TorryJi/MiniCPM5-1B-MNN-BF16)

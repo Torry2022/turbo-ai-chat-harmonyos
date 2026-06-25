@@ -17,7 +17,6 @@
 /models/*
 !/models/.gitkeep
 /docs/archive/
-/docs/agents/
 /turbo_ai_chat*.jpeg
 /Crash_*.dmp
 /third_party/mnn/include/llm/reranker.hpp

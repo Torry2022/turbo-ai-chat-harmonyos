@@ -82,19 +82,31 @@ size_t ValidUtf8PrefixLength(const std::string& text) {
     while (index < text.size()) {
         const size_t length = Utf8SequenceLength(static_cast<unsigned char>(text[index]));
         if (length == 0) {
-            index++;
-            continue;
+            break;
         }
         if (index + length > text.size()) {
             break;
         }
         if (!IsValidUtf8Sequence(text, index, length)) {
-            index++;
-            continue;
+            break;
         }
         index += length;
     }
     return index;
+}
+
+bool StartsWithInvalidUtf8Sequence(const std::string& text) {
+    if (text.empty()) {
+        return false;
+    }
+    const size_t length = Utf8SequenceLength(static_cast<unsigned char>(text[0]));
+    if (length == 0) {
+        return true;
+    }
+    if (text.size() < length) {
+        return false;
+    }
+    return !IsValidUtf8Sequence(text, 0, length);
 }
 
 class ChunkStreamBuffer : public std::streambuf {
@@ -160,13 +172,20 @@ private:
             return;
         }
 
-        const size_t prefixLength = ValidUtf8PrefixLength(pendingChunk_);
-        if (prefixLength > 0) {
-            onChunk_(pendingChunk_.substr(0, prefixLength));
-            pendingChunk_.erase(0, prefixLength);
+        while (!pendingChunk_.empty()) {
+            const size_t prefixLength = ValidUtf8PrefixLength(pendingChunk_);
+            if (prefixLength > 0) {
+                onChunk_(pendingChunk_.substr(0, prefixLength));
+                pendingChunk_.erase(0, prefixLength);
+                continue;
+            }
+            if (StartsWithInvalidUtf8Sequence(pendingChunk_)) {
+                pendingChunk_.erase(0, 1);
+                continue;
+            }
+            break;
         }
-        if (force && !pendingChunk_.empty()) {
-            onChunk_(pendingChunk_);
+        if (force) {
             pendingChunk_.clear();
         }
     }

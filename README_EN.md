@@ -2,11 +2,30 @@
 
 [中文](README.md) | English
 
+![License](https://img.shields.io/badge/license-Apache--2.0-blue)
+![HarmonyOS](https://img.shields.io/badge/HarmonyOS-NEXT-orange)
+![Runtime](https://img.shields.io/badge/runtime-MNN%20CPU-green)
+
 ![Turbo AI Chat hero](docs/images/hero.png)
 
-**HarmonyOS NEXT native on-device LLM chat application**. Built with ArkTS + C++ N-API + MNN Runtime, running Qwen3-4B-Instruct (text), MiniCPM5-1B (text), and Gemma-4-E2B-it (multimodal) locally on HarmonyOS devices with streaming chat, model switching, model-market downloads, and local model import.
+**Turbo AI Chat is a HarmonyOS NEXT native on-device LLM chat application** for validating a complete local-inference pipeline on HarmonyOS devices. It is built with ArkTS, C++ N-API, and MNN Runtime, and currently supports Qwen3-4B-Instruct as the default text model, MiniCPM5-1B for lightweight text validation, and Gemma-4-E2B-it for experimental multimodal image understanding. The app also includes streaming chat, model switching, model-market downloads, and local MNN model import.
 
 This repository is forked from [Turbo1123/turbo-ai-chat-harmonyos](https://github.com/Turbo1123/turbo-ai-chat-harmonyos).
+
+## Table of Contents
+
+- [Background](#background)
+- [Recent Highlights](#recent-highlights)
+- [System Requirements](#system-requirements)
+- [Quick Start](#quick-start)
+- [Features](#features)
+- [Screenshots](#screenshots)
+- [Model Management](#model-management)
+- [Model Format](#model-format)
+- [Inference Backend and Performance](#inference-backend-and-performance)
+- [Architecture](#architecture)
+- [Native API](#native-api)
+- [License](#license)
 
 ## Background
 
@@ -23,16 +42,34 @@ In the HarmonyOS ecosystem, on-device AI inference today largely depends on Andr
 
 ## Recent Highlights
 
+**Models and market**
+
 - Switched the default text model to Qwen3-4B-Instruct, with in-app model-market installation from ModelScope for preset models and additional MNN model entries.
-- Model-market downloads support stop-and-resume behavior, keeping downloaded size and progress visible when reopening the install dialog. Closing a stopped install dialog clears unfinished temporary download files to avoid sandbox leftovers.
-- Improved model import: in addition to zip import, you can push a complete MNN model directory into the app sandbox and scan it from the Model tab, which avoids large zip import failures.
-- Made model-page controls safer by disabling relevant actions while loading, importing, or generating; model ordering and deleting installed model directories are also supported.
-- Added generation interruption: during streaming output, the send button switches to a stop button, and stopped responses are not added to future conversation context.
-- Improved Chat tab scrolling: Markdown and thinking-block parsing results are cached, completed generations no longer pull the view back to the bottom while the user is reading history, and the chat list scrollbar is hidden.
-- Added a device status strip on the Chat tab for app CPU, app memory, and device temperature, with threshold-based value colors.
-- Added app storage usage, model state, version/license text, and tighter device metrics to the Monitor tab, including highlighted CPU, memory, and temperature values.
-- Model load failures now keep the error in the load dialog and reset inference state, making low-memory or failed-load recovery clearer.
-- Improved Markdown tables, lists, code snippets, thinking block display, raw output logs, and MNN chat-template handling for diagnosing repetition, stop tokens, and prompt template issues.
+- Model-market downloads support stop-and-resume behavior. Closing a stopped install dialog clears unfinished temporary download files to avoid sandbox leftovers.
+- In addition to zip import, you can push a complete MNN model directory into the app sandbox and scan it from the Model tab to avoid large zip import failures.
+- The Model tab supports model ordering and deleting installed model directories, and disables related controls during generation, loading, or import to avoid inconsistent state.
+
+**Chat experience**
+
+- Streaming output can be interrupted; stopped responses are not added to future conversation context.
+- Markdown and thinking-block parsing results are cached, UTF-8 streaming chunks and table column stability are improved, completed generations no longer pull the view back to the bottom while the user is reading history, and the chat list scrollbar is hidden.
+- The Chat tab includes a compact device status strip for app CPU, app memory, and device temperature, with threshold-based value colors.
+
+**Stability and diagnostics**
+
+- The Monitor tab includes app storage usage, model state, version/license text, and tighter device metrics.
+- Model load failures keep the error in the load dialog and reset inference state, making low-memory or failed-load recovery clearer.
+- Markdown tables, lists, code snippets, thinking blocks, raw output logs, and MNN chat-template handling were improved for diagnosing repetition, stop tokens, and prompt template issues.
+
+## System Requirements
+
+| Item | Recommended |
+|------|-------------|
+| System | HarmonyOS NEXT. The project currently uses `compatibleSdkVersion` `6.1.0(23)` and `targetSdkVersion` `6.1.1(24)` |
+| Device | Real device. The emulator is not the target environment for local MNN inference in this project |
+| RAM | 8 GB or more is recommended for Qwen3-4B-Instruct / Gemma-4-E2B-it. MiniCPM5-1B is better suited for lower-memory validation |
+| Storage | The HAP is small; model weights dominate storage. A single MNN model directory usually requires several GB |
+| Network | In-app model-market installation downloads from ModelScope, so first-time model installation requires ModelScope access |
 
 ## Quick Start
 
@@ -71,7 +108,7 @@ After the model loads, return to the Chat tab and send a message. MiniCPM5-1B di
 - Stop generation: interrupt the current response while it is streaming
 - Model switching: switch between preset models, installed market models, and imported models
 - Thinking blocks: MiniCPM5-1B displays reasoning process
-- Markdown rendering: code blocks (with copy button), tables, blockquotes, links, etc., with compatibility handling for incomplete inline code and empty table cells during streaming output
+- Markdown rendering: code blocks (with copy button), tables, blockquotes, links, etc., with compatibility handling for incomplete inline code, empty table cells, and table column jitter during streaming output
 - Long-conversation scrolling optimization: caches Markdown / thinking-block parsing and pauses auto-follow while the user is scrolling
 - Generation parameter controls: temperature, Top-P/K, penalty terms, etc.
 - Performance metrics: TTFT, TPOT, tokens/s per assistant message
@@ -94,13 +131,21 @@ hdc install -r turbo-ai-chat-harmonyos-vX.Y.Z-signed.hap
 
 You can also use [Xiaobai Debug Assistant](https://github.com/likuai2010/auto-installer) for graphical installation. The signed HAP only works on devices within the current debug signing profile. For other devices, download the unsigned HAP and re-sign with your own developer account.
 
-## Fallback: Manual Model Push
+## Model Management
+
+The recommended path is to install models from the in-app model market. Use zip import or manual directory push for large models, local conversion testing, or debugging.
+
+- **Model market**: download and install preset or extended models from ModelScope on the Model tab.
+- **Zip import**: useful for small or medium complete MNN model directories.
+- **Manual directory push**: useful for large models, offline debugging, or when zip import fails; push the directory and scan it from the Model tab.
+
+### Fallback: Manual Model Push
 
 Model-market download and in-app zip import are the recommended approaches. Manual `hdc` push is kept as a debugging fallback.
 
 The model directory must be in **MNN format** — exported via MNN `llmexport.py` from HuggingFace weights, containing `config.json`, `llm_config.json`, tokenizer file, `llm.mnn`, `llm.mnn.weight`, etc. Original HuggingFace safetensors, GGUF, and MLX weights cannot be used directly.
 
-### Pushing built-in model directories
+#### Pushing built-in model directories
 
 Use the following commands to restore built-in model directories when in-app download is unavailable:
 
@@ -113,7 +158,7 @@ hdc file send -b com.example.gemma4mnn Qwen3-4B-Instruct-2507-MNN /data/storage/
 
 > The `-b` flag specifies the bundle name and is required to write into the app sandbox.
 
-### Registering a pushed model as an import
+#### Registering a pushed model as an import
 
 To register a pushed model as an imported model:
 
@@ -173,6 +218,25 @@ The current version runs local inference with the **MNN CPU backend**. GPU / NPU
 
 On-device LLM decoding includes token-by-token serial stages, and actual throughput can also be limited by memory bandwidth, cache contention, and system thermal control. For performance evaluation, prefer the TTFT, ms/tok, and tokens/s metrics shown at the bottom of assistant messages, together with app CPU, app memory, and device temperature.
 
+## Architecture
+
+```text
+ArkTS UI Layer
+ChatTab / ModelTab / MonitorTab / ...
+        |
+NativeInferenceService (ArkTS)
+        |
+N-API Bridge (libentry.so)
+        |
+GemmaRunner (gemma_runner.cpp)
+        |
+MNN Runtime (libMNN.so)
+        |
+CPU Backend
+```
+
+The `GemmaRunner` name is kept from the early Gemma prototype. The current native wrapper is used for Qwen, MiniCPM, Gemma, and other compatible MNN LLM directories.
+
 ## Native API
 
 ArkTS calls N-API via `import entry from 'libentry.so'`:
@@ -188,4 +252,11 @@ entry.isLoaded(): boolean
 
 ## License
 
-Apache-2.0. MNN and model files follow their respective upstream licenses. This repository does not commit model weights.
+This repository's source code is licensed under Apache-2.0.
+
+MNN Runtime and model weights follow their respective upstream licenses or model-card terms. This repository and Release HAPs do not include model weights. Users who download models through the model market, scripts, or manual push should follow the terms of the corresponding upstream source.
+
+- [MNN](https://github.com/alibaba/MNN)
+- [Qwen3-4B-Instruct-2507-MNN](https://modelscope.cn/models/MNN/Qwen3-4B-Instruct-2507-MNN)
+- [Gemma-4-E2B-it-MNN](https://modelscope.cn/models/MNN/Gemma-4-E2B-it-MNN)
+- [MiniCPM5-1B-MNN-BF16](https://modelscope.cn/models/TorryJi/MiniCPM5-1B-MNN-BF16)
