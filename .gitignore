@@ -5,6 +5,7 @@
 /entry/build/
 /entry/.cxx/
 /entry/.preview/
+/entry/.test/
 /local.properties
 /node_modules/
 /entry/node_modules/
@@ -19,4 +20,6 @@
 /docs/archive/
 /turbo_ai_chat*.jpeg
 /Crash_*.dmp
+/trace-analyzer.log
+/trace_streamer.exe
 /third_party/mnn/include/llm/reranker.hpp

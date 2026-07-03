@@ -244,5 +244,30 @@ export const MODEL_PROFILES: ModelProfile[] = [
     downloadId: 'gemma4',
     editable: false,
     removable: false
+  },
+  {
+    id: 'qwen3-vl-4b-instruct',
+    name: 'Qwen3-VL-4B-Instruct',
+    shortName: 'Qwen3-VL-4B',
+    directoryName: 'Qwen3-VL-4B-Instruct-MNN',
+    description: '中文图像理解模型，支持文本、图片和视觉问答。',
+    supportsImage: true,
+    systemPrompt: '你是运行在本地设备上的 Qwen3-VL-4B-Instruct。请始终使用简体中文回答，表达简洁清楚。用户提供图片时，请结合图片内容准确回答。',
+    source: 'builtin',
+    chatFormat: CHAT_FORMAT_MNN_AUTO,
+    contextMessageLimit: 6,
+    generationDefaults: {
+      temperature: 0.7,
+      topP: 0.8,
+      topK: 20,
+      repetitionPenalty: 1.2,
+      frequencyPenalty: 0.0,
+      presencePenalty: 0.0,
+      penaltyWindow: 256
+    },
+    catalogItemId: 'qwen3-vl-4b-instruct',
+    downloadId: 'qwen3-vl-4b-instruct',
+    editable: false,
+    removable: false
   }
 ]

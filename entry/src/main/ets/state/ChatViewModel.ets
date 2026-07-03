@@ -1,7 +1,6 @@
 import { common } from '@kit.AbilityKit'
-import fs from '@ohos.file.fs'
 import preferences from '@ohos.data.preferences'
-import { ChatMessage, ChatTurn, GenerationResult, GenerationSettings, PerfMetrics } from '../models/ChatTypes'
+import { ChatMessage, ChatTurn, GenerationSettings, PerfMetrics } from '../models/ChatTypes'
 import { ImportedModelDraft } from '../models/ImportedModelTypes'
 import {
   BuiltinModelDownloadSpec,
@@ -30,8 +29,14 @@ import { BuiltinModelInstallService } from '../services/BuiltinModelInstallServi
 import { ModelImportService } from '../services/ModelImportService'
 import { NativeInferenceService } from '../services/NativeInferenceService'
 import { RuntimeStatsService } from '../services/RuntimeStatsService'
+import {
+  GenerationStreamUpdate,
+  GenerationWorkflow,
+  GenerationWorkflowResult
+} from '../services/GenerationWorkflow'
+import { ModelDeleteResult, ModelLifecycleService } from '../services/ModelLifecycleService'
+import { calculateDownloadProgress } from '../utils/downloadProgress'
 import { formatError } from '../utils/formatters'
-import { isLikelyIncompleteAssistantText, trimLikelyIncompleteTrailingFragment } from '../utils/thinking'
 import { ChatSession } from './ChatSession'
 import { ModelManager } from './ModelManager'
 
@@ -79,6 +84,7 @@ export class ChatViewModel {
   editingImportedModelId: string = ''
   importedModelNameInput: string = ''
   importedModelShortNameInput: string = ''
+  importedModelDescriptionInput: string = ''
   importedModelSystemPromptInput: string = ''
   showDeleteModelDialog: boolean = false
   pendingDeleteModelId: string = ''
@@ -100,6 +106,12 @@ export class ChatViewModel {
   private builtinModelInstallService: BuiltinModelInstallService = new BuiltinModelInstallService()
   private modelImportService: ModelImportService = new ModelImportService()
   private statsService: RuntimeStatsService = new RuntimeStatsService()
+  private generationWorkflow: GenerationWorkflow = new GenerationWorkflow(this.nativeService, this.imageService)
+  private modelLifecycleService: ModelLifecycleService = new ModelLifecycleService(
+    this.nativeService,
+    this.builtinModelInstallService,
+    this.modelImportService
+  )
   private pendingInstallCatalogItemId: string = ''
   private autoLoadAfterInstall: boolean = false
   private builtinModelInstallCancelRequested: boolean = false
@@ -137,7 +149,7 @@ export class ChatViewModel {
     this.refreshStats()
     this.refreshModelMarketInstallStates()
     this.notify()
-    this.modelImportService.loadImportedProfiles(this.filesDir).then((profiles: ModelProfile[]) => {
+    this.modelLifecycleService.loadImportedProfiles(this.filesDir).then((profiles: ModelProfile[]) => {
       this.modelManager.updateImportedProfiles(profiles, this.filesDir)
       this.prepareImportedModelEditor(this.selectedModelId)
       this.notify()
@@ -371,7 +383,7 @@ export class ChatViewModel {
     this.status = '正在导入模型包...'
     this.notify()
 
-    this.modelImportService.pickAndImport(this.context, this.modelProfiles()).then((result) => {
+    this.modelLifecycleService.importPickedModel(this.context, this.modelProfiles()).then((result) => {
       if (result === undefined) {
         this.modelImportMessage = '已取消导入模型包'
         this.status = this.loaded ? `${this.currentModel().shortName} 已加载` : '模型未加载'
@@ -410,7 +422,7 @@ export class ChatViewModel {
     this.busy = true
     this.modelImporting = true
 
-    this.modelImportService.scanPushedModelDirectories(this.filesDir, this.modelProfiles()).then((result) => {
+    this.modelLifecycleService.scanPushedModels(this.filesDir, this.modelProfiles()).then((result) => {
       this.modelManager.updateImportedProfiles(result.profiles, this.filesDir)
       const addedProfile = result.addedProfiles.length > 0 ? result.addedProfiles[result.addedProfiles.length - 1] : undefined
       if (addedProfile !== undefined) {
@@ -425,9 +437,11 @@ export class ChatViewModel {
         this.modelImportMessage = `已添加 ${result.addedProfiles.length} 个模型，请加载 ${model.shortName}。`
       } else {
         this.prepareImportedModelEditor(this.selectedModelId)
-        this.modelImportMessage = result.skippedCount > 0 ?
-          '未发现新的可导入 MNN 目录，请确认目录包含 config.json、.mnn 文件和可识别的对话模板。' :
-          '未发现新的已推送模型目录。'
+        this.modelImportMessage = result.errors.length > 0 ?
+          `未导入模型：${result.errors[0]}` :
+          (result.skippedCount > 0 ?
+            '未发现新的可导入 MNN 目录，请检查目录完整性与对话模板。' :
+            '未发现新的已推送模型目录。')
         this.status = this.loaded ? `${this.currentModel().shortName} 已加载` : this.status
       }
       this.busy = false
@@ -449,6 +463,7 @@ export class ChatViewModel {
       this.editingImportedModelId = ''
       this.importedModelNameInput = ''
       this.importedModelShortNameInput = ''
+      this.importedModelDescriptionInput = ''
       this.importedModelSystemPromptInput = ''
       return
     }
@@ -456,6 +471,7 @@ export class ChatViewModel {
     this.editingImportedModelId = profile.id
     this.importedModelNameInput = draft.name
     this.importedModelShortNameInput = draft.shortName
+    this.importedModelDescriptionInput = draft.description
     this.importedModelSystemPromptInput = draft.systemPrompt
   }
 
@@ -469,29 +485,35 @@ export class ChatViewModel {
     this.notify()
   }
 
+  updateImportedModelDescription(value: string): void {
+    this.importedModelDescriptionInput = value
+    this.notify()
+  }
+
   updateImportedModelSystemPrompt(value: string): void {
     this.importedModelSystemPromptInput = value
     this.notify()
   }
 
-  saveImportedModelProfile(): void {
+  saveImportedModelProfile(): Promise<boolean> {
     if (this.busy || this.modelLoading || this.modelImporting || this.editingImportedModelId.length <= 0) {
-      return
+      return Promise.resolve(false)
     }
     const profile = this.findProfile(this.editingImportedModelId)
     if (profile === undefined) {
       this.modelImportMessage = '保存失败：导入模型不存在'
       this.notify()
-      return
+      return Promise.resolve(false)
     }
     const draft: ImportedModelDraft = {
       name: this.importedModelNameInput,
       shortName: this.importedModelShortNameInput,
+      description: this.importedModelDescriptionInput,
       supportsImage: profile.supportsImage,
       systemPrompt: this.importedModelSystemPromptInput
     }
     const updated = this.modelImportService.applyDraft(profile, draft)
-    this.modelImportService.updateImportedProfile(this.filesDir, updated, this.modelProfiles()).then((profiles: ModelProfile[]) => {
+    return this.modelLifecycleService.updateImportedProfile(this.filesDir, updated).then((profiles: ModelProfile[]) => {
       this.modelManager.updateImportedProfiles(profiles, this.filesDir)
       this.prepareImportedModelEditor(updated.id)
       if (!updated.supportsImage) {
@@ -500,9 +522,11 @@ export class ChatViewModel {
       this.modelImportMessage = `${updated.shortName} 配置已保存`
       this.status = this.loaded ? `${this.currentModel().shortName} 已加载` : this.status
       this.notify()
+      return true
     }).catch((err: Error) => {
       this.modelImportMessage = `保存失败：${formatError(err as Object)}`
       this.notify()
+      return false
     })
   }
 
@@ -541,35 +565,31 @@ export class ChatViewModel {
     this.status = `正在删除 ${profile.shortName}...`
     this.notify()
 
-    const deleteTask: Promise<ModelProfile[] | undefined> = profile.source === 'imported' ?
-      this.modelImportService.deleteImportedProfile(this.filesDir, modelId) :
-      this.builtinModelInstallService.deleteInstalled(this.filesDir, profile).then((_deleted: boolean) => undefined)
-
-    deleteTask.then((profiles: ModelProfile[] | undefined) => {
-      const deletingCurrent = this.selectedModelId === modelId
-      if (deletingCurrent && this.loaded) {
-        this.nativeService.reset()
-        this.loaded = false
-      }
-      if (profiles !== undefined) {
-        this.modelManager.updateImportedProfiles(profiles, this.filesDir)
-      } else {
-        this.removeInstalledCatalogState(profile)
-      }
-      this.prepareImportedModelEditor(this.selectedModelId)
-      this.pendingDeleteModelId = ''
-      this.status = deletingCurrent ? `${profile.shortName} 已删除，请重新安装或选择其他模型。` : this.status
-      this.busy = false
-      this.modelImporting = false
-      this.refreshModelMarketInstallStates()
-      this.notify()
-    }).catch((err: Error) => {
-      this.pendingDeleteModelId = ''
-      this.status = `删除失败：${formatError(err as Object)}`
-      this.busy = false
-      this.modelImporting = false
-      this.notify()
-    })
+    const deletingCurrent = this.selectedModelId === modelId
+    this.modelLifecycleService.deleteModel(this.filesDir, profile, deletingCurrent && this.loaded)
+      .then((result: ModelDeleteResult) => {
+        if (deletingCurrent) {
+          this.loaded = false
+        }
+        if (result.importedProfiles !== undefined) {
+          this.modelManager.updateImportedProfiles(result.importedProfiles, this.filesDir)
+        } else {
+          this.removeInstalledCatalogState(profile)
+        }
+        this.prepareImportedModelEditor(this.selectedModelId)
+        this.pendingDeleteModelId = ''
+        this.status = deletingCurrent ? `${profile.shortName} 已删除，请重新安装或选择其他模型。` : this.status
+        this.busy = false
+        this.modelImporting = false
+        this.refreshModelMarketInstallStates()
+        this.notify()
+      }).catch((err: Error) => {
+        this.pendingDeleteModelId = ''
+        this.status = `删除失败：${formatError(err as Object)}`
+        this.busy = false
+        this.modelImporting = false
+        this.notify()
+      })
   }
 
   refreshModelMarketInstallStates(): void {
@@ -709,7 +729,7 @@ export class ChatViewModel {
     if (this.busy || this.modelLoading) {
       return
     }
-    this.nativeService.reset()
+    this.modelLifecycleService.reset()
     this.loaded = false
     this.status = '模型已释放'
     this.modelLoadMessage = '模型已从内存中释放，可重新加载。'
@@ -767,7 +787,6 @@ export class ChatViewModel {
         return
       }
       this.resetGenerationSettings(false)
-      this.openModelLoadDialog(false)
       this.startModelLoad()
     }).catch((err: Error) => {
       this.status = `检查模型失败：${formatError(err as Object)}`
@@ -780,14 +799,13 @@ export class ChatViewModel {
       return
     }
     if (this.loaded) {
-      this.nativeService.reset()
+      this.modelLifecycleService.reset()
       this.loaded = false
     }
     this.ensureCurrentModelInstalled().then((installed: boolean) => {
       if (!installed) {
         return
       }
-      this.openModelLoadDialog(false)
       this.startModelLoad()
     }).catch((err: Error) => {
       this.status = `检查模型失败：${formatError(err as Object)}`
@@ -810,7 +828,9 @@ export class ChatViewModel {
     this.startModelLoadProgress()
     this.notify()
 
-    this.nativeService.loadModel(
+    this.modelLifecycleService.loadModel(
+      this.filesDir,
+      this.currentModel(),
       this.modelPath,
       this.threadNum,
       this.maxNewTokens,
@@ -833,7 +853,6 @@ export class ChatViewModel {
         this.notifyAndScroll()
       }, 450)
     }).catch((err: Error) => {
-      this.nativeService.reset()
       this.loaded = false
       this.status = `加载失败：${formatError(err as Object)}`
       const loadErrorMessage = `${this.currentModel().shortName} 加载失败，可能是设备可用内存不足。请关闭后台应用、释放其他模型或重启 App 后重试。\n\n${this.status}`
@@ -899,16 +918,15 @@ export class ChatViewModel {
       existingBytes = 0
     }
     this.builtinModelInstallDownloadedBytes = existingBytes
-    this.builtinModelInstallProgress = spec.totalBytes > 0 ?
-      Math.round(existingBytes / spec.totalBytes * 1000) / 10 :
-      0
+    this.builtinModelInstallProgress = calculateDownloadProgress(existingBytes, spec.totalBytes)
     this.builtinModelInstallMessage = existingBytes > 0 ?
       `正在继续下载 ${spec.displayName}。请保持 App 在前台。` :
       `正在从 ${spec.sourceName} 下载 ${spec.displayName}。请保持 App 在前台。`
     this.status = `正在安装 ${spec.displayName}...`
     this.notify()
 
-    this.builtinModelInstallService.installCatalogItem(context, spec, (progress: BuiltinModelInstallProgress) => {
+    const supportsImage = this.builtinModelInstallService.getCatalogItem(spec.id)?.supportsImage ?? false
+    this.modelLifecycleService.installCatalogItem(context, spec, supportsImage, (progress: BuiltinModelInstallProgress) => {
       if (this.builtinModelInstallCancelRequested) {
         return
       }
@@ -981,9 +999,7 @@ export class ChatViewModel {
         return
       }
       this.builtinModelInstallDownloadedBytes = downloadedBytes
-      this.builtinModelInstallProgress = spec.totalBytes > 0 ?
-        Math.round(downloadedBytes / spec.totalBytes * 1000) / 10 :
-        0
+      this.builtinModelInstallProgress = calculateDownloadProgress(downloadedBytes, spec.totalBytes)
       if (downloadedBytes > 0 && this.builtinModelInstallFileName.length <= 0) {
         this.builtinModelInstallMessage = `${spec.displayName} 检测到未完成下载，可继续下载或关闭弹窗清理。`
       }
@@ -1050,86 +1066,36 @@ export class ChatViewModel {
     this.refreshStats()
     this.notifyAndScroll()
 
-    const genStartTime: number = Date.now()
-    let firstTokenTime: number = 0
-    let streamedText = ''
-    let generation: Promise<GenerationResult>
     const assistantOutputPrefix = this.expectedAssistantOutputPrefixForCurrentModel()
-    try {
-      if (attachedImage.length > 0) {
-        this.status = '正在读取图片...'
+    const generation = this.generationWorkflow.run({
+      turns: chatTurns,
+      imageUri: attachedImage,
+      maxNewTokens: this.maxNewTokens,
+      settings: this.currentGenerationSettings(),
+      assistantOutputPrefix,
+      stripLeadingAssistantSeparator: this.shouldStripLeadingAssistantSeparator()
+    }, {
+      onStatus: (status: string) => {
+        this.status = status
         this.notify()
-        generation = this.imageService.buildImagePayload(attachedImage).then((payload) => {
-          if (this.generationStopping) {
-            return {
-              text: '',
-              generatedTokens: 0,
-              stopReason: 'user_stop'
-            } as GenerationResult
-          }
-          this.status = '等待视觉模型...'
-          this.notify()
-          return this.nativeService.generateImage(
-            chatTurns,
-            payload,
-            this.maxNewTokens,
-            this.currentGenerationSettings(),
-            (chunk: string) => {
-              if (firstTokenTime <= 0) {
-                firstTokenTime = Date.now()
-              }
-              streamedText += chunk
-              this.handleStreamText(assistantId, streamedText, assistantOutputPrefix)
-            }
-          )
-        })
-      } else {
-        generation = this.generateTextForCurrentModel(chatTurns, (chunk: string) => {
-          if (firstTokenTime <= 0) {
-            firstTokenTime = Date.now()
-          }
-          streamedText += chunk
-          this.handleStreamText(assistantId, streamedText, assistantOutputPrefix)
-        })
-      }
-    } catch (err) {
-      this.busy = false
-      this.generating = false
-      this.generationStopping = false
-      this.status = `生成失败：${formatError(err as Object)}`
-      this.notify()
-      return
-    }
+      },
+      onStream: (update: GenerationStreamUpdate) => {
+        this.handleStreamUpdate(assistantId, update)
+      },
+      isStopRequested: () => this.generationStopping
+    })
 
-    generation.then((result: GenerationResult) => {
-      const genEndTime: number = Date.now()
-      const cleanedText = trimLikelyIncompleteTrailingFragment(this.session.sanitizeAssistantText(
-        this.applyExpectedAssistantOutputPrefix(result.text, assistantOutputPrefix),
-        this.shouldStripLeadingAssistantSeparator()
-      ))
-      const answer = cleanedText.length > 0 ? cleanedText :
-        (result.stopReason === 'user_stop' ? '（已停止生成）' : '（原生层返回空内容）')
-      const includeInContext = this.shouldIncludeAssistantInContext(answer, result)
-
-      const ttft: number = firstTokenTime > 0 ? firstTokenTime - genStartTime : 0
-      const genTime: number = genEndTime - genStartTime
-      const genTokens: number = Math.max(0, result.generatedTokens)
-      const safeGenTokens: number = Math.max(1, genTokens)
-      const safeGenTime: number = Math.max(1, genTime)
-      const tpot: number = safeGenTime / safeGenTokens
-      const tokensPerSec: number = (safeGenTokens / (safeGenTime / 1000))
-      const perf: PerfMetrics = {
-        ttft: ttft,
-        tpot: Math.round(tpot * 100) / 100,
-        tokensPerSec: Math.round(tokensPerSec * 10) / 10,
-        tokens: genTokens
-      }
-
-      this.latestPerfMetrics = perf
-      this.streamingChars = answer.length
-      this.session.updateMessage(assistantId, answer, includeInContext, result.stopReason === 'user_stop' ? undefined : perf)
+    generation.then((outcome: GenerationWorkflowResult) => {
+      this.latestPerfMetrics = outcome.perfMetrics
+      this.streamingChars = outcome.answer.length
+      this.session.updateMessage(
+        assistantId,
+        outcome.answer,
+        outcome.includeInContext,
+        outcome.result.stopReason === 'user_stop' ? undefined : outcome.perfMetrics
+      )
       this.syncMessages()
-      this.status = this.formatGenerationStatus(answer, includeInContext, result)
+      this.status = outcome.status
       this.busy = false
       this.generating = false
       this.generationStopping = false
@@ -1155,7 +1121,7 @@ export class ChatViewModel {
     }
     this.generationStopping = true
     this.status = '正在停止生成...'
-    this.nativeService.stopGeneration()
+    this.generationWorkflow.stop()
     this.notify()
   }
 
@@ -1191,7 +1157,7 @@ export class ChatViewModel {
 
   private resetLoadedModel(status: string): void {
     if (this.loaded) {
-      this.nativeService.reset()
+      this.modelLifecycleService.reset()
     }
     this.loaded = false
     this.status = status
@@ -1205,12 +1171,11 @@ export class ChatViewModel {
     if (spec === undefined) {
       return Promise.resolve(true)
     }
-    return this.currentModelConfigExists().then((customPathExists: boolean) => {
-      if (customPathExists && this.modelPath !== `${this.filesDir}/${model.directoryName}/config.json`) {
-        return true
-      }
-      return this.builtinModelInstallService.isInstalled(this.filesDir, model)
-    }).then((installed: boolean) => {
+    const defaultConfigPath = `${this.filesDir}/${model.directoryName}/config.json`
+    if (this.modelPath !== defaultConfigPath) {
+      return Promise.resolve(true)
+    }
+    return this.modelLifecycleService.isInstalled(this.filesDir, model, this.modelPath).then((installed: boolean) => {
       if (installed) {
         return true
       }
@@ -1243,18 +1208,6 @@ export class ChatViewModel {
     this.syncBuiltinModelInstallPartialProgress(spec)
   }
 
-  private async currentModelConfigExists(): Promise<boolean> {
-    if (this.modelPath.length <= 0) {
-      return false
-    }
-    try {
-      const stat = await fs.stat(this.modelPath)
-      return stat.isFile()
-    } catch (_) {
-      return false
-    }
-  }
-
   private composeChatTurns(text: string): ChatTurn[] {
     return this.session.composeChatTurns(this.currentModel().systemPrompt, text, this.currentContextMessageLimit())
   }
@@ -1278,23 +1231,8 @@ export class ChatViewModel {
     return false
   }
 
-  private generateTextForCurrentModel(turns: ChatTurn[], onChunk: (chunk: string) => void): Promise<GenerationResult> {
-    return this.nativeService.generateText(turns, this.maxNewTokens, this.currentGenerationSettings(), onChunk)
-  }
-
   private expectedAssistantOutputPrefixForCurrentModel(): string {
     return ''
-  }
-
-  private applyExpectedAssistantOutputPrefix(text: string, prefix: string): string {
-    if (prefix.length <= 0 || text.length <= 0) {
-      return text
-    }
-    const trimmedStart = text.trimStart()
-    if (trimmedStart.startsWith('<think>') || '<think>'.startsWith(trimmedStart)) {
-      return text
-    }
-    return `${prefix}${text}`
   }
 
   private currentGenerationSettings(): GenerationSettings {
@@ -1307,39 +1245,6 @@ export class ChatViewModel {
       presencePenalty: this.presencePenalty,
       penaltyWindow: this.penaltyWindow
     }
-  }
-
-  private shouldIncludeAssistantInContext(answer: string, result: GenerationResult): boolean {
-    if (answer.trim().length === 0) {
-      return false
-    }
-    if (result.stopReason === 'max_tokens') {
-      return false
-    }
-    if (result.stopReason === 'user_stop') {
-      return false
-    }
-    if (result.stopReason === 'eos') {
-      return true
-    }
-    if (result.stopReason === 'unknown') {
-      return true
-    }
-    return !isLikelyIncompleteAssistantText(answer)
-  }
-
-  private formatGenerationStatus(answer: string, includeInContext: boolean, result: GenerationResult): string {
-    const tokenText = result.generatedTokens > 0 ? `，${result.generatedTokens} tokens` : ''
-    if (result.stopReason === 'max_tokens') {
-      return `生成完成（${answer.length} 字符${tokenText}，达到最大输出）`
-    }
-    if (result.stopReason === 'user_stop') {
-      return `已停止生成（${answer.length} 字符${tokenText}）`
-    }
-    if (!includeInContext) {
-      return `生成完成（${answer.length} 字符${tokenText}，可能被截断）`
-    }
-    return `生成完成（${answer.length} 字符${tokenText}）`
   }
 
   private findProfile(modelId: string): ModelProfile | undefined {
@@ -1380,24 +1285,15 @@ export class ChatViewModel {
     })
   }
 
-  private handleStreamText(assistantId: number, streamedText: string, assistantOutputPrefix: string = ''): number {
-    if (streamedText.length <= 0) {
-      return 0
-    }
-    const displayText = this.session.sanitizeStreamingAssistantText(
-      this.applyExpectedAssistantOutputPrefix(streamedText, assistantOutputPrefix),
-      this.shouldStripLeadingAssistantSeparator()
-    )
-    const nextStreamedChars = displayText.length
-    this.streamingChars = nextStreamedChars
-    this.status = `正在生成... ${nextStreamedChars} 字符`
-    this.session.updateMessage(assistantId, displayText)
+  private handleStreamUpdate(assistantId: number, update: GenerationStreamUpdate): void {
+    this.streamingChars = update.characterCount
+    this.status = `正在生成... ${update.characterCount} 字符`
+    this.session.updateMessage(assistantId, update.text)
     this.syncMessages()
     this.notify()
     if (this.chatAutoScrollEnabled) {
       this.scrollToBottom()
     }
-    return nextStreamedChars
   }
 
   private startModelLoadProgress(): void {

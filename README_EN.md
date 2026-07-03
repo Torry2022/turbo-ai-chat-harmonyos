@@ -8,7 +8,7 @@
 
 ![Turbo AI Chat hero](docs/images/hero.png)
 
-**Turbo AI Chat is a HarmonyOS NEXT native on-device LLM chat application** for validating a complete local-inference pipeline on HarmonyOS devices. It is built with ArkTS, C++ N-API, and MNN Runtime, and currently supports Qwen3-4B-Instruct as the default text model, MiniCPM5-1B for lightweight text validation, and Gemma-4-E2B-it for experimental multimodal image understanding. The app also includes streaming chat, model switching, model-market downloads, and local MNN model import.
+**Turbo AI Chat is a HarmonyOS NEXT native on-device LLM chat application** for validating a complete local-inference pipeline on HarmonyOS devices. It is built with ArkTS, C++ N-API, and MNN Runtime, ships profiles for Qwen3-4B-Instruct, MiniCPM5-1B, and Gemma-4-E2B-it, and can add compatible text and multimodal MNN models through the model market or local import. The app also includes streaming chat, model switching, image understanding, and runtime monitoring.
 
 This repository is forked from [Turbo1123/turbo-ai-chat-harmonyos](https://github.com/Turbo1123/turbo-ai-chat-harmonyos).
 
@@ -57,6 +57,9 @@ In the HarmonyOS ecosystem, on-device AI inference today largely depends on Andr
 
 **Stability and diagnostics**
 
+- Model loading, market installation, and local import share one directory preflight that validates configuration, referenced weights, visual files, and chat-template compatibility before native inference starts.
+- Image inference preserves the visual input size declared by each model directory, supporting MNN multimodal models with different visual-grid configurations.
+- A real-device `ohosTest` regression baseline now covers context handling, Markdown, thinking blocks, model compatibility rules, imported-model naming, and download progress.
 - The Monitor tab includes app storage usage, model state, version/license text, and tighter device metrics.
 - Model load failures keep the error in the load dialog and reset inference state, making low-memory or failed-load recovery clearer.
 - Markdown tables, lists, code snippets, thinking blocks, raw output logs, and MNN chat-template handling were improved for diagnosing repetition, stop tokens, and prompt template issues.

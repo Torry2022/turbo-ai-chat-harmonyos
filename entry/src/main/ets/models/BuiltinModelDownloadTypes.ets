@@ -145,6 +145,22 @@ export const MODEL_CATALOG_ITEMS: ModelCatalogItem[] = [
     ]
   ), 'Gemma-4-E2B', '图片理解实验模型，支持文本和图片输入。', 'MNN', true, ['文本', '图片']),
   withCatalogMeta(createSpec(
+    'qwen3-vl-4b-instruct',
+    'qwen3-vl-4b-instruct',
+    'Qwen3-VL-4B-Instruct-MNN',
+    'Qwen3-VL-4B-Instruct',
+    'MNN/Qwen3-VL-4B-Instruct-MNN',
+    [
+      { relativePath: 'config.json', sizeBytes: 605 },
+      { relativePath: 'llm_config.json', sizeBytes: 6446 },
+      { relativePath: 'tokenizer.txt', sizeBytes: 3193555 },
+      { relativePath: 'llm.mnn', sizeBytes: 591728 },
+      { relativePath: 'llm.mnn.weight', sizeBytes: 2709972658 },
+      { relativePath: 'visual.mnn', sizeBytes: 502512 },
+      { relativePath: 'visual.mnn.weight', sizeBytes: 242953564 }
+    ]
+  ), 'Qwen3-VL-4B', '中文图像理解模型，支持文本、图片和视觉问答。', 'MNN', true, ['文本', '图片'], false),
+  withCatalogMeta(createSpec(
     'minicpm5-1b',
     'minicpm5-1b',
     'MiniCPM5-1B-MNN',

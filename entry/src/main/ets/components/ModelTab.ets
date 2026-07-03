@@ -70,6 +70,13 @@ export struct ModelTab {
       !this.viewModel.builtinModelInstalling
   }
 
+  private showToast(message: string): void {
+    try {
+      this.getUIContext().getPromptAction().showToast({ message, duration: 1600, bottom: 80 })
+    } catch (_) {
+    }
+  }
+
   private beginModelDrag(profile: ModelProfile, index: number): void {
     if (!this.controlsEnabled()) {
       return
@@ -235,7 +242,8 @@ export struct ModelTab {
       Column({ space: 8 }) {
         ForEach(this.visibleModelProfiles, (profile: ModelProfile, index: number) => {
           this.ModelOption(profile, index)
-        }, (profile: ModelProfile) => profile.id)
+        }, (profile: ModelProfile) =>
+          `${profile.id}-${profile.name}-${profile.shortName}-${profile.description}`)
       }
       .width('100%')
       Button(this.viewModel.loaded ? '释放模型' : '加载模型')
@@ -598,7 +606,7 @@ export struct ModelTab {
         .onClick(() => {
           this.importedConfigExpanded = !this.importedConfigExpanded
         })
-        Text('可修改已导入模型的名称和系统提示词')
+        Text('可修改已导入模型的名称、描述和系统提示词')
           .fontSize(11)
           .fontColor('#5A7A9A')
           .width('100%')
@@ -640,6 +648,24 @@ export struct ModelTab {
           .width('100%')
 
           Column({ space: 4 }) {
+            Text('模型描述')
+              .fontSize(12)
+              .fontColor('#8CA2B8')
+              .width('100%')
+            TextInput({ text: this.viewModel.importedModelDescriptionInput, placeholder: '模型描述' })
+              .onChange((value: string) => {
+                this.viewModel.updateImportedModelDescription(value)
+              })
+              .enabled(this.controlsEnabled())
+              .height(40)
+              .fontSize(12)
+              .fontColor('#EAF4FF')
+              .backgroundColor('#0A1623')
+              .width('100%')
+          }
+          .width('100%')
+
+          Column({ space: 4 }) {
             Text('系统提示词')
               .fontSize(12)
               .fontColor('#8CA2B8')
@@ -663,7 +689,12 @@ export struct ModelTab {
             .width('100%')
             .fontColor('#F4FBFF')
             .onClick(() => {
-              this.viewModel.saveImportedModelProfile()
+              this.viewModel.saveImportedModelProfile().then((saved: boolean) => {
+                if (saved) {
+                  this.refreshModelProfiles()
+                  this.showToast('模型配置已保存')
+                }
+              })
             })
         }
       }

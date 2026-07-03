@@ -18,9 +18,20 @@ import {
   ModelProfile
 } from '../models/ModelProfile'
 import { formatError } from '../utils/formatters'
-import { MnnTemplateService } from './MnnTemplateService'
+import {
+  importedModelShortName,
+  legacyImportedModelShortName,
+  safeModelId,
+  stripMnnSuffix,
+  uniqueModelId,
+  uniqueModelName,
+  uniqueModelShortName
+} from '../utils/modelNaming'
+import { ModelDirectoryPreflightService } from './ModelDirectoryPreflightService'
 
 export class ModelImportService {
+  private preflightService: ModelDirectoryPreflightService = new ModelDirectoryPreflightService()
+
   async pickAndImport(context: common.UIAbilityContext, existingProfiles: ModelProfile[]): Promise<ModelImportResult | undefined> {
     const zipUri = await this.pickZip(context)
     if (zipUri === undefined || zipUri.length <= 0) {
@@ -49,14 +60,10 @@ export class ModelImportService {
         throw new Error('模型包中未找到 config.json')
       }
 
-      const allFiles = await this.listFilesRecursive(targetDir)
-      if (!this.containsMnnFile(allFiles)) {
-        throw new Error('模型包中未找到 .mnn 模型文件')
-      }
-      await this.ensureChatMessagesTemplate(configPath)
+      await this.preflightService.requireCompatible(configPath, false)
 
-      const inferredName = this.uniqueProfileName(this.inferName(zipUri, configPath, targetDir), existingProfiles)
-      const inferredShortName = this.uniqueProfileShortName(this.toShortName(inferredName), existingProfiles)
+      const inferredName = uniqueModelName(this.inferName(zipUri, configPath, targetDir), existingProfiles)
+      const inferredShortName = uniqueModelShortName(importedModelShortName(inferredName), existingProfiles)
       const profile: ModelProfile = {
         id: modelId,
         name: inferredName,
@@ -100,6 +107,7 @@ export class ModelImportService {
     const importedProfiles = await this.loadImportedProfiles(filesDir)
     const nextProfiles = importedProfiles.slice()
     const addedProfiles: ModelProfile[] = []
+    const errors: string[] = []
     let skippedCount = 0
 
     const names = await fs.listFile(importRoot)
@@ -122,24 +130,24 @@ export class ModelImportService {
       const configPath = await this.findConfigPath(targetDir)
       if (configPath.length <= 0 || this.hasImportedConfigPath(nextProfiles, configPath)) {
         skippedCount++
+        if (configPath.length <= 0) {
+          errors.push(`${directoryName}：模型目录缺少 config.json。`)
+        }
         continue
       }
 
-      const allFiles = await this.listFilesRecursive(targetDir)
-      if (!this.containsMnnFile(allFiles)) {
+      const preflight = await this.preflightService.validate(configPath, false)
+      if (!preflight.compatible) {
         skippedCount++
-        continue
-      }
-      if (!await this.isCompatibleChatMessagesTemplate(configPath)) {
-        skippedCount++
+        errors.push(`${directoryName}：${preflight.message}`)
         continue
       }
 
       const profilePool = existingProfiles.concat(nextProfiles)
-      const inferredName = this.uniqueProfileName(this.inferNameFromDirectory(configPath, targetDir, directoryName), profilePool)
-      const inferredShortName = this.uniqueProfileShortName(this.toShortName(inferredName), profilePool)
+      const inferredName = uniqueModelName(this.inferNameFromDirectory(configPath, targetDir, directoryName), profilePool)
+      const inferredShortName = uniqueModelShortName(importedModelShortName(inferredName), profilePool)
       const profile: ModelProfile = {
-        id: this.uniqueProfileId(`imported-${this.toSafeId(directoryName)}`, profilePool),
+        id: uniqueModelId(`imported-${safeModelId(directoryName)}`, profilePool),
         name: inferredName,
         shortName: inferredShortName,
         directoryName,
@@ -166,7 +174,8 @@ export class ModelImportService {
     return {
       profiles: nextProfiles,
       addedProfiles,
-      skippedCount
+      skippedCount,
+      errors
     }
   }
 
@@ -203,10 +212,10 @@ export class ModelImportService {
     await this.writeText(this.storePath(filesDir), JSON.stringify(manifest, undefined, 2))
   }
 
-  async updateImportedProfile(filesDir: string, updated: ModelProfile, existingProfiles: ModelProfile[]): Promise<ModelProfile[]> {
+  async updateImportedProfile(filesDir: string, updated: ModelProfile): Promise<ModelProfile[]> {
     const profiles = await this.loadImportedProfiles(filesDir)
-    const uniqueName = this.uniqueProfileName(updated.name, existingProfiles, updated.id)
-    const uniqueShortName = this.uniqueProfileShortName(updated.shortName, existingProfiles, updated.id)
+    const uniqueName = uniqueModelName(updated.name, profiles, updated.id)
+    const uniqueShortName = uniqueModelShortName(updated.shortName, profiles, updated.id)
     const next = profiles.map((profile: ModelProfile) => {
       if (profile.id !== updated.id) {
         return profile
@@ -251,6 +260,7 @@ export class ModelImportService {
     return {
       name: profile.name,
       shortName: profile.shortName,
+      description: profile.description,
       supportsImage: profile.supportsImage,
       systemPrompt: profile.systemPrompt
     }
@@ -258,13 +268,13 @@ export class ModelImportService {
 
   applyDraft(profile: ModelProfile, draft: ImportedModelDraft): ModelProfile {
     const name = draft.name.trim().length > 0 ? draft.name.trim() : profile.name
-    const shortName = draft.shortName.trim().length > 0 ? draft.shortName.trim() : this.toShortName(name)
+    const shortName = draft.shortName.trim().length > 0 ? draft.shortName.trim() : importedModelShortName(name)
     return {
       id: profile.id,
       name,
       shortName,
       directoryName: profile.directoryName,
-      description: profile.description,
+      description: draft.description.trim().length > 0 ? draft.description.trim() : profile.description,
       supportsImage: draft.supportsImage,
       systemPrompt: draft.systemPrompt.trim().length > 0 ? draft.systemPrompt.trim() : DEFAULT_IMPORTED_MODEL_PROMPT,
       source: IMPORTED_MODEL_SOURCE,
@@ -354,21 +364,12 @@ export class ModelImportService {
     return result
   }
 
-  private containsMnnFile(files: string[]): boolean {
-    for (let index = 0; index < files.length; index++) {
-      if (files[index].toLowerCase().endsWith('.mnn')) {
-        return true
-      }
-    }
-    return false
-  }
-
   private inferName(zipUri: string, configPath: string, targetDir: string): string {
     const fromDirectory = this.nameFromConfigDirectory(configPath, targetDir)
     if (fromDirectory.length > 0) {
       return fromDirectory
     }
-    const fromZip = this.stripMnnSuffix(this.cleanFileName(zipUri))
+    const fromZip = stripMnnSuffix(this.cleanFileName(zipUri))
     return fromZip.length > 0 ? fromZip : 'Imported MNN Model'
   }
 
@@ -377,7 +378,7 @@ export class ModelImportService {
     if (fromDirectory.length > 0) {
       return fromDirectory
     }
-    const fromDirectoryName = this.stripMnnSuffix(directoryName)
+    const fromDirectoryName = stripMnnSuffix(directoryName)
     return fromDirectoryName.length > 0 ? fromDirectoryName : 'Imported MNN Model'
   }
 
@@ -405,127 +406,22 @@ export class ModelImportService {
     if (parts.length < 2) {
       return ''
     }
-    return this.stripMnnSuffix(parts[parts.length - 2])
-  }
-
-  private uniqueProfileName(baseName: string, profiles: ModelProfile[], selfId: string = ''): string {
-    const name = baseName.length > 0 ? baseName : 'Imported MNN Model'
-    let candidate = name
-    let suffix = 2
-    while (profiles.some((profile: ModelProfile) => profile.id !== selfId && profile.name === candidate)) {
-      candidate = `${name} ${suffix}`
-      suffix++
-    }
-    return candidate
-  }
-
-  private uniqueProfileShortName(baseName: string, profiles: ModelProfile[], selfId: string = ''): string {
-    const name = baseName.length > 0 ? baseName : 'Imported'
-    let candidate = name
-    let suffix = 2
-    while (profiles.some((profile: ModelProfile) => profile.id !== selfId && profile.shortName === candidate)) {
-      candidate = `${name} ${suffix}`
-      suffix++
-    }
-    return candidate
-  }
-
-  private uniqueProfileId(baseId: string, profiles: ModelProfile[]): string {
-    const id = baseId.length > 0 ? baseId : 'imported-model'
-    let candidate = id
-    let suffix = 2
-    while (profiles.some((profile: ModelProfile) => profile.id === candidate)) {
-      candidate = `${id}-${suffix}`
-      suffix++
-    }
-    return candidate
-  }
-
-  private toSafeId(name: string): string {
-    const normalized = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
-    return normalized.length > 0 ? normalized : 'model'
-  }
-
-  private toShortName(name: string): string {
-    const normalized = this.stripMnnSuffix(name)
-    const shortName = this.extractModelShortName(normalized)
-    return shortName.length > 32 ? shortName.substring(0, 32) : shortName
-  }
-
-  private stripMnnSuffix(name: string): string {
-    let normalized = name.trim()
-    const lowerName = normalized.toLowerCase()
-    if (lowerName.endsWith('-mnn') || lowerName.endsWith('_mnn')) {
-      normalized = normalized.substring(0, normalized.length - 4)
-    } else if (lowerName.endsWith(' mnn')) {
-      normalized = normalized.substring(0, normalized.length - 4)
-    }
-    return normalized.trim()
-  }
-
-  private extractModelShortName(name: string): string {
-    const normalized = name.trim()
-    const tokens = normalized.split('-').filter((token: string) => token.length > 0)
-    if (tokens.length <= 1) {
-      return normalized
-    }
-
-    let parameterIndex = -1
-    for (let index = 1; index < tokens.length; index++) {
-      if (this.isParameterToken(tokens[index])) {
-        parameterIndex = index
-        break
-      }
-    }
-    if (parameterIndex < 0) {
-      return tokens[0]
-    }
-
-    let endIndex = tokens.length
-    while (endIndex > parameterIndex + 1 && this.isTrailingModelMetadataToken(tokens[endIndex - 1])) {
-      endIndex--
-    }
-    return tokens.slice(0, endIndex).join('-')
-  }
-
-  private legacyShortName(name: string): string {
-    const normalized = name.trim()
-    const tokens = normalized.split('-').filter((token: string) => token.length > 0)
-    if (tokens.length <= 1) {
-      return normalized
-    }
-    for (let index = 1; index < tokens.length; index++) {
-      if (this.isParameterToken(tokens[index])) {
-        return `${tokens[0]}-${tokens[index]}`
-      }
-    }
-    return tokens[0]
-  }
-
-  private isParameterToken(token: string): boolean {
-    return /^[0-9]+(\.[0-9]+)?[BMbK]?$/.test(token) || /^E[0-9]+B$/i.test(token)
-  }
-
-  private isTrailingModelMetadataToken(token: string): boolean {
-    const lowerToken = token.toLowerCase()
-    return lowerToken === 'it' ||
-      /^[0-9]{4,8}$/.test(lowerToken) ||
-      /^v[0-9]+(\.[0-9]+)*$/.test(lowerToken)
+    return stripMnnSuffix(parts[parts.length - 2])
   }
 
   private async normalizeImportedProfile(profile: ModelProfile): Promise<ModelProfile> {
     if (profile.configPath !== undefined && profile.configPath.length > 0) {
       try {
-        await this.ensureChatMessagesTemplate(profile.configPath)
+        await this.preflightService.validate(profile.configPath, profile.supportsImage)
       } catch (_) {}
     }
-    const normalizedName = this.stripMnnSuffix(profile.name)
+    const normalizedName = stripMnnSuffix(profile.name)
     const normalizedSystemPrompt = profile.systemPrompt === LEGACY_IMPORTED_MODEL_PROMPT ?
       DEFAULT_IMPORTED_MODEL_PROMPT :
       profile.systemPrompt
     const shouldRefreshShortName =
       profile.shortName.length === 12 && profile.name.length > 12 && profile.shortName === profile.name.substring(0, 12) ||
-      profile.shortName === this.legacyShortName(normalizedName) ||
+      profile.shortName === legacyImportedModelShortName(normalizedName) ||
       profile.shortName === normalizedName ||
       profile.shortName === profile.name
     const normalizedChatFormat = CHAT_FORMAT_MNN_AUTO
@@ -544,7 +440,7 @@ export class ModelImportService {
       return {
         id: profile.id,
         name: normalizedName,
-        shortName: shouldRefreshShortName ? this.toShortName(normalizedName) : profile.shortName,
+        shortName: shouldRefreshShortName ? importedModelShortName(normalizedName) : profile.shortName,
         directoryName: profile.directoryName,
         description: profile.description,
         supportsImage: profile.supportsImage,
@@ -588,14 +484,6 @@ export class ModelImportService {
 
   private hasImportedConfigPath(profiles: ModelProfile[], configPath: string): boolean {
     return profiles.some((profile: ModelProfile) => profile.configPath === configPath)
-  }
-
-  private async ensureChatMessagesTemplate(configPath: string): Promise<void> {
-    await MnnTemplateService.ensureChatMessagesTemplate(configPath)
-  }
-
-  private async isCompatibleChatMessagesTemplate(configPath: string): Promise<boolean> {
-    return MnnTemplateService.isCompatibleChatMessagesTemplate(configPath)
   }
 
   private async deletePathRecursive(path: string): Promise<void> {

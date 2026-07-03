@@ -154,7 +154,9 @@ protected:
     }
 
     int sync() override {
-        FlushPendingChunk(true);
+        // sync() may occur between bytes of one UTF-8 character. Keep an
+        // incomplete suffix until the following write completes it.
+        FlushPendingChunk(false);
         if (ShouldStop()) {
             throw UserStopException();
         }
@@ -676,8 +678,11 @@ GemmaRunner::GenerationResult GemmaRunner::generateImageChatStreaming(
                              + userContent;
     PromptImagePart imagePart;
     imagePart.image_data = imageVar;
-    imagePart.width = image.width;
-    imagePart.height = image.height;
+    // Keep the visual input size from llm_config.json. MNN resizes the supplied
+    // image tensor internally; overriding it with the photo dimensions breaks
+    // models such as Qwen3-VL whose visual grid depends on the configured size.
+    imagePart.width = 0;
+    imagePart.height = 0;
     prompt.images["image_0"] = imagePart;
 
     stopRequested_.store(false);

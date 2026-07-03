@@ -7,6 +7,7 @@ export interface ImportedModelManifest {
 export interface ImportedModelDraft {
   name: string
   shortName: string
+  description: string
   supportsImage: boolean
   systemPrompt: string
 }
@@ -20,6 +21,7 @@ export interface ModelImportScanResult {
   profiles: ModelProfile[]
   addedProfiles: ModelProfile[]
   skippedCount: number
+  errors: string[]
 }
 
 export const IMPORTED_MODELS_DIR: string = 'model-imports'

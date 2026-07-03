@@ -119,15 +119,11 @@ export struct MessageBubble {
       .width('100%')
     } else if (block.type === 'blockquote') {
       Row() {
-        Column()
-          .width(3)
-          .height('100%')
-          .backgroundColor('#456888')
-          .borderRadius(2)
         this.MarkdownLine(block.text, '#B7CDE1')
       }
       .width('100%')
-      .padding({ left: 8, top: 4, bottom: 4 })
+      .padding({ left: 11, top: 4, bottom: 4 })
+      .border({ width: { left: 3 }, color: '#456888' })
       .backgroundColor('#0F1A26')
       .borderRadius(4)
     } else if (block.type === 'table') {

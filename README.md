@@ -8,7 +8,7 @@
 
 ![Turbo AI Chat hero](docs/images/hero.png)
 
-**Turbo AI Chat 是一个 HarmonyOS NEXT 原生端侧大模型聊天应用**，用于验证在鸿蒙设备上直接运行本地 LLM 的完整链路。项目基于 ArkTS、C++ N-API 和 MNN Runtime 构建，当前支持 Qwen3-4B-Instruct 默认文本对话、MiniCPM5-1B 轻量文本验证，以及 Gemma-4-E2B-it 多模态图片理解实验；同时提供流式对话、模型切换、模型市场下载和本地 MNN 模型导入能力。
+**Turbo AI Chat 是一个 HarmonyOS NEXT 原生端侧大模型聊天应用**，用于验证在鸿蒙设备上直接运行本地 LLM 的完整链路。项目基于 ArkTS、C++ N-API 和 MNN Runtime 构建，预置 Qwen3-4B-Instruct、MiniCPM5-1B 和 Gemma-4-E2B-it，并可通过模型市场或本地导入扩展兼容的文本与多模态 MNN 模型；同时提供流式对话、模型切换、图片理解和运行监控能力。
 
 本仓库 fork 自 [Turbo1123/turbo-ai-chat-harmonyos](https://github.com/Turbo1123/turbo-ai-chat-harmonyos)。
 
@@ -59,6 +59,9 @@
 
 **稳定性与调试**
 
+- 模型加载、市场安装和本地导入统一执行目录预检，在进入原生推理前检查配置、权重引用、视觉文件和对话模板兼容性。
+- 图片推理使用模型目录声明的视觉输入尺寸，兼容不同视觉网格配置的 MNN 多模态模型。
+- 新增真机 `ohosTest` 回归基线，覆盖上下文、Markdown、思考块、模型兼容规则、导入命名和下载进度等关键逻辑。
 - 监控页新增 App 存储占用、模型状态、版本/许可证信息和更紧凑的设备指标展示。
 - 模型加载失败时会保留加载弹窗中的错误提示并清理推理状态，便于用户识别可用内存不足等加载问题后重试。
 - 优化 Markdown 表格、列表、代码片段、思考块展示、原始输出日志和 MNN 对话模板处理，便于排查模型复读、停止符和模板问题。

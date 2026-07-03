@@ -10,7 +10,8 @@ import {
   findModelCatalogItem
 } from '../models/BuiltinModelDownloadTypes'
 import { ModelProfile } from '../models/ModelProfile'
-import { MnnTemplateService } from './MnnTemplateService'
+import { calculateDownloadedBytes, calculateDownloadProgress } from '../utils/downloadProgress'
+import { ModelDirectoryPreflightService } from './ModelDirectoryPreflightService'
 
 type ProgressCallback = (progress: BuiltinModelInstallProgress) => void
 
@@ -23,6 +24,7 @@ interface DownloadRequestHeader {
 export class BuiltinModelInstallService {
   private cancelRequested: boolean = false
   private currentHttpRequest?: http.HttpRequest
+  private preflightService: ModelDirectoryPreflightService = new ModelDirectoryPreflightService()
 
   cancelInstall(): void {
     this.cancelRequested = true
@@ -44,29 +46,29 @@ export class BuiltinModelInstallService {
   }
 
   async isCatalogItemInstalled(filesDir: string, item: ModelCatalogItem): Promise<boolean> {
-    for (let index = 0; index < item.files.length; index++) {
-      const targetPath = this.filePath(filesDir, item, item.files[index])
-      if (!await this.isInstalledFile(targetPath, item.files[index])) {
-        return false
-      }
-    }
-    await MnnTemplateService.ensureChatMessagesTemplate(`${filesDir}/${item.directoryName}/config.json`)
-    return true
+    const result = await this.preflightService.validate(
+      `${filesDir}/${item.directoryName}/config.json`,
+      item.supportsImage,
+      item.files
+    )
+    return result.compatible
   }
 
   async isInstalled(filesDir: string, profile: ModelProfile): Promise<boolean> {
     const spec = this.getDownloadSpec(profile)
     if (spec === undefined) {
-      return true
+      const result = await this.preflightService.validate(
+        profile.configPath ?? `${filesDir}/${profile.directoryName}/config.json`,
+        profile.supportsImage
+      )
+      return result.compatible
     }
-    for (let index = 0; index < spec.files.length; index++) {
-      const targetPath = this.filePath(filesDir, spec, spec.files[index])
-      if (!await this.isInstalledFile(targetPath, spec.files[index])) {
-        return false
-      }
-    }
-    await MnnTemplateService.ensureChatMessagesTemplate(`${filesDir}/${spec.directoryName}/config.json`)
-    return true
+    const result = await this.preflightService.validate(
+      `${filesDir}/${spec.directoryName}/config.json`,
+      profile.supportsImage,
+      spec.files
+    )
+    return result.compatible
   }
 
   async deleteInstalled(filesDir: string, profile: ModelProfile): Promise<boolean> {
@@ -149,6 +151,7 @@ export class BuiltinModelInstallService {
       const file = spec.files[index]
       const targetPath = this.filePath(context.filesDir, spec, file)
       if (await this.isInstalledFile(targetPath, file)) {
+        await this.cleanupPartialFiles(targetPath)
         completedBytes += file.sizeBytes
         this.emitProgress(spec, file, completedBytes, 0, onProgress, '已存在，跳过')
         continue
@@ -160,6 +163,7 @@ export class BuiltinModelInstallService {
           await fs.unlink(targetPath)
         }
         await fs.rename(tempPath, targetPath)
+        await this.cleanupPartialFiles(targetPath)
         completedBytes += file.sizeBytes
         this.emitProgress(spec, file, completedBytes, 0, onProgress, '下载完成')
         continue
@@ -174,6 +178,7 @@ export class BuiltinModelInstallService {
           await fs.unlink(targetPath)
         }
         await fs.rename(tempPath, targetPath)
+        await this.cleanupPartialFiles(targetPath)
         completedBytes += file.sizeBytes
         this.emitProgress(spec, file, completedBytes, 0, onProgress, '下载完成')
         continue
@@ -196,11 +201,11 @@ export class BuiltinModelInstallService {
         await fs.unlink(targetPath)
       }
       await fs.rename(tempPath, targetPath)
+      await this.cleanupPartialFiles(targetPath)
       completedBytes += file.sizeBytes
       this.emitProgress(spec, file, completedBytes, 0, onProgress, '下载完成')
     }
     this.throwIfCanceled()
-    await MnnTemplateService.ensureChatMessagesTemplate(`${context.filesDir}/${spec.directoryName}/config.json`)
   }
 
   private async downloadFile(
@@ -363,8 +368,8 @@ export class BuiltinModelInstallService {
     onProgress: ProgressCallback,
     message: string
   ): void {
-    const downloadedBytes = Math.min(spec.totalBytes, completedBytes + currentFileBytes)
-    const progress = spec.totalBytes > 0 ? Math.round(downloadedBytes / spec.totalBytes * 1000) / 10 : 0
+    const downloadedBytes = calculateDownloadedBytes(completedBytes, currentFileBytes, spec.totalBytes)
+    const progress = calculateDownloadProgress(downloadedBytes, spec.totalBytes)
     const progressInfo: BuiltinModelInstallProgress = {
       modelName: spec.displayName,
       fileName: file.relativePath,
@@ -437,6 +442,11 @@ export class BuiltinModelInstallService {
     const size = stat.size
     await fs.unlink(path)
     return size
+  }
+
+  private async cleanupPartialFiles(targetPath: string): Promise<void> {
+    await this.unlinkIfExists(`${targetPath}.part`)
+    await this.unlinkIfExists(`${targetPath}.part.range`)
   }
 
   private async deletePathRecursive(path: string): Promise<void> {

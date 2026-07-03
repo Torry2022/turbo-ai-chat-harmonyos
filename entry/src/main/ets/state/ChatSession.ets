@@ -1,6 +1,7 @@
 import { ChatMessage, ChatTurn, CONTEXT_MESSAGE_LIMIT, PerfMetrics } from '../models/ChatTypes'
 import { nowTime } from '../utils/formatters'
-import { answerTextForContext, isLikelyIncompleteAssistantText, stripModelSpecialTokens } from '../utils/thinking'
+import { sanitizeAssistantText, sanitizeStreamingAssistantText } from '../utils/generationText'
+import { answerTextForContext, isLikelyIncompleteAssistantText } from '../utils/thinking'
 
 export class ChatSession {
   messages: ChatMessage[] = []
@@ -128,25 +129,11 @@ export class ChatSession {
   }
 
   sanitizeAssistantText(text: string, stripLeadingSeparator: boolean = false): string {
-    const normalizedText = stripModelSpecialTokens(text)
-    const lines = normalizedText
-      .split('\n')
-      .map((line: string) => line.trimEnd())
-      .filter((line: string) => {
-        const trimmed = line.trim()
-        return trimmed.length > 0 && !/^[*\-•]+\s*$/.test(trimmed)
-    })
-    const cleanedText = lines.join('\n').trim()
-    return stripLeadingSeparator ? this.stripLeadingAssistantSeparator(cleanedText) : cleanedText
+    return sanitizeAssistantText(text, stripLeadingSeparator)
   }
 
   sanitizeStreamingAssistantText(text: string, stripLeadingSeparator: boolean = false): string {
-    const cleanedText = this.sanitizeAssistantText(text, stripLeadingSeparator)
-    return cleanedText.replace(/^\uFFFD+/, '').trimStart()
-  }
-
-  private stripLeadingAssistantSeparator(text: string): string {
-    return text.replace(/^(assistant|助手)?\s*[:：]\s*/, '').trim()
+    return sanitizeStreamingAssistantText(text, stripLeadingSeparator)
   }
 
   private composeCompleteContextTurns(): ChatTurn[] {
