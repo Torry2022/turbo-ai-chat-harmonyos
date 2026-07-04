@@ -386,8 +386,13 @@ GemmaRunner::GenerationResult BuildGenerationResult(
     }
 
     result.generatedTokens = ResolveGeneratedTokens(llm, result.text, maxNewTokens, removedStopTokens);
-    if (result.stopReason == "unknown" && maxNewTokens > 0 && result.generatedTokens >= maxNewTokens) {
-        result.stopReason = "max_tokens";
+    if (result.stopReason == "unknown") {
+        // Some MNN builds leave the context in RUNNING after response() returns.
+        // At this point errors and user cancellation have already taken separate paths,
+        // so a result below the requested limit is a normal EOS/stop-sequence finish.
+        result.stopReason = maxNewTokens > 0 && result.generatedTokens >= maxNewTokens
+            ? "max_tokens"
+            : "eos";
     }
     return result;
 }

@@ -1,4 +1,4 @@
-import { common } from '@kit.AbilityKit'
+import { bundleManager, common } from '@kit.AbilityKit'
 import preferences from '@ohos.data.preferences'
 import { ChatMessage, ChatTurn, GenerationSettings, PerfMetrics } from '../models/ChatTypes'
 import { ImportedModelDraft } from '../models/ImportedModelTypes'
@@ -91,6 +91,7 @@ export class ChatViewModel {
   stats: RuntimeStats = EMPTY_RUNTIME_STATS
   streamingChars: number = 0
   latestPerfMetrics?: PerfMetrics
+  appVersion: string = ''
   chatScroller: Scroller = new Scroller()
 
   private filesDir: string = ''
@@ -141,6 +142,13 @@ export class ChatViewModel {
   initialize(context: common.UIAbilityContext): void {
     this.context = context
     this.filesDir = context.filesDir
+    try {
+      this.appVersion = bundleManager.getBundleInfoForSelfSync(
+        bundleManager.BundleFlag.GET_BUNDLE_INFO_DEFAULT
+      ).versionName
+    } catch (_) {
+      this.appVersion = ''
+    }
     this.modelManager.initialize(this.filesDir)
     this.loadModelOrder()
     this.resetGenerationSettings(false)

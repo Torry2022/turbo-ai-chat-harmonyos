@@ -107,7 +107,7 @@ After the model loads, return to the Chat tab and send a message. MiniCPM5-1B di
 ## Features
 
 - Local inference: models run on-device, no network required
-- Streaming output: token-level real-time response
+- Streaming output: updates responses from native inference callback chunks in real time
 - Stop generation: interrupt the current response while it is streaming
 - Model switching: switch between preset models, installed market models, and imported models
 - Thinking blocks: MiniCPM5-1B displays reasoning process
@@ -219,7 +219,7 @@ The app uses **MNN model directory** format. Built-in models are downloaded from
 
 The current version runs local inference with the **MNN CPU backend**. GPU / NPU backends are not integrated yet. The "inference threads" setting on the Model tab is passed to the native layer as the MNN CPU thread count, with a default value of 6.
 
-On-device LLM decoding includes token-by-token serial stages, and actual throughput can also be limited by memory bandwidth, cache contention, and system thermal control. For performance evaluation, prefer the TTFT, ms/tok, and tokens/s metrics shown at the bottom of assistant messages, together with app CPU, app memory, and device temperature.
+On-device LLM decoding includes token-by-token serial stages, and actual throughput can also be limited by memory bandwidth, cache contention, and system thermal control. In assistant messages, TTFT is the end-to-end time from request submission to the first complete UTF-8 output chunk. TPOT and tokens/s cover only the decode phase from the first output to completion and use the native generated-token count. Evaluate these metrics together with app CPU, app memory, and device temperature.
 
 ## Architecture
 

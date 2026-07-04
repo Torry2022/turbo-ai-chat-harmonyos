@@ -2,6 +2,7 @@ import { ChatMessage } from '../models/ChatTypes'
 import { MarkdownBlock, MarkdownSpan, parseInlineMarkdown, parseLightMarkdown } from '../utils/markdown'
 import { parseAssistantText } from '../utils/thinking'
 import { pasteboard } from '@kit.BasicServicesKit'
+import { common } from '@kit.AbilityKit'
 
 @Component
 export struct MessageBubble {
@@ -45,6 +46,39 @@ export struct MessageBubble {
     return parseAssistantText(this.message.content).thinkingClosed
   }
 
+  private showLinkToast(message: string): void {
+    try {
+      this.getUIContext().getPromptAction().showToast({ message, duration: 1800, bottom: 80 })
+    } catch (_) {
+    }
+  }
+
+  private confirmOpenLink(link: string): void {
+    const url = link.trim()
+    const promptAction = this.getUIContext().getPromptAction()
+    if (!/^https?:\/\//i.test(url)) {
+      this.showLinkToast('仅支持打开 HTTP/HTTPS 链接')
+      return
+    }
+    promptAction.showDialog({
+      title: '使用系统浏览器打开？',
+      message: url,
+      buttons: [
+        { text: '取消', color: '#8CA2B8' },
+        { text: '打开', color: '#45A6E7', primary: true }
+      ]
+    }).then((result) => {
+      if (result.index !== 1) {
+        return
+      }
+      const context = this.getUIContext().getHostContext() as common.UIAbilityContext
+      context.openLink(url).catch(() => {
+        this.showLinkToast('无法打开该链接')
+      })
+    }).catch(() => {
+    })
+  }
+
   @Builder
   private MarkdownLine(text: string, color: ResourceColor = '#EAF4FF') {
     Text() {
@@ -60,6 +94,7 @@ export struct MessageBubble {
             .fontColor('#45A6E7')
             .decoration({ type: TextDecorationType.Underline })
             .fontWeight(FontWeight.Normal)
+            .onClick(() => this.confirmOpenLink(span.link ?? ''))
         } else {
           Span(span.text)
             .fontWeight(span.bold ? FontWeight.Bold : FontWeight.Normal)
@@ -80,10 +115,19 @@ export struct MessageBubble {
     if (block.type === 'heading') {
       Text() {
         ForEach(parseInlineMarkdown(block.text), (span: MarkdownSpan) => {
-          Span(span.text)
-            .fontWeight(FontWeight.Bold)
-            .fontColor('#F4FBFF')
-            .fontStyle(FontStyle.Normal)
+          if (span.link !== undefined && span.link.length > 0) {
+            Span(span.text)
+              .fontWeight(FontWeight.Bold)
+              .fontColor('#45A6E7')
+              .fontStyle(FontStyle.Normal)
+              .decoration({ type: TextDecorationType.Underline })
+              .onClick(() => this.confirmOpenLink(span.link ?? ''))
+          } else {
+            Span(span.text)
+              .fontWeight(FontWeight.Bold)
+              .fontColor('#F4FBFF')
+              .fontStyle(FontStyle.Normal)
+          }
         }, (_span: MarkdownSpan, index: number) => `${blockIndex}-${index}`)
       }
       .width('100%')
@@ -176,10 +220,19 @@ export struct MessageBubble {
               .textAlign(TextAlign.End)
             Text() {
               ForEach(parseInlineMarkdown(item), (span: MarkdownSpan) => {
-                Span(span.text)
-                  .fontWeight(span.bold ? FontWeight.Bold : FontWeight.Normal)
-                  .fontColor('#EAF4FF')
-                  .fontStyle(span.italic ? FontStyle.Italic : FontStyle.Normal)
+                if (span.link !== undefined && span.link.length > 0) {
+                  Span(span.text)
+                    .fontWeight(span.bold ? FontWeight.Bold : FontWeight.Normal)
+                    .fontColor('#45A6E7')
+                    .fontStyle(span.italic ? FontStyle.Italic : FontStyle.Normal)
+                    .decoration({ type: TextDecorationType.Underline })
+                    .onClick(() => this.confirmOpenLink(span.link ?? ''))
+                } else {
+                  Span(span.text)
+                    .fontWeight(span.bold ? FontWeight.Bold : FontWeight.Normal)
+                    .fontColor('#EAF4FF')
+                    .fontStyle(span.italic ? FontStyle.Italic : FontStyle.Normal)
+                }
               }, (_span: MarkdownSpan, spanIndex: number) => `${blockIndex}-${itemIndex}-${spanIndex}`)
             }
             .fontSize(15)

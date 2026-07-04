@@ -90,13 +90,15 @@ export function calculatePerfMetrics(
   generationFinishedAt: number,
   generatedTokens: number
 ): PerfMetrics {
-  const generationTime = Math.max(1, generationFinishedAt - generationStartedAt)
-  const safeGeneratedTokens = Math.max(1, generatedTokens)
+  const safeTokens = Math.max(0, generatedTokens)
+  const decodedTokenIntervals = Math.max(0, safeTokens - 1)
+  const decodeDuration = firstChunkAt > 0 ? Math.max(0, generationFinishedAt - firstChunkAt) : 0
   return {
-    ttft: firstChunkAt > 0 ? firstChunkAt - generationStartedAt : 0,
-    tpot: Math.round(generationTime / safeGeneratedTokens * 100) / 100,
-    tokensPerSec: Math.round(safeGeneratedTokens / (generationTime / 1000) * 10) / 10,
-    tokens: Math.max(0, generatedTokens)
+    ttft: firstChunkAt > 0 ? Math.max(0, firstChunkAt - generationStartedAt) : 0,
+    tpot: decodedTokenIntervals > 0 ? Math.round(decodeDuration / decodedTokenIntervals * 100) / 100 : 0,
+    tokensPerSec: decodedTokenIntervals > 0 && decodeDuration > 0 ?
+      Math.round(decodedTokenIntervals / (decodeDuration / 1000) * 10) / 10 : 0,
+    tokens: safeTokens
   }
 }
 

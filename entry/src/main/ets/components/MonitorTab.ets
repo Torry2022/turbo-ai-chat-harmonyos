@@ -60,9 +60,11 @@ export struct MonitorTab {
       return
     }
     this.storageStatsReading = true
+    const modelConfig = this.viewModel.modelPath
+    const modelDir = modelConfig.length > 0 ? modelConfig.substring(0, modelConfig.lastIndexOf('/')) : ''
     this.statsService.readStorageStats(
       this.viewModel.appFilesDir,
-      `${this.viewModel.appFilesDir}/${this.viewModel.currentModel().directoryName}`
+      modelDir
     ).then((storageStats: StorageStats) => {
       this.storageStats = storageStats
     }).catch((_err: Error) => {
@@ -255,7 +257,7 @@ export struct MonitorTab {
         .backgroundColor('#0D1A28')
         .borderRadius(8)
 
-        Text('Turbo AI Chat v1.5.0')
+        Text(this.viewModel.appVersion.length > 0 ? `Turbo AI Chat v${this.viewModel.appVersion}` : 'Turbo AI Chat')
           .width('100%')
           .textAlign(TextAlign.Center)
           .fontSize(11)

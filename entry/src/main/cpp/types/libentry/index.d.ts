@@ -3,10 +3,12 @@ export interface ChatTurn {
   content: string;
 }
 
+export type GenerationStopReason = 'eos' | 'max_tokens' | 'user_stop' | 'timeout' | 'internal_error' | 'unknown';
+
 export interface GenerationResult {
   text: string;
   generatedTokens: number;
-  stopReason: string;
+  stopReason: GenerationStopReason;
 }
 
 export interface GenerationSettings {
