@@ -1,0 +1,21 @@
+﻿{
+    "version":  "3.6.0",
+    "commit":  "cc20f672af9e177e2fa338c332dc097de2fc9264",
+    "architecture":  "arm64-v8a",
+    "stl":  "c++_shared",
+    "ohosPlatformLevel":  9,
+    "harmonySdkApiVersion":  "24",
+    "harmonySdkVersion":  "6.1.1.125",
+    "features":  {
+                     "sharedLibraries":  true,
+                     "llm":  true,
+                     "llmOmni":  true,
+                     "lowMemory":  true,
+                     "transformerFuse":  true,
+                     "arm82":  true,
+                     "opencv":  true,
+                     "imageCodecs":  true,
+                     "opencl":  false
+                 },
+    "libMnnSha256":  "fd4cfc3953ded24312052adb9662661b4ee1bcf759c3ea643c97a51c87f1e631"
+}

@@ -22,4 +22,3 @@
 /Crash_*.dmp
 /trace-analyzer.log
 /trace_streamer.exe
-/third_party/mnn/include/llm/reranker.hpp

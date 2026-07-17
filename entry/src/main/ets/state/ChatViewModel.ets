@@ -23,7 +23,7 @@ import {
   MAX_GENERATION_TOKENS,
   ModelProfile
 } from '../models/ModelProfile'
-import { EMPTY_RUNTIME_STATS, RuntimeStats } from '../models/RuntimeStats'
+import { EMPTY_RUNTIME_STATS, EMPTY_STORAGE_STATS, RuntimeStats, StorageStats } from '../models/RuntimeStats'
 import { ImagePayloadService } from '../services/ImagePayloadService'
 import { BuiltinModelInstallService } from '../services/BuiltinModelInstallService'
 import { ModelImportService } from '../services/ModelImportService'
@@ -89,6 +89,7 @@ export class ChatViewModel {
   showDeleteModelDialog: boolean = false
   pendingDeleteModelId: string = ''
   stats: RuntimeStats = EMPTY_RUNTIME_STATS
+  storageStats: StorageStats = EMPTY_STORAGE_STATS
   streamingChars: number = 0
   latestPerfMetrics?: PerfMetrics
   appVersion: string = ''
@@ -107,6 +108,7 @@ export class ChatViewModel {
   private builtinModelInstallService: BuiltinModelInstallService = new BuiltinModelInstallService()
   private modelImportService: ModelImportService = new ModelImportService()
   private statsService: RuntimeStatsService = new RuntimeStatsService()
+  private modelStorageStats: Map<string, string> = new Map()
   private generationWorkflow: GenerationWorkflow = new GenerationWorkflow(this.nativeService, this.imageService)
   private modelLifecycleService: ModelLifecycleService = new ModelLifecycleService(
     this.nativeService,
@@ -155,11 +157,14 @@ export class ChatViewModel {
     this.session.initializeWelcome(this.currentModel().shortName)
     this.syncMessages()
     this.refreshStats()
+    this.refreshStorageStats()
+    this.preloadModelStorageStats()
     this.refreshModelMarketInstallStates()
     this.notify()
     this.modelLifecycleService.loadImportedProfiles(this.filesDir).then((profiles: ModelProfile[]) => {
       this.modelManager.updateImportedProfiles(profiles, this.filesDir)
       this.prepareImportedModelEditor(this.selectedModelId)
+      this.preloadModelStorageStats()
       this.notify()
     }).catch((err: Error) => {
       this.modelImportMessage = `读取导入模型失败：${formatError(err as Object)}`
@@ -261,6 +266,7 @@ export class ChatViewModel {
     }
 
     const model = this.modelManager.switchModel(modelId, this.filesDir)
+    this.applyCurrentModelStorageStats()
     this.prepareImportedModelEditor(model.id)
     if (!model.supportsImage) {
       this.selectedImageUri = ''
@@ -760,6 +766,49 @@ export class ChatViewModel {
   refreshStats(): void {
     this.stats = this.statsService.readStats()
     this.notify()
+  }
+
+  private refreshStorageStats(): void {
+    const modelConfig = this.modelPath
+    const modelDir = modelConfig.length > 0 ? modelConfig.substring(0, modelConfig.lastIndexOf('/')) : ''
+    this.statsService.readStorageStats(this.filesDir, modelDir).then((storageStats: StorageStats) => {
+      this.cacheStorageStats(modelConfig, storageStats)
+    }).catch((_err: Error) => {
+    })
+  }
+
+  storageStatsForCurrentModel(): StorageStats {
+    const currentModelStorage = this.modelStorageStats.get(this.modelPath)
+    if (currentModelStorage === undefined) {
+      return this.storageStats
+    }
+    return {
+      appFiles: this.storageStats.appFiles,
+      currentModel: currentModelStorage
+    }
+  }
+
+  cacheStorageStats(modelConfig: string, storageStats: StorageStats): void {
+    this.modelStorageStats.set(modelConfig, storageStats.currentModel)
+    if (modelConfig === this.modelPath) {
+      this.storageStats = storageStats
+    }
+  }
+
+  private applyCurrentModelStorageStats(): void {
+    this.storageStats = this.storageStatsForCurrentModel()
+  }
+
+  private preloadModelStorageStats(): void {
+    const profiles = this.modelManager.profiles()
+    for (let index = 0; index < profiles.length; index++) {
+      const modelConfig = this.modelManager.defaultConfigPath(this.filesDir, profiles[index])
+      const modelDir = modelConfig.substring(0, modelConfig.lastIndexOf('/'))
+      this.statsService.readCurrentModelStorage(modelDir).then((currentModelStorage: string) => {
+        this.modelStorageStats.set(modelConfig, currentModelStorage)
+      }).catch((_err: Error) => {
+      })
+    }
   }
 
   openModelLoadDialog(autoStart: boolean = false): void {

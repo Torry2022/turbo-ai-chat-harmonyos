@@ -46,6 +46,7 @@ export struct MonitorTab {
   private statsService: RuntimeStatsService = new RuntimeStatsService()
 
   aboutToAppear(): void {
+    this.storageStats = this.viewModel.storageStatsForCurrentModel()
     this.refreshStats()
     this.startTimer()
   }
@@ -66,9 +67,12 @@ export struct MonitorTab {
       this.viewModel.appFilesDir,
       modelDir
     ).then((storageStats: StorageStats) => {
-      this.storageStats = storageStats
+      this.viewModel.cacheStorageStats(modelConfig, storageStats)
+      if (modelConfig === this.viewModel.modelPath) {
+        this.storageStats = storageStats
+      }
     }).catch((_err: Error) => {
-      this.storageStats = EMPTY_STORAGE_STATS
+      this.storageStats = this.viewModel.storageStatsForCurrentModel()
     }).finally(() => {
       this.storageStatsReading = false
     })

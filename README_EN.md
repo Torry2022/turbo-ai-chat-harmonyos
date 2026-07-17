@@ -57,6 +57,7 @@ In the HarmonyOS ecosystem, on-device AI inference today largely depends on Andr
 
 **Stability and diagnostics**
 
+- Upgraded MNN Runtime to 3.6.0 and synchronized the HarmonyOS `arm64-v8a` shared library and public headers.
 - Model loading, market installation, and local import share one directory preflight that validates configuration, referenced weights, visual files, and chat-template compatibility before native inference starts.
 - Image inference preserves the visual input size declared by each model directory, supporting MNN multimodal models with different visual-grid configurations.
 - A real-device `ohosTest` regression baseline now covers context handling, Markdown, thinking blocks, model compatibility rules, imported-model naming, and download progress.

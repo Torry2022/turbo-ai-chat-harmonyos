@@ -115,6 +115,7 @@ struct LlmContext {
     int64_t prefill_us = 0;
     int64_t decode_us = 0;
     int64_t sample_us = 0;
+    int64_t ttfa_us = 0;
     float pixels_mp = 0;
     float audio_input_s = 0;
     // tokens
@@ -124,6 +125,8 @@ struct LlmContext {
     std::string generate_str;
     // llm status
     LlmStatus status = LlmStatus::NOT_LOADED;
+    // log buffer (per-instance, no locking needed)
+    std::string log_buffer;
 };
 struct GenerationParams;
 class MNN_PUBLIC Llm {
@@ -132,6 +135,9 @@ public:
         Prefill,
         Decode
     };
+    // Log buffer interface: retrieve accumulated log and clear the buffer.
+    // Only effective when LLM_LOG_TO_STRING macro is enabled during compilation.
+    std::string getLog();
     static Llm* createLLM(const std::string& config_path);
     static void destroy(Llm* llm);// For Windows RT mode should use destroy
     Llm(std::shared_ptr<LlmConfig> config);
@@ -194,7 +200,7 @@ public:
 protected:
     void setChatTemplate();
     void initRuntime();
-    void setRuntimeHint(std::shared_ptr<Express::Executor::RuntimeManager> &rtg);
+    void setRuntimeHint(std::shared_ptr<Express::Executor::RuntimeManager> &rtg, bool mllm = false);
     std::shared_ptr<LlmContext> mContext;
     std::shared_ptr<KVMeta> mMeta;
     std::shared_ptr<LlmConfig> mConfig;
@@ -224,12 +230,16 @@ protected:
     friend class LookaheadGeneration;
     friend class MtpGeneration;
     friend class EagleGeneration;
+    friend class DFlashGeneration;
+    friend class Omni;
     std::vector<Express::VARP> forwardVec(const std::vector<int>& input_ids);
     std::vector<Express::VARP> forwardVec(MNN::Express::VARP input_embeds);
 private:
     std::shared_ptr<Generation> mGenerationStrategy;
     void setSpeculativeConfig();
     void updateContext(int seq_len, int gen_len);
+    bool checkFile(const std::string& path, const char* name);
+
 private:
     bool mInSpec = false;
     int mDraftLength = 4;

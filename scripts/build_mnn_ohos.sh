@@ -2,77 +2,60 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-MNN_ROOT="${MNN_ROOT:-$ROOT_DIR/../MNN}"
-BUILD_DIR="${BUILD_DIR:-$MNN_ROOT/project/harmony/build_gemma4_min}"
-JOBS="${JOBS:-$(sysctl -n hw.ncpu 2>/dev/null || echo 4)}"
+MNN_ROOT="${MNN_ROOT:-$ROOT_DIR/.codex_mnn_source_3.6.0}"
+BUILD_DIR="${BUILD_DIR:-$ROOT_DIR/.codex_mnn_build_3.6.0}"
+EXPECTED_COMMIT="cc20f672af9e177e2fa338c332dc097de2fc9264"
+JOBS="${JOBS:-4}"
 
-find_harmony_home() {
-  if [[ -n "${HARMONY_HOME:-}" ]]; then
-    if [[ -f "$HARMONY_HOME/build/cmake/ohos.toolchain.cmake" ]]; then
-      echo "$HARMONY_HOME"
-      return 0
-    fi
-    if [[ -f "$HARMONY_HOME/native/build/cmake/ohos.toolchain.cmake" ]]; then
-      echo "$HARMONY_HOME/native"
-      return 0
-    fi
+find_native_home() {
+  local candidate="${HARMONY_NATIVE_HOME:-${HARMONY_HOME:-}}"
+  if [[ -n "$candidate" && -f "$candidate/build/cmake/ohos.toolchain.cmake" ]]; then
+    printf '%s\n' "$candidate"
+    return
   fi
-
-  local sdk_roots=(
-    "$HOME/Library/OpenHarmony/Sdk"
-    "$HOME/Library/HarmonyOS/Sdk"
-    "$HOME/Library/Huawei/Sdk"
-    "/Applications/DevEco-Studio.app/Contents/sdk"
-    "/Applications/DevEco Studio.app/Contents/sdk"
-    "$HOME/Applications/DevEco-Studio.app/Contents/sdk"
-    "$HOME/Applications/DevEco Studio.app/Contents/sdk"
-  )
-
-  for base in "${sdk_roots[@]}"; do
-    if [[ -d "$base" ]]; then
-      local found
-      found="$(find "$base" -maxdepth 7 -path '*/native/build/cmake/ohos.toolchain.cmake' -print 2>/dev/null | sort -r | head -1)"
-      if [[ -n "$found" ]]; then
-        dirname "$(dirname "$(dirname "$found")")"
-        return 0
-      fi
-    fi
-  done
-
-  return 1
+  if [[ -n "$candidate" && -f "$candidate/native/build/cmake/ohos.toolchain.cmake" ]]; then
+    printf '%s\n' "$candidate/native"
+    return
+  fi
+  echo "Set HARMONY_NATIVE_HOME to the HarmonyOS native SDK directory." >&2
+  exit 1
 }
 
-HARMONY_NATIVE_HOME="$(find_harmony_home || true)"
-if [[ -z "$HARMONY_NATIVE_HOME" ]]; then
-  echo "Cannot find Harmony/OpenHarmony native SDK. Set HARMONY_HOME to the SDK native directory." >&2
+if [[ ! -d "$MNN_ROOT/.git" ]]; then
+  echo "Missing MNN source checkout: $MNN_ROOT" >&2
+  echo "Clone tag 3.6.0 before building." >&2
   exit 1
 fi
 
-cmake -S "$MNN_ROOT" -B "$BUILD_DIR" \
-  -DCMAKE_TOOLCHAIN_FILE="$HARMONY_NATIVE_HOME/build/cmake/ohos.toolchain.cmake" \
+actual_commit="$(git -C "$MNN_ROOT" rev-parse HEAD)"
+if [[ "$actual_commit" != "$EXPECTED_COMMIT" ]]; then
+  echo "Expected MNN $EXPECTED_COMMIT, found $actual_commit" >&2
+  exit 1
+fi
+
+native_home="$(find_native_home)"
+cmake -S "$MNN_ROOT" -B "$BUILD_DIR" -G Ninja \
+  -DCMAKE_TOOLCHAIN_FILE="$native_home/build/cmake/ohos.toolchain.cmake" \
   -DCMAKE_BUILD_TYPE=Release \
   -DOHOS_ARCH=arm64-v8a \
-  -DOHOS_STL=c++_static \
+  -DOHOS_STL=c++_shared \
   -DOHOS_PLATFORM_LEVEL=9 \
+  -DMNN_BUILD_SHARED_LIBS=ON \
   -DMNN_BUILD_LLM=ON \
   -DMNN_BUILD_LLM_OMNI=ON \
   -DMNN_LOW_MEMORY=ON \
   -DMNN_SUPPORT_TRANSFORMER_FUSE=ON \
-  -DMNN_CPU_WEIGHT_DEQUANT_GEMM=ON \
   -DMNN_ARM82=ON \
   -DMNN_USE_LOGCAT=ON \
   -DMNN_BUILD_TEST=OFF \
   -DMNN_BUILD_BENCHMARK=OFF \
-  -DLLM_SUPPORT_VISION=ON \
   -DMNN_BUILD_AUDIO=OFF \
   -DMNN_BUILD_OPENCV=ON \
   -DMNN_IMGCODECS=ON \
   -DMNN_BUILD_DIFFUSION=OFF \
-  -DMNN_OPENCL="${MNN_OPENCL:-OFF}" \
+  -DMNN_OPENCL=OFF \
   -DMNN_SEP_BUILD=OFF \
-  -DNATIVE_LIBRARY_OUTPUT=. \
-  -DNATIVE_INCLUDE_OUTPUT=.
+  -DMNN_USE_SSE=OFF
 
 cmake --build "$BUILD_DIR" --target MNN -j "$JOBS"
-
-echo "$BUILD_DIR"
+echo "$BUILD_DIR/libMNN.so"

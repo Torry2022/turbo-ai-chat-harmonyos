@@ -57,6 +57,18 @@ export class RuntimeStatsService {
     }
   }
 
+  async readCurrentModelStorage(currentModelDir: string): Promise<string> {
+    if (currentModelDir.length <= 0) {
+      return '未安装'
+    }
+    try {
+      const currentModelBytes = await this.exists(currentModelDir) ? await this.pathSize(currentModelDir) : 0
+      return currentModelBytes > 0 ? bytesToDisplay(currentModelBytes) : '未安装'
+    } catch (_) {
+      return EMPTY_STORAGE_STATS.currentModel
+    }
+  }
+
   private async pathSize(path: string): Promise<number> {
     const stat = await fs.stat(path)
     if (stat.isFile()) {
