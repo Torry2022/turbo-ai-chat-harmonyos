@@ -133,13 +133,13 @@ App 和 HAP 均不内置模型权重。打开 App → 模型页 → 模型市场
 
 ## 从 HAP 直接安装
 
-[Releases](https://github.com/Torry2022/turbo-ai-chat-harmonyos/releases) 提供签名 HAP。使用 hdc 安装：
+[Releases](https://github.com/Torry2022/turbo-ai-chat-harmonyos/releases) 提供签名 HAP（仅限当前 profile 内设备）。使用 hdc 安装：
 
 ```sh
 hdc install -r turbo-ai-chat-harmonyos-vX.Y.Z-signed.hap
 ```
 
-也可通过[小白调试助手](https://github.com/likuai2010/auto-installer)图形化安装。调试签名包仅限当前 profile 内设备；其他设备请下载未签名包自行签名。
+也可通过[小白调试助手](https://github.com/likuai2010/auto-installer)侧载。调试签名包仅限当前 profile 内设备；其他设备请下载未签名包自行签名。
 
 ## 模型管理
 

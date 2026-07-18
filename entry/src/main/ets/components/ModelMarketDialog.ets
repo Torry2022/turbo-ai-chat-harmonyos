@@ -6,6 +6,34 @@ export struct ModelMarketDialog {
   @ObjectLink viewModel: ChatViewModel
   @State isClosePressed: boolean = false
 
+  private padTimePart(value: number): string {
+    return value < 10 ? `0${value}` : `${value}`
+  }
+
+  private formatCatalogPublishedAt(value: string): string {
+    if (value.length <= 0) {
+      return ''
+    }
+    const publishedAt = new Date(value)
+    if (!Number.isFinite(publishedAt.getTime())) {
+      return value.replace('T', ' ').substring(0, Math.min(16, value.length))
+    }
+    return `${publishedAt.getFullYear()}年${publishedAt.getMonth() + 1}月${publishedAt.getDate()}日 ` +
+      `${this.padTimePart(publishedAt.getHours())}:${this.padTimePart(publishedAt.getMinutes())}`
+  }
+
+  private catalogMetadata(): string {
+    let metadata = this.viewModel.modelCatalogSource
+    if (this.viewModel.modelCatalogVersion > 0) {
+      metadata += `，目录版本 ${this.viewModel.modelCatalogVersion}`
+    }
+    const publishedAt = this.formatCatalogPublishedAt(this.viewModel.modelCatalogPublishedAt)
+    if (publishedAt.length > 0) {
+      metadata += `，发布于 ${publishedAt}`
+    }
+    return metadata
+  }
+
   @Builder
   private FilterButton(label: string) {
     Button(label)
@@ -158,15 +186,25 @@ export struct ModelMarketDialog {
         .padding({ left: 2 })
         .width('100%')
 
-        Text(`${this.viewModel.modelCatalogSource} · ${this.viewModel.modelCatalogStatus}` +
-          (this.viewModel.modelCatalogPublishedAt.length > 0 ?
-            ` · ${this.viewModel.modelCatalogPublishedAt}` : ''))
-          .fontSize(11)
-          .lineHeight(16)
-          .fontColor(this.viewModel.modelCatalogStatus.indexOf('失败') >= 0 ? '#F2B35D' : '#6F86A0')
-          .maxLines(2)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-          .width('100%')
+        Column({ space: 2 }) {
+          Text(this.viewModel.modelCatalogStatus)
+            .fontSize(12)
+            .lineHeight(17)
+            .fontColor(this.viewModel.modelCatalogStatus.indexOf('失败') >= 0 ? '#F2B35D' : '#8CA2B8')
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .width('100%')
+
+          Text(this.catalogMetadata())
+            .fontSize(10)
+            .lineHeight(15)
+            .fontColor('#5F768D')
+            .maxLines(2)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .width('100%')
+        }
+        .alignItems(HorizontalAlign.Start)
+        .width('100%')
 
         TextInput({ text: this.viewModel.modelMarketSearchText, placeholder: '搜索模型名称或厂商' })
           .height(40)

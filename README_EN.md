@@ -131,13 +131,13 @@ After the model loads, return to the Chat tab and send a message. MiniCPM5-1B di
 
 ## Install from HAP
 
-[Releases](https://github.com/Torry2022/turbo-ai-chat-harmonyos/releases) provide signed HAPs. Install via hdc:
+[Releases](https://github.com/Torry2022/turbo-ai-chat-harmonyos/releases) provide signed HAPs (only for devices included in the current profile). Install via hdc:
 
 ```sh
 hdc install -r turbo-ai-chat-harmonyos-vX.Y.Z-signed.hap
 ```
 
-You can also use [Xiaobai Debug Assistant](https://github.com/likuai2010/auto-installer) for graphical installation. The signed HAP only works on devices within the current debug signing profile. For other devices, download the unsigned HAP and re-sign with your own developer account.
+You can also sideload the HAP with [Xiaobai Debug Assistant](https://github.com/likuai2010/auto-installer). Debug-signed packages only work on devices included in the current profile; for other devices, download the unsigned HAP and re-sign it with your own developer account.
 
 ## Model Management
 

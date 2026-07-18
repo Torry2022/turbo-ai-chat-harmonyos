@@ -95,6 +95,7 @@ export class ChatViewModel {
   modelCatalogRefreshing: boolean = false
   modelCatalogStatus: string = '正在读取模型目录...'
   modelCatalogSource: string = '内置目录'
+  modelCatalogVersion: number = 0
   modelCatalogPublishedAt: string = ''
   modelImporting: boolean = false
   modelImportMessage: string = '可导入 MNN 模型 zip 包'
@@ -884,9 +885,9 @@ export class ChatViewModel {
 
   private applyCatalogResult(result: ModelCatalogLoadResult): void {
     this.modelCatalogSource = result.source
+    this.modelCatalogVersion = result.catalogVersion
     this.modelCatalogPublishedAt = result.publishedAt
-    this.modelCatalogStatus = result.catalogVersion > 0 ?
-      `${result.message} · 目录版本 ${result.catalogVersion}` : result.message
+    this.modelCatalogStatus = result.message
     this.modelManager.updateCatalogProfiles(this.modelCatalogService.profiles(), this.filesDir)
     this.notify()
   }
