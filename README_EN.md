@@ -52,6 +52,7 @@ In the HarmonyOS ecosystem, on-device AI inference today largely depends on Andr
 **Chat experience**
 
 - Streaming output can be interrupted; stopped responses are not added to future conversation context.
+- Added offline Mandarin voice input: an empty, unfocused composer shows a microphone, partial transcripts appear in real time with voice-activity feedback, and the final text remains editable before sending.
 - Markdown and thinking-block parsing results are cached, UTF-8 streaming chunks and table column stability are improved, completed generations no longer pull the view back to the bottom while the user is reading history, and the chat list scrollbar is hidden.
 - The Chat tab includes a compact device status strip for app CPU, app memory, and device temperature, with threshold-based value colors.
 
@@ -110,6 +111,7 @@ After the model loads, return to the Chat tab and send a message. MiniCPM5-1B di
 - Local inference: models run on-device, no network required
 - Streaming output: updates responses from native inference callback chunks in real time
 - Stop generation: interrupt the current response while it is streaming
+- Voice input: offline Mandarin recognition through Core Speech Kit, with live partial results and manual stop
 - Model switching: switch between preset models, installed market models, and imported models
 - Thinking blocks: MiniCPM5-1B displays reasoning process
 - Markdown rendering: code blocks (with copy button), tables, blockquotes, links, etc., with compatibility handling for incomplete inline code, empty table cells, and table column jitter during streaming output

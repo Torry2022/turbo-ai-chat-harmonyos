@@ -30,6 +30,10 @@ import { ModelImportService } from '../services/ModelImportService'
 import { NativeInferenceService } from '../services/NativeInferenceService'
 import { RuntimeStatsService } from '../services/RuntimeStatsService'
 import {
+  SpeechRecognitionCallbacks,
+  SpeechRecognitionService
+} from '../services/SpeechRecognitionService'
+import {
   GenerationStreamUpdate,
   GenerationWorkflow,
   GenerationWorkflowResult
@@ -48,6 +52,10 @@ export class ChatViewModel {
   busy: boolean = false
   generating: boolean = false
   generationStopping: boolean = false
+  speechRecognitionStarting: boolean = false
+  speechRecognizing: boolean = false
+  speechRecognitionStopping: boolean = false
+  speechDetected: boolean = false
   loaded: boolean = false
   status: string = '模型未加载'
   maxNewTokens: number = DEFAULT_MAX_NEW_TOKENS
@@ -101,6 +109,7 @@ export class ChatViewModel {
   private autoScrollPending: boolean = false
   private chatAutoScrollEnabled: boolean = true
   private notifyCallback: () => void = () => {}
+  private toastCallback: (message: string) => void = (_message: string) => {}
   private session: ChatSession = new ChatSession()
   private modelManager: ModelManager = new ModelManager()
   private nativeService: NativeInferenceService = new NativeInferenceService()
@@ -108,6 +117,7 @@ export class ChatViewModel {
   private builtinModelInstallService: BuiltinModelInstallService = new BuiltinModelInstallService()
   private modelImportService: ModelImportService = new ModelImportService()
   private statsService: RuntimeStatsService = new RuntimeStatsService()
+  private speechRecognitionService: SpeechRecognitionService = new SpeechRecognitionService()
   private modelStorageStats: Map<string, string> = new Map()
   private generationWorkflow: GenerationWorkflow = new GenerationWorkflow(this.nativeService, this.imageService)
   private modelLifecycleService: ModelLifecycleService = new ModelLifecycleService(
@@ -139,6 +149,10 @@ export class ChatViewModel {
 
   bindNotify(callback: () => void): void {
     this.notifyCallback = callback
+  }
+
+  bindToast(callback: (message: string) => void): void {
+    this.toastCallback = callback
   }
 
   initialize(context: common.UIAbilityContext): void {
@@ -174,6 +188,8 @@ export class ChatViewModel {
 
   dispose(): void {
     this.stopModelLoadProgress()
+    this.speechRecognitionService.shutdown()
+    this.resetSpeechRecognitionState()
   }
 
   modelProfiles(): ModelProfile[] {
@@ -265,6 +281,7 @@ export class ChatViewModel {
       return
     }
 
+    this.cancelSpeechRecognition(false)
     const model = this.modelManager.switchModel(modelId, this.filesDir)
     this.applyCurrentModelStorageStats()
     this.prepareImportedModelEditor(model.id)
@@ -293,6 +310,93 @@ export class ChatViewModel {
   updateInputText(value: string): void {
     this.inputText = value
     this.notify()
+  }
+
+  async startSpeechRecognition(): Promise<void> {
+    if (
+      !this.loaded ||
+      this.busy ||
+      this.context === undefined ||
+      this.inputText.trim().length > 0 ||
+      this.speechRecognitionStarting ||
+      this.speechRecognizing
+    ) {
+      return
+    }
+
+    this.speechRecognitionStarting = true
+    this.speechRecognitionStopping = false
+    this.speechDetected = false
+    this.status = '正在准备语音识别...'
+    this.notify()
+    const callbacks: SpeechRecognitionCallbacks = {
+      onStarted: () => {
+        this.speechRecognitionStarting = false
+        this.speechRecognizing = true
+        this.status = '正在聆听...'
+        this.notify()
+      },
+      onSpeechActivity: (active: boolean) => {
+        this.speechDetected = active
+        this.status = active ? '正在识别语音...' : '正在等待继续说话...'
+        this.notify()
+      },
+      onTranscript: (text: string) => {
+        this.inputText = text
+        this.notify()
+      },
+      onCompleted: () => {
+        this.resetSpeechRecognitionState()
+        this.status = this.inputText.trim().length > 0 ? '语音识别完成，可编辑后发送' : '未识别到语音'
+        this.notify()
+      },
+      onError: (message: string) => {
+        this.resetSpeechRecognitionState()
+        this.status = `语音识别失败：${message}`
+        this.toastCallback('语音识别失败，请重试')
+        this.notify()
+      }
+    }
+    try {
+      await this.speechRecognitionService.start(this.context, callbacks)
+      if (this.speechRecognitionStarting) {
+        this.speechRecognitionStarting = false
+        this.speechRecognizing = true
+        this.status = '正在聆听...'
+        this.notify()
+      }
+    } catch (err) {
+      this.resetSpeechRecognitionState()
+      this.status = formatError(err as Object)
+      this.toastCallback(this.status)
+      this.notify()
+    }
+  }
+
+  stopSpeechRecognition(): void {
+    if (!this.speechRecognizing || this.speechRecognitionStopping) {
+      return
+    }
+    this.speechRecognitionStopping = true
+    this.status = '正在完成语音识别...'
+    try {
+      this.speechRecognitionService.finish()
+    } catch (err) {
+      this.resetSpeechRecognitionState()
+      this.status = `停止语音识别失败：${formatError(err as Object)}`
+    }
+    this.notify()
+  }
+
+  cancelSpeechRecognition(notify: boolean = true): void {
+    if (!this.speechRecognitionStarting && !this.speechRecognizing) {
+      return
+    }
+    this.speechRecognitionService.cancel()
+    this.resetSpeechRecognitionState()
+    if (notify) {
+      this.notify()
+    }
   }
 
   updateMaxNewTokens(value: number, notify: boolean = true): void {
@@ -743,6 +847,7 @@ export class ChatViewModel {
     if (this.busy || this.modelLoading) {
       return
     }
+    this.cancelSpeechRecognition(false)
     this.modelLifecycleService.reset()
     this.loaded = false
     this.status = '模型已释放'
@@ -755,6 +860,7 @@ export class ChatViewModel {
   }
 
   newChat(): void {
+    this.cancelSpeechRecognition(false)
     this.session.newChat(this.loaded, this.currentModel().shortName)
     this.syncMessages()
     this.inputText = ''
@@ -1381,6 +1487,13 @@ export class ChatViewModel {
     if (this.chatAutoScrollEnabled) {
       this.scrollToBottom()
     }
+  }
+
+  private resetSpeechRecognitionState(): void {
+    this.speechRecognitionStarting = false
+    this.speechRecognizing = false
+    this.speechRecognitionStopping = false
+    this.speechDetected = false
   }
 
   private notify(): void {

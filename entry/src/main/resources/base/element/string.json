@@ -11,6 +11,10 @@
     {
       "name": "EntryAbility_label",
       "value": "Turbo AI Chat"
+    },
+    {
+      "name": "microphone_permission_reason",
+      "value": "用于将您的语音实时转换为聊天输入文字"
     }
   ]
 }

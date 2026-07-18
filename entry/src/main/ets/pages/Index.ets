@@ -42,6 +42,9 @@ struct Index {
     this.viewModel.bindNotify(() => {
       this.stateVersion++
     })
+    this.viewModel.bindToast((message: string) => {
+      this.showToast(message, 1800)
+    })
     const context = this.getUIContext().getHostContext() as common.UIAbilityContext
     this.abilityContext = context
     this.viewModel.initialize(context)
@@ -58,6 +61,13 @@ struct Index {
   }
 
   private changeTab(index: number): void {
+    if (index !== 0) {
+      if (this.viewModel.speechRecognitionStarting) {
+        this.viewModel.cancelSpeechRecognition()
+      } else {
+        this.viewModel.stopSpeechRecognition()
+      }
+    }
     this.activeTab = index
     if (index === 0) {
       this.viewModel.scrollToBottom()

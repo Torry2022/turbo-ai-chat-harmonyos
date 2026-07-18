@@ -85,7 +85,8 @@ Do not describe the app as cloud AI or assume server-side inference unless the u
 ## Documentation And Release Notes
 
 - User-facing changes that affect setup, model installation, model market, import flow, signing, HAP packaging, or device testing should be documented.
-- Release helper documents belong under `docs/archive/` only when the user asks for them. Do not commit temporary release notes unless requested.
+- Every version bump or release tag must leave a local-only `docs/archive/vX.Y.Z相对vA.B.C变更说明.md` document for drafting the GitHub Release. Keep it ignored and do not stage, commit, or push it unless the user explicitly requests otherwise.
+- Other release helper documents belong under `docs/archive/` only when the user asks for them. Do not commit temporary release notes unless requested.
 - The study log skill writes learning logs, not release notes. Keep those concepts separate.
 
 ## Issue Tracker
