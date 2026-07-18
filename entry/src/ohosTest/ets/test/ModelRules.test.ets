@@ -11,9 +11,17 @@ import {
   validateModelDirectorySnapshot
 } from '../../../main/ets/utils/modelCompatibility'
 import { importedModelShortName, stripMnnSuffix } from '../../../main/ets/utils/modelNaming'
-import { findModelCatalogItem } from '../../../main/ets/models/BuiltinModelDownloadTypes'
+import {
+  MODEL_CATALOG_ITEMS,
+  findModelCatalogItem
+} from '../../../main/ets/models/BuiltinModelDownloadTypes'
 import { ModelProfile } from '../../../main/ets/models/ModelProfile'
 import { ModelImportService } from '../../../main/ets/services/ModelImportService'
+import {
+  catalogItemToProfile,
+  mergeRemoteModelCatalog,
+  parseRemoteModelCatalog
+} from '../../../main/ets/utils/modelCatalog'
 
 export default function modelRulesTest(): void {
   describe('ModelRules', () => {
@@ -130,7 +138,53 @@ export default function modelRulesTest(): void {
       expect(item.files.length).assertEqual(7)
       expect(item.totalBytes).assertEqual(2957221068)
     })
+
+    it('keepsPresetAndHidesOptionalBundledCatalogItem', 0, () => {
+      const manifest = parseRemoteModelCatalog(
+        '{"schemaVersion":1,"catalogVersion":2,"publishedAt":"2026-07-18T12:00:00+08:00",' +
+          '"hiddenIds":["qwen3-4b-instruct","qwen3-0.6b"],"items":[]}'
+      )
+      const merged = mergeRemoteModelCatalog(MODEL_CATALOG_ITEMS, manifest)
+      expect(merged.some((item) => item.id === 'qwen3-4b-instruct')).assertTrue()
+      expect(merged.some((item) => item.id === 'qwen3-0.6b')).assertFalse()
+    })
+
+    it('createsRuntimeProfileForRemoteCatalogModel', 0, () => {
+      const manifest = parseRemoteModelCatalog(remoteCatalogText('config.json'))
+      const merged = mergeRemoteModelCatalog(MODEL_CATALOG_ITEMS, manifest)
+      const item = merged.find((candidate) => candidate.id === 'remote-test-model')
+      expect(item === undefined).assertFalse()
+      if (item === undefined) {
+        return
+      }
+      const profile = catalogItemToProfile(item)
+      expect(profile === undefined).assertFalse()
+      expect(profile?.source).assertEqual('catalog')
+      expect(profile?.directoryName).assertEqual('Remote-Test-MNN')
+    })
+
+    it('rejectsUnsafeRemoteCatalogPath', 0, () => {
+      let rejected = false
+      try {
+        parseRemoteModelCatalog(remoteCatalogText('../config.json'))
+      } catch (_) {
+        rejected = true
+      }
+      expect(rejected).assertTrue()
+    })
   })
+}
+
+function remoteCatalogText(configPath: string): string {
+  return '{"schemaVersion":1,"catalogVersion":3,"publishedAt":"2026-07-18T12:00:00+08:00",' +
+    '"hiddenIds":[],"items":[{"id":"remote-test-model",' +
+    '"directoryName":"Remote-Test-MNN","displayName":"Remote Test","shortName":"Remote Test",' +
+    '"description":"远程目录测试模型","provider":"Test","supportsImage":false,' +
+    '"capabilities":["文本"],"source":{"type":"modelscope","repo":"Test/Remote-Test-MNN",' +
+    '"revision":"abc123"},"files":[{"relativePath":"' + configPath + '","sizeBytes":100},' +
+    '{"relativePath":"llm_config.json","sizeBytes":100},{"relativePath":"llm.mnn","sizeBytes":100},' +
+    '{"relativePath":"llm.mnn.weight","sizeBytes":100}],"runtime":{"systemPrompt":"你是远程目录测试模型。",' +
+    '"contextMessageLimit":4,"generationDefaults":{"temperature":0.6,"topP":0.9,"topK":40}}}]}'
 }
 
 function validSnapshot(): ModelDirectorySnapshot {

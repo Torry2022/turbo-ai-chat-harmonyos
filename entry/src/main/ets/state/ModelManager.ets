@@ -7,11 +7,22 @@ import {
 export class ModelManager {
   selectedModelId: string = DEFAULT_MODEL_ID
   modelPath: string = ''
+  private catalogProfiles: ModelProfile[] = []
   private importedProfiles: ModelProfile[] = []
   private modelOrder: string[] = []
 
   profiles(): ModelProfile[] {
-    const allProfiles = MODEL_PROFILES.concat(this.importedProfiles)
+    const allProfiles = MODEL_PROFILES.slice()
+    for (let index = 0; index < this.catalogProfiles.length; index++) {
+      if (this.findProfileInList(allProfiles, this.catalogProfiles[index].id) === undefined) {
+        allProfiles.push(this.catalogProfiles[index])
+      }
+    }
+    for (let index = 0; index < this.importedProfiles.length; index++) {
+      if (this.findProfileInList(allProfiles, this.importedProfiles[index].id) === undefined) {
+        allProfiles.push(this.importedProfiles[index])
+      }
+    }
     if (this.modelOrder.length <= 0) {
       return allProfiles
     }
@@ -82,6 +93,15 @@ export class ModelManager {
 
   updateImportedProfiles(importedProfiles: ModelProfile[], filesDir: string): void {
     this.importedProfiles = importedProfiles
+    const current = this.currentModel()
+    if (current.id !== this.selectedModelId) {
+      this.selectedModelId = DEFAULT_MODEL_ID
+    }
+    this.modelPath = this.defaultConfigPath(filesDir, this.currentModel())
+  }
+
+  updateCatalogProfiles(catalogProfiles: ModelProfile[], filesDir: string): void {
+    this.catalogProfiles = catalogProfiles
     const current = this.currentModel()
     if (current.id !== this.selectedModelId) {
       this.selectedModelId = DEFAULT_MODEL_ID

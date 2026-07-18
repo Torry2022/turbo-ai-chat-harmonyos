@@ -2,8 +2,7 @@ import { common } from '@kit.AbilityKit'
 import {
   BuiltinModelDownloadSpec,
   BuiltinModelFileSpec,
-  BuiltinModelInstallProgress,
-  findModelCatalogItem
+  BuiltinModelInstallProgress
 } from '../models/BuiltinModelDownloadTypes'
 import { GenerationSettings } from '../models/ChatTypes'
 import { ModelImportResult, ModelImportScanResult } from '../models/ImportedModelTypes'
@@ -131,7 +130,7 @@ export class ModelLifecycleService {
   }
 
   private expectedFiles(filesDir: string, profile: ModelProfile, configPath: string): BuiltinModelFileSpec[] {
-    const catalogItem = findModelCatalogItem(profile.catalogItemId)
+    const catalogItem = this.installService.getDownloadSpec(profile)
     if (catalogItem === undefined) {
       return []
     }

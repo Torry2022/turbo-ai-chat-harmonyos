@@ -5,13 +5,12 @@ import {
   BuiltinModelDownloadSpec,
   BuiltinModelFileSpec,
   BuiltinModelInstallProgress,
-  ModelCatalogItem,
-  findBuiltinModelDownloadSpec,
-  findModelCatalogItem
+  ModelCatalogItem
 } from '../models/BuiltinModelDownloadTypes'
 import { ModelProfile } from '../models/ModelProfile'
 import { calculateDownloadedBytes, calculateDownloadProgress } from '../utils/downloadProgress'
 import { ModelDirectoryPreflightService } from './ModelDirectoryPreflightService'
+import { ModelCatalogService } from './ModelCatalogService'
 
 type ProgressCallback = (progress: BuiltinModelInstallProgress) => void
 
@@ -25,6 +24,11 @@ export class BuiltinModelInstallService {
   private cancelRequested: boolean = false
   private currentHttpRequest?: http.HttpRequest
   private preflightService: ModelDirectoryPreflightService = new ModelDirectoryPreflightService()
+  private catalogService: ModelCatalogService
+
+  constructor(catalogService: ModelCatalogService = new ModelCatalogService()) {
+    this.catalogService = catalogService
+  }
 
   cancelInstall(): void {
     this.cancelRequested = true
@@ -34,15 +38,15 @@ export class BuiltinModelInstallService {
   }
 
   getDownloadSpec(profile: ModelProfile): BuiltinModelDownloadSpec | undefined {
-    const catalogSpec = findModelCatalogItem(profile.catalogItemId)
+    const catalogSpec = this.catalogService.findInstallItem(profile.catalogItemId)
     if (catalogSpec !== undefined) {
       return catalogSpec
     }
-    return findBuiltinModelDownloadSpec(profile.downloadId)
+    return this.catalogService.findInstallItem(profile.downloadId)
   }
 
   getCatalogItem(catalogItemId: string): ModelCatalogItem | undefined {
-    return findModelCatalogItem(catalogItemId)
+    return this.catalogService.findMarketItem(catalogItemId)
   }
 
   async isCatalogItemInstalled(filesDir: string, item: ModelCatalogItem): Promise<boolean> {

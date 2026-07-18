@@ -4,6 +4,23 @@ export interface BuiltinModelFileSpec {
   url: string
 }
 
+export interface CatalogGenerationDefaults {
+  maxNewTokens?: number
+  temperature?: number
+  topP?: number
+  topK?: number
+  repetitionPenalty?: number
+  frequencyPenalty?: number
+  presencePenalty?: number
+  penaltyWindow?: number
+}
+
+export interface CatalogRuntimeSpec {
+  systemPrompt: string
+  contextMessageLimit: number
+  generationDefaults?: CatalogGenerationDefaults
+}
+
 export interface BuiltinModelDownloadSpec {
   id: string
   modelId: string
@@ -22,6 +39,7 @@ export interface ModelCatalogItem extends BuiltinModelDownloadSpec {
   supportsImage: boolean
   capabilities: string[]
   recommended: boolean
+  runtime?: CatalogRuntimeSpec
 }
 
 export interface BuiltinModelInstallProgress {
@@ -265,6 +283,11 @@ export function findModelCatalogItem(catalogItemId: string | undefined): ModelCa
 
 export function findBuiltinModelDownloadSpec(downloadId: string | undefined): BuiltinModelDownloadSpec | undefined {
   return findModelCatalogItem(downloadId)
+}
+
+export function isBundledPresetCatalogItem(catalogItemId: string): boolean {
+  const item = findModelCatalogItem(catalogItemId)
+  return item?.recommended ?? false
 }
 
 export function formatBytes(bytes: number): string {

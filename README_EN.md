@@ -45,6 +45,7 @@ In the HarmonyOS ecosystem, on-device AI inference today largely depends on Andr
 **Models and market**
 
 - Switched the default text model to Qwen3-4B-Instruct, with in-app model-market installation from ModelScope for preset models and additional MNN model entries.
+- The model market supports online catalog refresh with a local fallback cache. Updating [`model-catalog/catalog.json`](model-catalog/catalog.json) publishes compatible market entries without requiring a new app package.
 - Model-market downloads support stop-and-resume behavior. Closing a stopped install dialog clears unfinished temporary download files to avoid sandbox leftovers.
 - In addition to zip import, you can push a complete MNN model directory into the app sandbox and scan it from the Model tab to avoid large zip import failures.
 - The Model tab supports model ordering and deleting installed model directories, and disables related controls during generation, loading, or import to avoid inconsistent state.
@@ -141,7 +142,7 @@ You can also use [Xiaobai Debug Assistant](https://github.com/likuai2010/auto-in
 
 The recommended path is to install models from the in-app model market. Use zip import or manual directory push for large models, local conversion testing, or debugging.
 
-- **Model market**: download and install preset or extended models from ModelScope on the Model tab.
+- **Model market**: refresh the online catalog and install preset or extended models from ModelScope; if refresh fails, the app keeps the last valid cache or its bundled catalog.
 - **Zip import**: useful for small or medium complete MNN model directories.
 - **Manual directory push**: useful for large models, offline debugging, or when zip import fails; push the directory and scan it from the Model tab.
 

@@ -51,7 +51,7 @@ export struct ModelMarketDialog {
             .fontColor('#F4FBFF')
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
-            .layoutWeight(1)
+            .layoutWeight(item.recommended ? 0 : 1)
           if (item.recommended) {
             this.PresetTag()
           }
@@ -91,10 +91,11 @@ export struct ModelMarketDialog {
         .backgroundColor(this.viewModel.isCatalogItemInstalled(item.id) ? '#12372E' : '#0F62FE')
         .borderRadius(8)
         .enabled(!this.viewModel.isCatalogItemInstalled(item.id) &&
-      !this.viewModel.busy &&
+          !this.viewModel.busy &&
           !this.viewModel.modelLoading &&
           !this.viewModel.modelImporting &&
-          !this.viewModel.builtinModelInstalling)
+          !this.viewModel.builtinModelInstalling &&
+          !this.viewModel.modelCatalogRefreshing)
         .onClick(() => {
           this.viewModel.installCatalogItem(item.id)
         })
@@ -122,6 +123,17 @@ export struct ModelMarketDialog {
             .fontWeight(FontWeight.Bold)
             .fontColor('#F4FBFF')
             .layoutWeight(1)
+          Button(this.viewModel.modelCatalogRefreshing ? '更新中' : '刷新')
+            .height(28)
+            .width(58)
+            .fontSize(11)
+            .fontColor('#5AB0F2')
+            .backgroundColor('#0A1623')
+            .border({ width: 1, color: '#1F5C83' })
+            .enabled(!this.viewModel.modelCatalogRefreshing && !this.viewModel.builtinModelInstalling)
+            .onClick(() => {
+              this.viewModel.refreshModelCatalog()
+            })
           Row() {
             Image(this.isClosePressed ? $r('app.media.model_market_close_icon_pressed') : $r('app.media.model_market_close_icon'))
               .width(24)
@@ -145,6 +157,16 @@ export struct ModelMarketDialog {
         }
         .padding({ left: 2 })
         .width('100%')
+
+        Text(`${this.viewModel.modelCatalogSource} · ${this.viewModel.modelCatalogStatus}` +
+          (this.viewModel.modelCatalogPublishedAt.length > 0 ?
+            ` · ${this.viewModel.modelCatalogPublishedAt}` : ''))
+          .fontSize(11)
+          .lineHeight(16)
+          .fontColor(this.viewModel.modelCatalogStatus.indexOf('失败') >= 0 ? '#F2B35D' : '#6F86A0')
+          .maxLines(2)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .width('100%')
 
         TextInput({ text: this.viewModel.modelMarketSearchText, placeholder: '搜索模型名称或厂商' })
           .height(40)

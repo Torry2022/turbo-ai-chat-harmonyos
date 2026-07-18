@@ -6,9 +6,13 @@ import {
   BuiltinModelDownloadSpec,
   BuiltinModelInstallProgress,
   MODEL_CATALOG_FILTER_ALL,
-  MODEL_CATALOG_ITEMS,
-  ModelCatalogItem
+  ModelCatalogItem,
+  isBundledPresetCatalogItem
 } from '../models/BuiltinModelDownloadTypes'
+import {
+  ModelCatalogLoadResult,
+  ModelCatalogRefreshResult
+} from '../models/ModelCatalogTypes'
 import {
   DEFAULT_FREQUENCY_PENALTY,
   DEFAULT_MAX_NEW_TOKENS,
@@ -27,6 +31,7 @@ import { EMPTY_RUNTIME_STATS, EMPTY_STORAGE_STATS, RuntimeStats, StorageStats } 
 import { ImagePayloadService } from '../services/ImagePayloadService'
 import { BuiltinModelInstallService } from '../services/BuiltinModelInstallService'
 import { ModelImportService } from '../services/ModelImportService'
+import { ModelCatalogService } from '../services/ModelCatalogService'
 import { NativeInferenceService } from '../services/NativeInferenceService'
 import { RuntimeStatsService } from '../services/RuntimeStatsService'
 import {
@@ -87,6 +92,10 @@ export class ChatViewModel {
   modelMarketSearchText: string = ''
   modelMarketCapabilityFilter: string = MODEL_CATALOG_FILTER_ALL
   modelMarketInstalledIds: string[] = []
+  modelCatalogRefreshing: boolean = false
+  modelCatalogStatus: string = '正在读取模型目录...'
+  modelCatalogSource: string = '内置目录'
+  modelCatalogPublishedAt: string = ''
   modelImporting: boolean = false
   modelImportMessage: string = '可导入 MNN 模型 zip 包'
   editingImportedModelId: string = ''
@@ -114,7 +123,9 @@ export class ChatViewModel {
   private modelManager: ModelManager = new ModelManager()
   private nativeService: NativeInferenceService = new NativeInferenceService()
   private imageService: ImagePayloadService = new ImagePayloadService()
-  private builtinModelInstallService: BuiltinModelInstallService = new BuiltinModelInstallService()
+  private modelCatalogService: ModelCatalogService = new ModelCatalogService()
+  private builtinModelInstallService: BuiltinModelInstallService =
+    new BuiltinModelInstallService(this.modelCatalogService)
   private modelImportService: ModelImportService = new ModelImportService()
   private statsService: RuntimeStatsService = new RuntimeStatsService()
   private speechRecognitionService: SpeechRecognitionService = new SpeechRecognitionService()
@@ -173,8 +184,16 @@ export class ChatViewModel {
     this.refreshStats()
     this.refreshStorageStats()
     this.preloadModelStorageStats()
-    this.refreshModelMarketInstallStates()
     this.notify()
+    this.modelCatalogService.load(this.filesDir).then(async (result: ModelCatalogLoadResult) => {
+      this.applyCatalogResult(result)
+      await this.migrateBundledCatalogInstalls()
+      this.refreshModelMarketInstallStates()
+      this.refreshModelCatalog(false)
+    }).catch((err: Error) => {
+      this.modelCatalogStatus = `读取模型目录失败：${formatError(err as Object)}`
+      this.notify()
+    })
     this.modelLifecycleService.loadImportedProfiles(this.filesDir).then((profiles: ModelProfile[]) => {
       this.modelManager.updateImportedProfiles(profiles, this.filesDir)
       this.prepareImportedModelEditor(this.selectedModelId)
@@ -203,7 +222,7 @@ export class ChatViewModel {
   modelCatalogItems(): ModelCatalogItem[] {
     const searchText = this.modelMarketSearchText.trim().toLowerCase()
     const filter = this.modelMarketCapabilityFilter
-    return MODEL_CATALOG_ITEMS.filter((item: ModelCatalogItem) => {
+    const visibleItems = this.modelCatalogService.items().filter((item: ModelCatalogItem) => {
       if (filter !== MODEL_CATALOG_FILTER_ALL && item.capabilities.indexOf(filter) < 0) {
         return false
       }
@@ -214,11 +233,14 @@ export class ChatViewModel {
         item.shortName.toLowerCase().indexOf(searchText) >= 0 ||
         item.provider.toLowerCase().indexOf(searchText) >= 0
     })
+    const regularItems = visibleItems.filter((item: ModelCatalogItem) => !item.recommended)
+    const presetItems = visibleItems.filter((item: ModelCatalogItem) => item.recommended)
+    return regularItems.concat(presetItems)
   }
 
   modelCatalogFilterTags(): string[] {
     const tags: string[] = [MODEL_CATALOG_FILTER_ALL]
-    MODEL_CATALOG_ITEMS.forEach((item: ModelCatalogItem) => {
+    this.modelCatalogService.items().forEach((item: ModelCatalogItem) => {
       item.capabilities.forEach((capability: string) => {
         if (tags.indexOf(capability) < 0) {
           tags.push(capability)
@@ -259,11 +281,41 @@ export class ChatViewModel {
     this.notify()
   }
 
-  installCatalogItem(catalogItemId: string): void {
-    if (this.busy || this.modelLoading || this.modelImporting || this.builtinModelInstalling || this.context === undefined) {
+  refreshModelCatalog(showResultToast: boolean = true): void {
+    if (this.modelCatalogRefreshing || this.builtinModelInstalling || this.filesDir.length <= 0) {
       return
     }
-    const item = this.builtinModelInstallService.getCatalogItem(catalogItemId)
+    this.modelCatalogRefreshing = true
+    this.modelCatalogStatus = '正在更新模型市场...'
+    this.notify()
+    this.modelCatalogService.refresh(this.filesDir).then((result: ModelCatalogRefreshResult) => {
+      this.modelCatalogRefreshing = false
+      this.applyCatalogResult(result)
+      this.refreshModelMarketInstallStates()
+      if (showResultToast) {
+        this.toastCallback(result.message)
+      }
+    }).catch((err: Error) => {
+      this.modelCatalogRefreshing = false
+      const errorText = formatError(err as Object)
+      const httpIndex = errorText.indexOf('HTTP ')
+      const httpStatus = httpIndex >= 0 ?
+        errorText.substring(httpIndex, Math.min(errorText.length, httpIndex + 8)) : ''
+      this.modelCatalogStatus = httpStatus.length > 0 ?
+        `在线更新失败（${httpStatus}），已保留当前目录` : '在线更新失败，已保留当前目录'
+      if (showResultToast) {
+        this.toastCallback('模型市场更新失败，已保留当前目录')
+      }
+      this.notify()
+    })
+  }
+
+  installCatalogItem(catalogItemId: string): void {
+    if (this.busy || this.modelLoading || this.modelImporting || this.builtinModelInstalling ||
+      this.modelCatalogRefreshing || this.context === undefined) {
+      return
+    }
+    const item = this.modelCatalogService.findMarketItem(catalogItemId)
     if (item === undefined) {
       this.status = '安装失败：模型市场条目不存在'
       this.notify()
@@ -685,14 +737,14 @@ export class ChatViewModel {
 
     const deletingCurrent = this.selectedModelId === modelId
     this.modelLifecycleService.deleteModel(this.filesDir, profile, deletingCurrent && this.loaded)
-      .then((result: ModelDeleteResult) => {
+      .then(async (result: ModelDeleteResult) => {
         if (deletingCurrent) {
           this.loaded = false
         }
         if (result.importedProfiles !== undefined) {
           this.modelManager.updateImportedProfiles(result.importedProfiles, this.filesDir)
         } else {
-          this.removeInstalledCatalogState(profile)
+          await this.removeInstalledCatalogState(profile)
         }
         this.prepareImportedModelEditor(this.selectedModelId)
         this.pendingDeleteModelId = ''
@@ -712,7 +764,7 @@ export class ChatViewModel {
 
   refreshModelMarketInstallStates(): void {
     const installedIds: string[] = []
-    const checks = MODEL_CATALOG_ITEMS.map((item: ModelCatalogItem) => {
+    const checks = this.modelCatalogService.knownItems().map((item: ModelCatalogItem) => {
       return this.builtinModelInstallService.isCatalogItemInstalled(this.filesDir, item).then((installed: boolean) => {
         if (installed) {
           installedIds.push(item.id)
@@ -799,24 +851,55 @@ export class ChatViewModel {
       this.builtinModelInstalling
   }
 
-  private removeInstalledCatalogState(profile: ModelProfile): void {
+  private async removeInstalledCatalogState(profile: ModelProfile): Promise<void> {
     const catalogItemId = this.catalogItemIdForProfile(profile)
     if (catalogItemId.length <= 0) {
       return
     }
+    await this.modelCatalogService.removeInstalled(this.filesDir, catalogItemId)
+    this.modelManager.updateCatalogProfiles(this.modelCatalogService.profiles(), this.filesDir)
     this.modelMarketInstalledIds = this.modelMarketInstalledIds.filter((itemId: string) => itemId !== catalogItemId)
   }
 
+  private async migrateBundledCatalogInstalls(): Promise<void> {
+    const bundledItems = this.modelCatalogService.bundledItems()
+    let changed = false
+    for (let index = 0; index < bundledItems.length; index++) {
+      const item = bundledItems[index]
+      if (this.modelCatalogService.hasInstalledSnapshot(item.id)) {
+        continue
+      }
+      try {
+        if (await this.builtinModelInstallService.isCatalogItemInstalled(this.filesDir, item)) {
+          await this.modelCatalogService.recordInstalled(this.filesDir, item)
+          changed = true
+        }
+      } catch (_) {
+      }
+    }
+    if (changed) {
+      this.modelManager.updateCatalogProfiles(this.modelCatalogService.profiles(), this.filesDir)
+    }
+  }
+
+  private applyCatalogResult(result: ModelCatalogLoadResult): void {
+    this.modelCatalogSource = result.source
+    this.modelCatalogPublishedAt = result.publishedAt
+    this.modelCatalogStatus = result.catalogVersion > 0 ?
+      `${result.message} · 目录版本 ${result.catalogVersion}` : result.message
+    this.modelManager.updateCatalogProfiles(this.modelCatalogService.profiles(), this.filesDir)
+    this.notify()
+  }
+
   private shouldShowModelProfile(profile: ModelProfile): boolean {
-    if (profile.source !== 'builtin') {
+    if (profile.source === 'imported') {
       return true
     }
     const catalogItemId = this.catalogItemIdForProfile(profile)
     if (catalogItemId.length <= 0) {
       return true
     }
-    const catalogItem = this.builtinModelInstallService.getCatalogItem(catalogItemId)
-    if (catalogItem === undefined || catalogItem.recommended) {
+    if (profile.source === 'builtin' && isBundledPresetCatalogItem(catalogItemId)) {
       return true
     }
     return this.modelMarketInstalledIds.indexOf(catalogItemId) >= 0
@@ -1088,7 +1171,7 @@ export class ChatViewModel {
     this.status = `正在安装 ${spec.displayName}...`
     this.notify()
 
-    const supportsImage = this.builtinModelInstallService.getCatalogItem(spec.id)?.supportsImage ?? false
+    const supportsImage = this.modelCatalogService.findInstallItem(spec.id)?.supportsImage ?? false
     this.modelLifecycleService.installCatalogItem(context, spec, supportsImage, (progress: BuiltinModelInstallProgress) => {
       if (this.builtinModelInstallCancelRequested) {
         return
@@ -1103,7 +1186,13 @@ export class ChatViewModel {
       this.builtinModelInstallMessage = `${progress.message}：${progress.fileName}`
       this.status = `正在安装 ${progress.modelName}...`
       this.notify()
-    }).then(() => {
+    }).then(async () => {
+      const installedItem = this.modelCatalogService.findMarketItem(spec.id) ??
+        this.modelCatalogService.findInstallItem(spec.id)
+      if (installedItem !== undefined) {
+        await this.modelCatalogService.recordInstalled(this.filesDir, installedItem)
+        this.modelManager.updateCatalogProfiles(this.modelCatalogService.profiles(), this.filesDir)
+      }
       this.builtinModelInstalling = false
       this.busy = false
       this.builtinModelInstallProgress = 100
@@ -1172,7 +1261,7 @@ export class ChatViewModel {
 
   private currentBuiltinModelInstallSpec(): BuiltinModelDownloadSpec | undefined {
     if (this.pendingInstallCatalogItemId.length > 0) {
-      return this.builtinModelInstallService.getCatalogItem(this.pendingInstallCatalogItemId)
+      return this.modelCatalogService.findMarketItem(this.pendingInstallCatalogItemId)
     }
     return this.builtinModelInstallService.getDownloadSpec(this.currentModel())
   }
