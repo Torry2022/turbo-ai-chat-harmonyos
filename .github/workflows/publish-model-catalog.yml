@@ -1,0 +1,152 @@
+name: Publish model catalog
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Operation
+        required: true
+        type: choice
+        options:
+          - add_or_update
+          - hide
+          - validate
+      modelscope_model:
+        description: ModelScope URL or organization/repository (add_or_update)
+        required: false
+        type: string
+      revision:
+        description: ModelScope branch, tag, or commit; it will be pinned to a commit
+        required: false
+        default: master
+        type: string
+      model_id:
+        description: Model ID (required for hide; optional for add_or_update)
+        required: false
+        type: string
+      directory_name:
+        description: App model directory override (optional)
+        required: false
+        type: string
+      display_name:
+        description: Display name override (optional)
+        required: false
+        type: string
+      description:
+        description: Model description (optional)
+        required: false
+        type: string
+      supports_image:
+        description: Image capability
+        required: true
+        default: auto
+        type: choice
+        options:
+          - auto
+          - "false"
+          - "true"
+      system_prompt:
+        description: System prompt override (optional)
+        required: false
+        type: string
+      context_message_limit:
+        description: Context message limit
+        required: true
+        default: "6"
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-model-catalog
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run publisher tests
+        run: python -m unittest scripts/test_model_catalog.py
+
+      - name: Generate and validate catalog
+        shell: bash
+        env:
+          OPERATION: ${{ inputs.operation }}
+          MODELSCOPE_MODEL: ${{ inputs.modelscope_model }}
+          REVISION: ${{ inputs.revision }}
+          MODEL_ID: ${{ inputs.model_id }}
+          DIRECTORY_NAME: ${{ inputs.directory_name }}
+          DISPLAY_NAME: ${{ inputs.display_name }}
+          DESCRIPTION: ${{ inputs.description }}
+          SUPPORTS_IMAGE: ${{ inputs.supports_image }}
+          SYSTEM_PROMPT: ${{ inputs.system_prompt }}
+          CONTEXT_MESSAGE_LIMIT: ${{ inputs.context_message_limit }}
+        run: |
+          set -euo pipefail
+          catalog=(--catalog model-catalog/catalog.json)
+          case "$OPERATION" in
+            add_or_update)
+              if [[ -z "$MODELSCOPE_MODEL" ]]; then
+                echo "modelscope_model is required for add_or_update" >&2
+                exit 1
+              fi
+              args=(add "$MODELSCOPE_MODEL" --revision "${REVISION:-master}" --supports-image "$SUPPORTS_IMAGE" --context-message-limit "$CONTEXT_MESSAGE_LIMIT")
+              [[ -n "$MODEL_ID" ]] && args+=(--id "$MODEL_ID")
+              [[ -n "$DIRECTORY_NAME" ]] && args+=(--directory-name "$DIRECTORY_NAME")
+              [[ -n "$DISPLAY_NAME" ]] && args+=(--display-name "$DISPLAY_NAME")
+              [[ -n "$DESCRIPTION" ]] && args+=(--description "$DESCRIPTION")
+              [[ -n "$SYSTEM_PROMPT" ]] && args+=(--system-prompt "$SYSTEM_PROMPT")
+              python scripts/model_catalog.py "${catalog[@]}" "${args[@]}"
+              ;;
+            hide)
+              if [[ -z "$MODEL_ID" ]]; then
+                echo "model_id is required for hide" >&2
+                exit 1
+              fi
+              python scripts/model_catalog.py "${catalog[@]}" hide "$MODEL_ID"
+              ;;
+            validate)
+              python scripts/model_catalog.py "${catalog[@]}" validate
+              ;;
+            *)
+              echo "Unsupported operation: $OPERATION" >&2
+              exit 1
+              ;;
+          esac
+          python scripts/model_catalog.py "${catalog[@]}" validate
+
+      - name: Commit catalog to main
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- model-catalog/catalog.json; then
+            echo "Catalog is already up to date."
+            exit 0
+          fi
+          mapfile -t changed_files < <(git status --porcelain=v1 --untracked-files=all)
+          if [[ "${#changed_files[@]}" -ne 1 || "${changed_files[0]}" != " M model-catalog/catalog.json" ]]; then
+            echo "Publisher changed unexpected files:" >&2
+            printf '%s\n' "${changed_files[@]}" >&2
+            exit 1
+          fi
+          git fetch origin main
+          if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]]; then
+            echo "main changed while publishing; rerun the workflow." >&2
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- model-catalog/catalog.json
+          git commit -m "Update online model catalog"
+          git push origin HEAD:main

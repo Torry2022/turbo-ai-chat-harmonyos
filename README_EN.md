@@ -46,6 +46,7 @@ In the HarmonyOS ecosystem, on-device AI inference today largely depends on Andr
 
 - Switched the default text model to Qwen3-4B-Instruct, with in-app model-market installation from ModelScope for preset models and additional MNN model entries.
 - The model market supports online catalog refresh with a local fallback cache. Updating [`model-catalog/catalog.json`](model-catalog/catalog.json) publishes compatible market entries without requiring a new app package.
+- Forks and derivative builds still read this repository's online catalog by default. To maintain an independent model market, change `REMOTE_MODEL_CATALOG_URL` in [`ModelCatalogService.ets`](entry/src/main/ets/services/ModelCatalogService.ets) to your own Raw catalog URL and rebuild the app.
 - Model-market downloads support stop-and-resume behavior. Closing a stopped install dialog clears unfinished temporary download files to avoid sandbox leftovers.
 - In addition to zip import, you can push a complete MNN model directory into the app sandbox and scan it from the Model tab to avoid large zip import failures.
 - The Model tab supports model ordering and deleting installed model directories, and disables related controls during generation, loading, or import to avoid inconsistent state.

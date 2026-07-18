@@ -11,6 +11,7 @@
 /entry/node_modules/
 /oh_modules/
 /entry/oh_modules/
+__pycache__/
 /.deveco-sdk/
 /.codex_mnn_source*/
 /.codex_mnn_build*/

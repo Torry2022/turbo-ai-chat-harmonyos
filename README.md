@@ -48,6 +48,7 @@
 
 - 默认文本模型切换为 Qwen3-4B-Instruct，并支持在 App 内通过模型市场从 ModelScope 安装预置模型和更多 MNN 模型条目。
 - 模型市场支持在线目录刷新和本地缓存回退；维护者更新 [`model-catalog/catalog.json`](model-catalog/catalog.json) 后，用户无需更换安装包即可获取兼容的新市场条目。
+- Fork 或二次开发版本默认仍读取本仓库的在线目录；如需维护独立模型市场，应修改 [`ModelCatalogService.ets`](entry/src/main/ets/services/ModelCatalogService.ets) 中的 `REMOTE_MODEL_CATALOG_URL`，指向自己的 Raw 目录地址并重新构建 App。
 - 模型市场下载支持停止后断点续传；关闭已停止的安装弹窗会清理未完成的临时下载文件，避免沙箱残留。
 - 除 zip 导入外，支持将完整 MNN 模型目录推送到 App 沙箱后，在模型页一键扫描注册，适合绕过大 zip 导入失败的问题。
 - 模型页支持排序、删除已安装模型目录，并在模型生成、加载、导入期间禁用相关控件，避免状态不一致。
