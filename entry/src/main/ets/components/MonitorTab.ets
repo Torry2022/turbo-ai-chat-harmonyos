@@ -62,11 +62,7 @@ export struct MonitorTab {
     }
     this.storageStatsReading = true
     const modelConfig = this.viewModel.modelPath
-    const modelDir = modelConfig.length > 0 ? modelConfig.substring(0, modelConfig.lastIndexOf('/')) : ''
-    this.statsService.readStorageStats(
-      this.viewModel.appFilesDir,
-      modelDir
-    ).then((storageStats: StorageStats) => {
+    this.viewModel.readStorageStatsForCurrentModel().then((storageStats: StorageStats) => {
       this.viewModel.cacheStorageStats(modelConfig, storageStats)
       if (modelConfig === this.viewModel.modelPath) {
         this.storageStats = storageStats
@@ -273,5 +269,6 @@ export struct MonitorTab {
     .width('100%')
     .align(Alignment.Top)
     .scrollBar(BarState.Off)
+    .edgeEffect(EdgeEffect.Spring)
   }
 }

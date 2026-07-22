@@ -27,17 +27,17 @@ const REVISION_PATTERN: RegExp = /^[A-Za-z0-9._-]+$/
 
 export function parseRemoteModelCatalog(text: string): RemoteModelCatalogManifest {
   const parsed = JSON.parse(text.replace(/^\uFEFF/, '')) as RemoteModelCatalogManifest
-  requireCondition(parsed.schemaVersion === CATALOG_SCHEMA_VERSION, '模型市场清单版本不受支持')
-  requireCondition(Number.isInteger(parsed.catalogVersion) && parsed.catalogVersion >= 1, '模型市场版本无效')
-  requireCondition(typeof parsed.publishedAt === 'string', '模型市场发布时间无效')
-  requireCondition(Array.isArray(parsed.hiddenIds), '模型市场下架列表无效')
-  requireCondition(Array.isArray(parsed.items), '模型市场条目列表无效')
+  requireCondition(parsed.schemaVersion === CATALOG_SCHEMA_VERSION, '模型广场清单版本不受支持')
+  requireCondition(Number.isInteger(parsed.catalogVersion) && parsed.catalogVersion >= 1, '模型广场版本无效')
+  requireCondition(typeof parsed.publishedAt === 'string', '模型广场发布时间无效')
+  requireCondition(Array.isArray(parsed.hiddenIds), '模型广场下架列表无效')
+  requireCondition(Array.isArray(parsed.items), '模型广场条目列表无效')
 
   const hiddenIds: string[] = []
   for (let index = 0; index < parsed.hiddenIds.length; index++) {
     const id = parsed.hiddenIds[index]
-    requireCondition(isValidId(id), '模型市场下架 ID 无效')
-    requireCondition(hiddenIds.indexOf(id) < 0, `模型市场下架 ID 重复：${id}`)
+    requireCondition(isValidId(id), '模型广场下架 ID 无效')
+    requireCondition(hiddenIds.indexOf(id) < 0, `模型广场下架 ID 重复：${id}`)
     hiddenIds.push(id)
   }
 
@@ -45,14 +45,14 @@ export function parseRemoteModelCatalog(text: string): RemoteModelCatalogManifes
   const directoryNames: string[] = []
   for (let index = 0; index < parsed.items.length; index++) {
     validateRemoteItem(parsed.items[index])
-    requireCondition(itemIds.indexOf(parsed.items[index].id) < 0, `模型市场条目 ID 重复：${parsed.items[index].id}`)
+    requireCondition(itemIds.indexOf(parsed.items[index].id) < 0, `模型广场条目 ID 重复：${parsed.items[index].id}`)
     requireCondition(directoryNames.indexOf(parsed.items[index].directoryName) < 0,
-      `模型市场目录名称重复：${parsed.items[index].directoryName}`)
+      `模型广场目录名称重复：${parsed.items[index].directoryName}`)
     itemIds.push(parsed.items[index].id)
     directoryNames.push(parsed.items[index].directoryName)
   }
   for (let index = 0; index < hiddenIds.length; index++) {
-    requireCondition(itemIds.indexOf(hiddenIds[index]) < 0, `模型市场条目不能同时上架和下架：${hiddenIds[index]}`)
+    requireCondition(itemIds.indexOf(hiddenIds[index]) < 0, `模型广场条目不能同时上架和下架：${hiddenIds[index]}`)
   }
   return parsed
 }
@@ -154,7 +154,7 @@ export function mergeCatalogItems(primary: ModelCatalogItem[], fallback: ModelCa
 }
 
 function validateRemoteItem(item: RemoteCatalogItem): void {
-  requireCondition(isValidId(item.id), '模型市场条目 ID 无效')
+  requireCondition(isValidId(item.id), '模型广场条目 ID 无效')
   requireCondition(isSafeDirectoryName(item.directoryName), `模型目录名称无效：${item.id}`)
   requireCondition(isNonEmptyString(item.displayName), `模型显示名称无效：${item.id}`)
   requireCondition(isNonEmptyString(item.shortName), `模型短名称无效：${item.id}`)

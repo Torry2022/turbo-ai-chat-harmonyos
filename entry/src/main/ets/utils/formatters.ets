@@ -50,3 +50,24 @@ export function formatError(err: Object): string {
   }
   return `${err}`
 }
+
+export function formatDownloadError(err: Object): string {
+  if (err === undefined || err === null) {
+    return '未知错误'
+  }
+
+  const record = err as Record<string, Object>
+  let message = typeof err === 'string' ? err :
+    (record.message !== undefined ? `${record.message}` : `${err}`)
+  while (message.startsWith('Error:') || message.startsWith('BusinessError:')) {
+    message = message.substring(message.indexOf(':') + 1).trim()
+  }
+  if (message === '[object Object]') {
+    message = ''
+  }
+
+  if (record.code !== undefined) {
+    return message.length > 0 ? `错误码 ${record.code}：${message}` : `错误码 ${record.code}`
+  }
+  return message.length > 0 ? message : '未知错误'
+}

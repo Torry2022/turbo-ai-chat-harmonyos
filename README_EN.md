@@ -8,7 +8,7 @@
 
 ![Turbo AI Chat hero](docs/images/hero.png)
 
-**Turbo AI Chat is a HarmonyOS NEXT native on-device LLM chat application** for validating a complete local-inference pipeline on HarmonyOS devices. It is built with ArkTS, C++ N-API, and MNN Runtime, ships profiles for Qwen3-4B-Instruct, MiniCPM5-1B, and Gemma-4-E2B-it, and can add compatible text and multimodal MNN models through the model market or local import. The app also includes streaming chat, model switching, image understanding, and runtime monitoring.
+**Turbo AI Chat is a HarmonyOS NEXT native on-device LLM chat application** for validating a complete local-inference pipeline on HarmonyOS devices. It is built with ArkTS, C++ N-API, and MNN Runtime, ships profiles for Qwen3-4B-Instruct, MiniCPM5-1B, and Gemma-4-E2B-it, and can add compatible text and multimodal MNN models through the Model Gallery or local import. The app also includes streaming chat, model switching, image understanding, and runtime monitoring.
 
 This repository is forked from [Turbo1123/turbo-ai-chat-harmonyos](https://github.com/Turbo1123/turbo-ai-chat-harmonyos).
 
@@ -32,7 +32,7 @@ This repository is forked from [Turbo1123/turbo-ai-chat-harmonyos](https://githu
 In the HarmonyOS ecosystem, on-device AI inference today largely depends on Android compatibility layers running Android apps. Turbo AI Chat validates a different path with a fully native pipeline (ArkTS → N-API → MNN → CPU):
 
 - **Native architecture**: inference directly via HarmonyOS NDK, no Android compatibility layer overhead
-- **Reproducible out of the box**: preset models downloaded from ModelScope through the model market, no HuggingFace required (China-network friendly)
+- **Reproducible out of the box**: preset models downloaded from ModelScope through the Model Gallery, no HuggingFace required (China-network friendly)
 - **Reusable engineering**: MNN Runtime wrapper, streaming pipeline, Markdown rendering as integration references for other HarmonyOS AI apps
 - **Developer-friendly**: one hdc command to inspect raw inference logs (`raw_output_debug.txt`) containing prompt, model output, sampling parameters, and token statistics
 
@@ -45,8 +45,8 @@ In the HarmonyOS ecosystem, on-device AI inference today largely depends on Andr
 **Models and market**
 
 - Switched the default text model to Qwen3-4B-Instruct, with in-app model-market installation from ModelScope for preset models and additional MNN model entries.
-- The model market supports online catalog refresh with a local fallback cache. Updating [`model-catalog/catalog.json`](model-catalog/catalog.json) publishes compatible market entries without requiring a new app package.
-- Forks and derivative builds still read this repository's online catalog by default. To maintain an independent model market, change `REMOTE_MODEL_CATALOG_URL` in [`ModelCatalogService.ets`](entry/src/main/ets/services/ModelCatalogService.ets) to your own Raw catalog URL and rebuild the app.
+- The Model Gallery supports online catalog refresh with a local fallback cache. Updating [`model-catalog/catalog.json`](model-catalog/catalog.json) publishes compatible model entries without requiring a new app package.
+- Forks and derivative builds still read this repository's online catalog by default. To maintain an independent Model Gallery, change `REMOTE_MODEL_CATALOG_URL` in [`ModelCatalogService.ets`](entry/src/main/ets/services/ModelCatalogService.ets) to your own Raw catalog URL and rebuild the app.
 - Model-market downloads support stop-and-resume behavior. Closing a stopped install dialog clears unfinished temporary download files to avoid sandbox leftovers.
 - In addition to zip import, you can push a complete MNN model directory into the app sandbox and scan it from the Model tab to avoid large zip import failures.
 - The Model tab supports model ordering and deleting installed model directories, and disables related controls during generation, loading, or import to avoid inconsistent state.
@@ -96,7 +96,7 @@ hdc install -r entry/build/default/outputs/default/entry-default-signed.hap
 
 ### 2. Install models
 
-The app and HAP do not include model weights. Open the app → Model tab → Model Market, or select Qwen3-4B-Instruct, MiniCPM5-1B, or Gemma-4-E2B-it and tap load. The app will guide you to download from ModelScope into the app sandbox.
+The app and HAP do not include model weights. Open the app → Model tab → Model Gallery, or select Qwen3-4B-Instruct, MiniCPM5-1B, or Gemma-4-E2B-it and tap load. The app will guide you to download from ModelScope into the app sandbox.
 
 | Model | Size | Capability |
 |------|------|------|
@@ -141,9 +141,9 @@ You can also sideload the HAP with [Xiaobai Debug Assistant](https://github.com/
 
 ## Model Management
 
-The recommended path is to install models from the in-app model market. Use zip import or manual directory push for large models, local conversion testing, or debugging.
+The recommended path is to install models from the in-app Model Gallery. Use zip import or manual directory push for large models, local conversion testing, or debugging.
 
-- **Model market**: refresh the online catalog and install preset or extended models from ModelScope; if refresh fails, the app keeps the last valid cache or its bundled catalog.
+- **Model Gallery**: refresh the online catalog and install preset or extended models from ModelScope; if refresh fails, the app keeps the last valid cache or its bundled catalog.
 - **Zip import**: useful for small or medium complete MNN model directories.
 - **Manual directory push**: useful for large models, offline debugging, or when zip import fails; push the directory and scan it from the Model tab.
 
@@ -262,7 +262,7 @@ entry.isLoaded(): boolean
 
 This repository's source code is licensed under Apache-2.0.
 
-MNN Runtime and model weights follow their respective upstream licenses or model-card terms. This repository and Release HAPs do not include model weights. Users who download models through the model market, scripts, or manual push should follow the terms of the corresponding upstream source.
+MNN Runtime and model weights follow their respective upstream licenses or model-card terms. This repository and Release HAPs do not include model weights. Users who download models through the Model Gallery, scripts, or manual push should follow the terms of the corresponding upstream source.
 
 - [MNN](https://github.com/alibaba/MNN)
 - [Qwen3-4B-Instruct-2507-MNN](https://modelscope.cn/models/MNN/Qwen3-4B-Instruct-2507-MNN)

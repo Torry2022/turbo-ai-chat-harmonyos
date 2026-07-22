@@ -1,6 +1,6 @@
-# 在线模型市场目录
+# 在线模型广场目录
 
-`catalog.json` 是 Turbo AI Chat 通用版默认读取的在线模型市场增量目录。App 始终保留安装包内置目录；此文件只需要声明新增模型、需要覆盖的既有市场条目，以及需要下架的非预置条目。
+`catalog.json` 是 Turbo AI Chat 通用版默认读取的在线模型广场增量目录。App 始终保留安装包内置目录；此文件只需要声明新增模型、需要覆盖的既有模型条目，以及需要下架的非预置条目。
 
 ## 推荐维护方式：GitHub Actions 表单
 
@@ -22,7 +22,7 @@
 https://raw.githubusercontent.com/Torry2022/turbo-ai-chat-harmonyos/main/model-catalog/catalog.json
 ```
 
-因此，直接 Fork 或克隆后构建的 App 仍会读取 Torry2022 仓库的模型目录。在 Fork 中运行 `Publish model catalog` 只会更新该 Fork 自己的 `catalog.json`，不会影响本仓库；若要让二次开发版本维护独立模型市场，需要将 `REMOTE_MODEL_CATALOG_URL` 改为：
+因此，直接 Fork 或克隆后构建的 App 仍会读取 Torry2022 仓库的模型目录。在 Fork 中运行 `Publish model catalog` 只会更新该 Fork 自己的 `catalog.json`，不会影响本仓库；若要让二次开发版本维护独立模型广场，需要将 `REMOTE_MODEL_CATALOG_URL` 改为：
 
 ```text
 https://raw.githubusercontent.com/<仓库所有者>/<仓库名>/<默认分支>/model-catalog/catalog.json

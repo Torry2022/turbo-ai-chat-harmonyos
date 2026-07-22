@@ -9,6 +9,7 @@ import {
 } from '../models/BuiltinModelDownloadTypes'
 import { ModelProfile } from '../models/ModelProfile'
 import { calculateDownloadedBytes, calculateDownloadProgress } from '../utils/downloadProgress'
+import { formatDownloadError } from '../utils/formatters'
 import { ModelDirectoryPreflightService } from './ModelDirectoryPreflightService'
 import { ModelCatalogService } from './ModelCatalogService'
 
@@ -195,7 +196,7 @@ export class BuiltinModelInstallService {
         if (this.cancelRequested) {
           throw new Error('下载已取消')
         }
-        throw new Error(`${err}`)
+        throw new Error(formatDownloadError(err as Object))
       }
       this.throwIfCanceled()
       if (!await this.isCompleteFile(tempPath, file.sizeBytes)) {

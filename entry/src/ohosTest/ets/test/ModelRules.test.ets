@@ -17,11 +17,23 @@ import {
 } from '../../../main/ets/models/BuiltinModelDownloadTypes'
 import { ModelProfile } from '../../../main/ets/models/ModelProfile'
 import { ModelImportService } from '../../../main/ets/services/ModelImportService'
+import { formatDownloadError } from '../../../main/ets/utils/formatters'
 import {
   catalogItemToProfile,
   mergeRemoteModelCatalog,
   parseRemoteModelCatalog
 } from '../../../main/ets/utils/modelCatalog'
+import {
+  ModelDragFrame,
+  reorderVisibleModelIds,
+  resolveModelDragPreview
+} from '../../../main/ets/utils/modelDrag'
+
+class DownloadErrorFixture {
+  code: number = 2300007
+  name: string = 'BusinessError'
+  message: string = '网络不可用'
+}
 
 export default function modelRulesTest(): void {
   describe('ModelRules', () => {
@@ -126,6 +138,56 @@ export default function modelRulesTest(): void {
       expect(calculateDownloadedBytes(90, 30, 100)).assertEqual(100)
       expect(calculateDownloadProgress(25, 100)).assertEqual(25)
       expect(calculateDownloadProgress(120, 100)).assertEqual(100)
+    })
+
+    it('formatsDownloadErrorsForUsers', 0, () => {
+      expect(formatDownloadError(new Error('Error: llm.mnn.weight 下载失败：HTTP 404')))
+        .assertEqual('llm.mnn.weight 下载失败：HTTP 404')
+      expect(formatDownloadError(new DownloadErrorFixture()))
+        .assertEqual('错误码 2300007：网络不可用')
+    })
+
+    it('reordersModelCardsAcrossEveryEqualHeightPosition', 0, () => {
+      const frames: ModelDragFrame[] = [
+        { top: 0, height: 60 },
+        { top: 68, height: 60 },
+        { top: 136, height: 60 },
+        { top: 204, height: 60 }
+      ]
+      for (let startIndex = 0; startIndex < frames.length; startIndex++) {
+        for (let targetIndex = 0; targetIndex < frames.length; targetIndex++) {
+          const startCenter = frames[startIndex].top + frames[startIndex].height / 2
+          const targetCenter = frames[targetIndex].top + frames[targetIndex].height / 2
+          expect(resolveModelDragPreview(frames, startIndex, targetCenter - startCenter).targetIndex)
+            .assertEqual(targetIndex)
+        }
+      }
+      expect(resolveModelDragPreview(frames, 2, -180).offsetY).assertEqual(-180)
+      expect(resolveModelDragPreview(frames, 2, -180).targetIndex).assertEqual(0)
+      expect(resolveModelDragPreview(frames, 1, -67).targetIndex).assertEqual(1)
+      expect(resolveModelDragPreview(frames, 1, 20).targetIndex).assertEqual(1)
+    })
+
+    it('reordersDifferentHeightModelCardsAtBothBoundaries', 0, () => {
+      const frames: ModelDragFrame[] = [
+        { top: 0, height: 80 },
+        { top: 88, height: 40 },
+        { top: 136, height: 100 },
+        { top: 244, height: 50 }
+      ]
+      expect(resolveModelDragPreview(frames, 2, -146).targetIndex).assertEqual(0)
+      expect(resolveModelDragPreview(frames, 1, 161).targetIndex).assertEqual(3)
+      expect(resolveModelDragPreview(frames, 0, 300).targetIndex).assertEqual(3)
+      expect(resolveModelDragPreview(frames, 3, -300).targetIndex).assertEqual(0)
+    })
+
+    it('keepsHiddenMarketModelsOutOfVisibleDragIndexes', 0, () => {
+      const allIds = ['visible-a', 'hidden-a', 'visible-b', 'hidden-b', 'visible-c']
+      const visibleIds = ['visible-a', 'visible-b', 'visible-c']
+      expect(reorderVisibleModelIds(allIds, visibleIds, 'visible-c', 0).join(','))
+        .assertEqual('visible-c,hidden-a,visible-a,hidden-b,visible-b')
+      expect(reorderVisibleModelIds(allIds, visibleIds, 'visible-a', 2).join(','))
+        .assertEqual('visible-b,hidden-a,visible-c,hidden-b,visible-a')
     })
 
     it('keepsQwen3VlCatalogManifestComplete', 0, () => {

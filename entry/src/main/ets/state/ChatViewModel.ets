@@ -45,7 +45,8 @@ import {
 } from '../services/GenerationWorkflow'
 import { ModelDeleteResult, ModelLifecycleService } from '../services/ModelLifecycleService'
 import { calculateDownloadProgress } from '../utils/downloadProgress'
-import { formatError } from '../utils/formatters'
+import { formatDownloadError, formatError } from '../utils/formatters'
+import { reorderVisibleModelIds } from '../utils/modelDrag'
 import { ChatSession } from './ChatSession'
 import { ModelManager } from './ModelManager'
 
@@ -287,7 +288,7 @@ export class ChatViewModel {
       return
     }
     this.modelCatalogRefreshing = true
-    this.modelCatalogStatus = '正在更新模型市场...'
+    this.modelCatalogStatus = '正在更新模型广场...'
     this.notify()
     this.modelCatalogService.refresh(this.filesDir).then((result: ModelCatalogRefreshResult) => {
       this.modelCatalogRefreshing = false
@@ -305,7 +306,7 @@ export class ChatViewModel {
       this.modelCatalogStatus = httpStatus.length > 0 ?
         `在线更新失败（${httpStatus}），已保留当前目录` : '在线更新失败，已保留当前目录'
       if (showResultToast) {
-        this.toastCallback('模型市场更新失败，已保留当前目录')
+        this.toastCallback('模型广场更新失败，已保留当前目录')
       }
       this.notify()
     })
@@ -318,7 +319,7 @@ export class ChatViewModel {
     }
     const item = this.modelCatalogService.findMarketItem(catalogItemId)
     if (item === undefined) {
-      this.status = '安装失败：模型市场条目不存在'
+      this.status = '安装失败：模型广场条目不存在'
       this.notify()
       return
     }
@@ -784,9 +785,15 @@ export class ChatViewModel {
     if (this.busy || this.modelLoading || this.modelImporting || this.builtinModelInstalling) {
       return
     }
-    if (!this.modelManager.moveProfile(modelId, targetIndex, this.filesDir)) {
+    const visibleIds = this.modelProfiles().map((profile: ModelProfile) => profile.id)
+    const currentIndex = visibleIds.indexOf(modelId)
+    const nextIndex = Math.max(0, Math.min(visibleIds.length - 1, Math.round(targetIndex)))
+    if (currentIndex < 0 || currentIndex === nextIndex) {
       return
     }
+    const allIds = this.modelManager.modelOrderIds()
+    const nextOrder = reorderVisibleModelIds(allIds, visibleIds, modelId, nextIndex)
+    this.modelManager.setModelOrder(nextOrder, this.filesDir)
     this.saveModelOrder()
     this.notify()
   }
@@ -960,11 +967,14 @@ export class ChatViewModel {
 
   private refreshStorageStats(): void {
     const modelConfig = this.modelPath
-    const modelDir = modelConfig.length > 0 ? modelConfig.substring(0, modelConfig.lastIndexOf('/')) : ''
-    this.statsService.readStorageStats(this.filesDir, modelDir).then((storageStats: StorageStats) => {
+    this.readStorageStatsForModel(this.currentModel(), modelConfig).then((storageStats: StorageStats) => {
       this.cacheStorageStats(modelConfig, storageStats)
     }).catch((_err: Error) => {
     })
+  }
+
+  readStorageStatsForCurrentModel(): Promise<StorageStats> {
+    return this.readStorageStatsForModel(this.currentModel(), this.modelPath)
   }
 
   storageStatsForCurrentModel(): StorageStats {
@@ -992,13 +1002,27 @@ export class ChatViewModel {
   private preloadModelStorageStats(): void {
     const profiles = this.modelManager.profiles()
     for (let index = 0; index < profiles.length; index++) {
-      const modelConfig = this.modelManager.defaultConfigPath(this.filesDir, profiles[index])
-      const modelDir = modelConfig.substring(0, modelConfig.lastIndexOf('/'))
-      this.statsService.readCurrentModelStorage(modelDir).then((currentModelStorage: string) => {
+      const profile = profiles[index]
+      const modelConfig = this.modelManager.defaultConfigPath(this.filesDir, profile)
+      this.readModelStorage(profile, modelConfig).then((currentModelStorage: string) => {
         this.modelStorageStats.set(modelConfig, currentModelStorage)
       }).catch((_err: Error) => {
       })
     }
+  }
+
+  private readStorageStatsForModel(model: ModelProfile, modelConfig: string): Promise<StorageStats> {
+    const modelDir = modelConfig.length > 0 ? modelConfig.substring(0, modelConfig.lastIndexOf('/')) : ''
+    return this.modelLifecycleService.isInstalled(this.filesDir, model, modelConfig).then((installed: boolean) => {
+      return this.statsService.readStorageStats(this.filesDir, installed ? modelDir : '')
+    })
+  }
+
+  private readModelStorage(model: ModelProfile, modelConfig: string): Promise<string> {
+    const modelDir = modelConfig.length > 0 ? modelConfig.substring(0, modelConfig.lastIndexOf('/')) : ''
+    return this.modelLifecycleService.isInstalled(this.filesDir, model, modelConfig).then((installed: boolean) => {
+      return installed ? this.statsService.readCurrentModelStorage(modelDir) : '未安装'
+    })
   }
 
   openModelLoadDialog(autoStart: boolean = false): void {
@@ -1227,7 +1251,7 @@ export class ChatViewModel {
         this.status = `${spec.displayName} 下载已停止`
       } else {
         this.builtinModelInstallCanceled = false
-        this.builtinModelInstallError = `安装失败：${formatError(err as Object)}`
+        this.builtinModelInstallError = `安装失败：${formatDownloadError(err as Object)}`
         this.builtinModelInstallMessage = `${spec.displayName} 未安装完成，可以重试。`
         this.status = this.builtinModelInstallError
       }

@@ -19,6 +19,7 @@ struct Index {
   @State private showLaunch: boolean = true
   @State private activeTab: number = 0
   @State private stateVersion: number = 0
+  @State private modelCardDragging: boolean = false
   private lastBackTime: number = 0
   private abilityContext?: common.UIAbilityContext
 
@@ -96,7 +97,7 @@ struct Index {
             loaded: this.viewModel.loaded,
             busy: this.viewModel.busy,
             showNewChat: this.activeTab === 0,
-            actionLabel: this.activeTab === 1 ? '模型市场' : '',
+            actionLabel: this.activeTab === 1 ? '模型广场' : '',
             onNewChat: () => {
               this.newChat()
             },
@@ -125,7 +126,10 @@ struct Index {
 
           ModelTab({
             viewModel: this.viewModel,
-            renderVersion: this.stateVersion
+            renderVersion: this.stateVersion,
+            onDragStateChange: (dragging: boolean) => {
+              this.modelCardDragging = dragging
+            }
           })
           .padding({ left: 14, right: 14 })
           .height('100%')
@@ -141,6 +145,7 @@ struct Index {
         }
         .layoutWeight(1)
         .width('100%')
+        .zIndex(this.modelCardDragging ? 10 : 0)
         BottomTabs({
           activeTab: this.activeTab,
           onTabChange: (index: number) => {

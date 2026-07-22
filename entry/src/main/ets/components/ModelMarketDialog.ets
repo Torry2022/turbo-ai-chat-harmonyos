@@ -146,7 +146,7 @@ export struct ModelMarketDialog {
 
       Column({ space: 12 }) {
         Row() {
-          Text('模型市场')
+          Text('模型广场')
             .fontSize(20)
             .fontWeight(FontWeight.Bold)
             .fontColor('#F4FBFF')

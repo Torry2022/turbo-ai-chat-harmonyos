@@ -1,6 +1,7 @@
 import hidebug from '@ohos.hidebug'
 import batteryInfo from '@ohos.batteryInfo'
 import fs from '@ohos.file.fs'
+import { storageStatistics } from '@kit.CoreFileKit'
 import { EMPTY_RUNTIME_STATS, EMPTY_STORAGE_STATS, RuntimeStats, StorageStats } from '../models/RuntimeStats'
 import { bytesToDisplay, bytesToMb, formatError, kbToMb } from '../utils/formatters'
 
@@ -42,7 +43,8 @@ export class RuntimeStatsService {
       return EMPTY_STORAGE_STATS
     }
     try {
-      const appFilesBytes = await this.pathSize(filesDir)
+      const bundleStats = await storageStatistics.getCurrentBundleStats()
+      const appFilesBytes = bundleStats.appSize + bundleStats.dataSize + bundleStats.cacheSize
       const currentModelBytes = currentModelDir.length > 0 && (await this.exists(currentModelDir)) ?
         await this.pathSize(currentModelDir) : 0
       return {

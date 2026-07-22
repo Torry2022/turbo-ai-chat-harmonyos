@@ -125,7 +125,7 @@ export class ModelCatalogService {
           catalogVersion: this.catalogVersion,
           publishedAt: this.publishedAt,
           message: manifest.catalogVersion === this.catalogVersion ?
-            '模型市场已是最新' : '在线目录版本较旧，已保留当前目录'
+            '模型广场已是最新' : '在线目录版本较旧，已保留当前目录'
         }
       }
       const nextItems = mergeRemoteModelCatalog(MODEL_CATALOG_ITEMS, manifest)
@@ -139,7 +139,7 @@ export class ModelCatalogService {
         source: this.source,
         catalogVersion: this.catalogVersion,
         publishedAt: this.publishedAt,
-        message: '模型市场已更新'
+        message: '模型广场已更新'
       }
     } finally {
       request.destroy()

@@ -8,7 +8,7 @@
 
 ![Turbo AI Chat hero](docs/images/hero.png)
 
-**Turbo AI Chat 是一个 HarmonyOS NEXT 原生端侧大模型聊天应用**，用于验证在鸿蒙设备上直接运行本地 LLM 的完整链路。项目基于 ArkTS、C++ N-API 和 MNN Runtime 构建，预置 Qwen3-4B-Instruct、MiniCPM5-1B 和 Gemma-4-E2B-it，并可通过模型市场或本地导入扩展兼容的文本与多模态 MNN 模型；同时提供流式对话、模型切换、图片理解和运行监控能力。
+**Turbo AI Chat 是一个 HarmonyOS NEXT 原生端侧大模型聊天应用**，用于验证在鸿蒙设备上直接运行本地 LLM 的完整链路。项目基于 ArkTS、C++ N-API 和 MNN Runtime 构建，预置 Qwen3-4B-Instruct、MiniCPM5-1B 和 Gemma-4-E2B-it，并可通过模型广场或本地导入扩展兼容的文本与多模态 MNN 模型；同时提供流式对话、模型切换、图片理解和运行监控能力。
 
 本仓库 fork 自 [Turbo1123/turbo-ai-chat-harmonyos](https://github.com/Turbo1123/turbo-ai-chat-harmonyos)。
 
@@ -32,7 +32,7 @@
 鸿蒙生态中，端侧 AI 推理目前主要依赖卓易通等 Android 兼容层运行安卓 App。Turbo AI Chat 用纯原生链路（ArkTS → N-API → MNN → CPU）验证了一条不同的路径：
 
 - **架构原生**：推理层直接对接 HarmonyOS NDK，无 Android 兼容层转译开销
-- **开箱可复现**：通过模型市场从 ModelScope 一键下载预置模型，不依赖 HuggingFace（国内网络友好）
+- **开箱可复现**：通过模型广场从 ModelScope 一键下载预置模型，不依赖 HuggingFace（国内网络友好）
 - **工程可复用**：MNN Runtime 封装、流式输出管线、Markdown 渲染等模块可作为其他鸿蒙 AI 应用的集成参考
 - **开发者友好**：hdc 一键查看原始推理日志（`raw_output_debug.txt`），包含 prompt、模型输出、采样参数和 token 统计，便于定位模型行为
 
@@ -46,10 +46,10 @@
 
 **模型与市场**
 
-- 默认文本模型切换为 Qwen3-4B-Instruct，并支持在 App 内通过模型市场从 ModelScope 安装预置模型和更多 MNN 模型条目。
-- 模型市场支持在线目录刷新和本地缓存回退；维护者更新 [`model-catalog/catalog.json`](model-catalog/catalog.json) 后，用户无需更换安装包即可获取兼容的新市场条目。
-- Fork 或二次开发版本默认仍读取本仓库的在线目录；如需维护独立模型市场，应修改 [`ModelCatalogService.ets`](entry/src/main/ets/services/ModelCatalogService.ets) 中的 `REMOTE_MODEL_CATALOG_URL`，指向自己的 Raw 目录地址并重新构建 App。
-- 模型市场下载支持停止后断点续传；关闭已停止的安装弹窗会清理未完成的临时下载文件，避免沙箱残留。
+- 默认文本模型切换为 Qwen3-4B-Instruct，并支持在 App 内通过模型广场从 ModelScope 安装预置模型和更多 MNN 模型条目。
+- 模型广场支持在线目录刷新和本地缓存回退；维护者更新 [`model-catalog/catalog.json`](model-catalog/catalog.json) 后，用户无需更换安装包即可获取兼容的新模型条目。
+- Fork 或二次开发版本默认仍读取本仓库的在线目录；如需维护独立模型广场，应修改 [`ModelCatalogService.ets`](entry/src/main/ets/services/ModelCatalogService.ets) 中的 `REMOTE_MODEL_CATALOG_URL`，指向自己的 Raw 目录地址并重新构建 App。
+- 模型广场下载支持停止后断点续传；关闭已停止的安装弹窗会清理未完成的临时下载文件，避免沙箱残留。
 - 除 zip 导入外，支持将完整 MNN 模型目录推送到 App 沙箱后，在模型页一键扫描注册，适合绕过大 zip 导入失败的问题。
 - 模型页支持排序、删除已安装模型目录，并在模型生成、加载、导入期间禁用相关控件，避免状态不一致。
 
@@ -78,7 +78,7 @@
 | 设备 | 真机设备。模拟器不作为本项目的本地 MNN 推理目标 |
 | 运存 | 建议 8 GB 及以上运行 Qwen3-4B-Instruct / Gemma-4-E2B-it；MiniCPM5-1B 可作为较低内存设备的轻量验证模型 |
 | 存储 | HAP 体积较小，模型权重占用为主要部分；单个 MNN 模型目录通常需要数 GB 存储空间 |
-| 网络 | App 内模型市场从 ModelScope 下载模型，首次安装模型需要可访问 ModelScope 的网络环境 |
+| 网络 | App 内模型广场从 ModelScope 下载模型，首次安装模型需要可访问 ModelScope 的网络环境 |
 
 ## 快速开始
 
@@ -98,7 +98,7 @@ hdc install -r entry/build/default/outputs/default/entry-default-signed.hap
 
 ### 2. 安装模型
 
-App 和 HAP 均不内置模型权重。打开 App → 模型页 → 模型市场，或选 Qwen3-4B-Instruct、MiniCPM5-1B、Gemma-4-E2B-it 后点击加载，App 会引导从 ModelScope 下载到沙箱。
+App 和 HAP 均不内置模型权重。打开 App → 模型页 → 模型广场，或选 Qwen3-4B-Instruct、MiniCPM5-1B、Gemma-4-E2B-it 后点击加载，App 会引导从 ModelScope 下载到沙箱。
 
 | 模型 | 大小 | 能力 |
 |------|------|------|
@@ -122,7 +122,7 @@ App 和 HAP 均不内置模型权重。打开 App → 模型页 → 模型市场
 - 长对话滚动优化：缓存 Markdown / 思考块解析结果，并在用户滚动查看时暂停自动跟随底部
 - 生成参数调节：温度、Top-P/K、惩罚项等
 - 性能指标：TTFT、TPOT、tokens/s 实时显示
-- 模型管理：模型市场下载、调整模型排序、删除已安装模型目录
+- 模型管理：模型广场下载、调整模型排序、删除已安装模型目录
 - 导入本地 MNN 模型：支持 zip 导入，也支持 hdc 推送目录后扫描注册；正式 MNN 导出目录优先使用 `llm_config.json` 中的 `jinja.chat_template`
 
 ## 截图
@@ -143,15 +143,15 @@ hdc install -r turbo-ai-chat-harmonyos-vX.Y.Z-signed.hap
 
 ## 模型管理
 
-推荐优先使用 App 内模型市场安装模型；如果模型包较大或需要调试本地转换结果，再使用 zip 导入或手动推送目录。
+推荐优先使用 App 内模型广场安装模型；如果模型包较大或需要调试本地转换结果，再使用 zip 导入或手动推送目录。
 
-- **模型市场**：在模型页打开模型市场，可刷新在线目录并从 ModelScope 下载预置或扩展模型；网络失败时继续使用最近一次有效缓存或安装包内置目录。
+- **模型广场**：在模型页打开模型广场，可刷新在线目录并从 ModelScope 下载预置或扩展模型；网络失败时继续使用最近一次有效缓存或安装包内置目录。
 - **导入 zip**：适合体积较小、结构完整的 MNN 模型目录压缩包。
 - **手动推送目录**：适合大模型、离线调试或 zip 导入失败时使用，推送后在模型页扫描注册。
 
 ### 手动推送模型目录
 
-App 内通过模型市场下载模型、App 内选择 zip 导入模型是推荐方式。以下 `hdc` 推送仅作调试备用。
+App 内通过模型广场下载模型、App 内选择 zip 导入模型是推荐方式。以下 `hdc` 推送仅作调试备用。
 
 推送的模型目录必须是 **MNN 格式**，即通过 MNN `llmexport.py` 从 HuggingFace 权重导出的目录，包含 `config.json`、`llm_config.json`、tokenizer 文件、`llm.mnn`、`llm.mnn.weight` 等。原始 HuggingFace safetensors、GGUF、MLX 权重不能直接使用。
 
@@ -197,7 +197,7 @@ hdc file send -b com.example.gemma4mnn Qwen3-4B-Instruct-2507-MNN /data/storage/
 
 扫描只识别 `model-imports/` 下的一级子目录；目录名不要包含 `/`、`\` 或 `..`。在 Windows 终端中建议从模型目录的父目录执行 `hdc file send`，避免把更多上级路径或反斜杠写入 App 沙箱。若你的模型不在仓库 `models/` 下，也可以 `cd` 到该模型目录的父目录后再推送。
 
-App 会统一检查 MNN 模型目录的对话模板：模型市场下载、预置模型安装和导入模型扫描都会优先使用 `llm_config.json` 中已有的 `jinja.chat_template`；如果缺少该字段，App 仅额外兼容可自动识别的旧 ChatML 模板，否则会跳过该目录并提示模板不兼容。
+App 会统一检查 MNN 模型目录的对话模板：模型广场下载、预置模型安装和导入模型扫描都会优先使用 `llm_config.json` 中已有的 `jinja.chat_template`；如果缺少该字段，App 仅额外兼容可自动识别的旧 ChatML 模板，否则会跳过该目录并提示模板不兼容。
 
 ## PC 侧下载模型脚本
 
@@ -266,7 +266,7 @@ entry.isLoaded(): boolean
 
 本仓库源码使用 Apache-2.0 许可证。
 
-MNN Runtime 和模型权重遵循各自上游许可证或模型卡说明。本仓库和 Release HAP 均不提交模型权重，用户通过模型市场、脚本或手动推送获得的模型文件需自行遵守对应来源的使用条款。
+MNN Runtime 和模型权重遵循各自上游许可证或模型卡说明。本仓库和 Release HAP 均不提交模型权重，用户通过模型广场、脚本或手动推送获得的模型文件需自行遵守对应来源的使用条款。
 
 - [MNN](https://github.com/alibaba/MNN)
 - [Qwen3-4B-Instruct-2507-MNN](https://modelscope.cn/models/MNN/Qwen3-4B-Instruct-2507-MNN)

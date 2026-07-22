@@ -10,11 +10,13 @@ import {
   ModelProfile
 } from '../models/ModelProfile'
 import { ChatViewModel } from '../state/ChatViewModel'
+import { ModelDragFrame, resolveModelDragPreview } from '../utils/modelDrag'
 
 @Component
 export struct ModelTab {
   @ObjectLink viewModel: ChatViewModel
   @Prop @Watch('onRenderVersionChange') renderVersion: number = 0
+  onDragStateChange: (dragging: boolean) => void = (_dragging: boolean) => {}
   @State sliderMaxNewTokens: number = DEFAULT_MAX_NEW_TOKENS
   @State sliderTemperature: number = DEFAULT_TEMPERATURE
   @State sliderTopP: number = DEFAULT_TOP_P
@@ -29,10 +31,11 @@ export struct ModelTab {
   @State visibleModelProfiles: ModelProfile[] = []
   @State draggingModelId: string = ''
   @State dragOffsetY: number = 0
+  @State dragTargetIndex: number = -1
   private modelScroller: Scroller = new Scroller()
-  private readonly modelDragStep: number = 78
+  private readonly modelCardGap: number = 8
   private dragStartIndex: number = -1
-  private dragLatestIndex: number = -1
+  private modelCardFrames: Map<string, ModelDragFrame> = new Map()
 
   aboutToAppear(): void {
     this.syncGenerationSlidersFromViewModel()
@@ -77,37 +80,102 @@ export struct ModelTab {
     }
   }
 
-  private beginModelDrag(profile: ModelProfile, index: number): void {
+  private beginModelDrag(profile: ModelProfile): void {
     if (!this.controlsEnabled()) {
+      return
+    }
+    const index = this.visibleModelProfiles.findIndex((item: ModelProfile) => item.id === profile.id)
+    if (index < 0) {
       return
     }
     this.draggingModelId = profile.id
     this.dragStartIndex = index
-    this.dragLatestIndex = index
+    this.dragTargetIndex = index
     this.dragOffsetY = 0
+    this.onDragStateChange(true)
   }
 
   private updateModelDrag(offsetY: number): void {
     if (this.draggingModelId.length <= 0 || this.dragStartIndex < 0) {
       return
     }
-    const profiles = this.visibleModelProfiles
-    const targetIndex = Math.max(0, Math.min(profiles.length - 1, this.dragStartIndex + Math.round(offsetY / this.modelDragStep)))
-    this.dragOffsetY = offsetY - (targetIndex - this.dragStartIndex) * this.modelDragStep
-    if (targetIndex === this.dragLatestIndex) {
+    const frames = this.currentModelCardFrames()
+    if (frames === undefined) {
+      this.dragOffsetY = offsetY
       return
     }
-    this.dragLatestIndex = targetIndex
-    this.viewModel.moveModelToIndex(this.draggingModelId, targetIndex)
-    this.refreshModelProfiles()
+    const preview = resolveModelDragPreview(frames, this.dragStartIndex, offsetY)
+    this.dragTargetIndex = preview.targetIndex
+    this.dragOffsetY = preview.offsetY
   }
 
   private endModelDrag(): void {
+    const modelId = this.draggingModelId
+    const startIndex = this.dragStartIndex
+    const targetIndex = this.dragTargetIndex
+    if (modelId.length > 0) {
+      this.onDragStateChange(false)
+    }
     this.draggingModelId = ''
     this.dragStartIndex = -1
-    this.dragLatestIndex = -1
+    this.dragTargetIndex = -1
     this.dragOffsetY = 0
+    if (modelId.length > 0 && targetIndex >= 0 && targetIndex !== startIndex) {
+      this.viewModel.moveModelToIndex(modelId, targetIndex)
+    }
     this.refreshModelProfiles()
+  }
+
+  private modelCardOffset(modelId: string): number {
+    if (this.draggingModelId.length <= 0 || this.dragStartIndex < 0 || this.dragTargetIndex < 0) {
+      return 0
+    }
+    if (modelId === this.draggingModelId) {
+      return this.dragOffsetY
+    }
+    const index = this.visibleModelProfiles.findIndex((profile: ModelProfile) => profile.id === modelId)
+    const draggedFrame = this.modelCardFrames.get(this.draggingModelId)
+    if (index < 0 || draggedFrame === undefined) {
+      return 0
+    }
+    const placeholderOffset = draggedFrame.height + this.modelCardGap
+    if (this.dragTargetIndex > this.dragStartIndex &&
+      index > this.dragStartIndex && index <= this.dragTargetIndex) {
+      return -placeholderOffset
+    }
+    if (this.dragTargetIndex < this.dragStartIndex &&
+      index >= this.dragTargetIndex && index < this.dragStartIndex) {
+      return placeholderOffset
+    }
+    return 0
+  }
+
+  private currentModelCardFrames(): ModelDragFrame[] | undefined {
+    const frames: ModelDragFrame[] = []
+    for (let index = 0; index < this.visibleModelProfiles.length; index++) {
+      const frame = this.modelCardFrames.get(this.visibleModelProfiles[index].id)
+      if (frame === undefined) {
+        return undefined
+      }
+      frames.push(frame)
+    }
+    return frames
+  }
+
+  private lengthValue(value: Length | undefined): number {
+    if (value === undefined) {
+      return 0
+    }
+    const numericValue = typeof value === 'number' ? value : Number.parseFloat(`${value}`)
+    return Number.isFinite(numericValue) ? numericValue : 0
+  }
+
+  private rememberModelCardFrame(modelId: string, area: Area): void {
+    const top = this.lengthValue(area.position.y)
+    const height = this.lengthValue(area.height)
+    if (height > 0) {
+      this.modelCardFrames.set(modelId, { top, height })
+    }
   }
 
   @Builder
@@ -140,7 +208,7 @@ export struct ModelTab {
   }
 
   @Builder
-  private ModelOption(profile: ModelProfile, index: number) {
+  private ModelOption(profile: ModelProfile) {
     Stack({ alignContent: Alignment.BottomEnd }) {
       Column({ space: 4 }) {
         Row({ space: 6 }) {
@@ -177,7 +245,7 @@ export struct ModelTab {
           GestureGroup(GestureMode.Parallel,
             LongPressGesture({ duration: 350 })
               .onAction(() => {
-                this.beginModelDrag(profile, index)
+                this.beginModelDrag(profile)
               })
               .onActionEnd(() => {
                 this.endModelDrag()
@@ -214,9 +282,11 @@ export struct ModelTab {
       offsetY: 0
     })
     .scale(this.draggingModelId === profile.id ? { x: 1.02, y: 1.02 } : { x: 1, y: 1 })
-    .translate({ x: 0, y: this.draggingModelId === profile.id ? this.dragOffsetY : 0 })
+    .translate({ x: 0, y: this.modelCardOffset(profile.id) })
     .zIndex(this.draggingModelId === profile.id ? 10 : 0)
-    .animation({ duration: this.draggingModelId === profile.id ? 80 : 180, curve: Curve.EaseInOut })
+    .onAreaChange((_oldValue: Area, newValue: Area) => {
+      this.rememberModelCardFrame(profile.id, newValue)
+    })
     .onClick(() => {
       if (!this.controlsEnabled() || this.draggingModelId.length > 0) {
         return
@@ -240,12 +310,13 @@ export struct ModelTab {
     Column({ space: 10 }) {
       this.SectionTitle('模型列表')
       Column({ space: 8 }) {
-        ForEach(this.visibleModelProfiles, (profile: ModelProfile, index: number) => {
-          this.ModelOption(profile, index)
+        ForEach(this.visibleModelProfiles, (profile: ModelProfile) => {
+          this.ModelOption(profile)
         }, (profile: ModelProfile) =>
           `${profile.id}-${profile.name}-${profile.shortName}-${profile.description}`)
       }
       .width('100%')
+      .zIndex(this.draggingModelId.length > 0 ? 10 : 0)
       Button(this.viewModel.loaded ? '释放模型' : '加载模型')
         .enabled(this.controlsEnabled())
         .height(38)
@@ -275,6 +346,7 @@ export struct ModelTab {
     .padding(12)
     .backgroundColor('#0D1A28')
     .borderRadius(8)
+    .zIndex(this.draggingModelId.length > 0 ? 10 : 0)
   }
 
   @Builder
@@ -777,5 +849,6 @@ export struct ModelTab {
     .align(Alignment.Top)
     .scrollBar(BarState.Off)
     .edgeEffect(EdgeEffect.Spring)
+    .enableScrollInteraction(this.draggingModelId.length <= 0)
   }
 }
