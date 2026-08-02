@@ -2,7 +2,7 @@
 
 Turbo AI Chat 基于 [`Turbo1123/turbo-ai-chat-harmonyos`](https://github.com/Turbo1123/turbo-ai-chat-harmonyos) 开发。上游仓库在 [`f946a84`](https://github.com/Turbo1123/turbo-ai-chat-harmonyos/commit/f946a842c371fd2d00e0e33369ae8efc7b564474) 中实现了 Gemma 4 的端侧文本生成：ArkTS 通过 N-API 调用 C++，再由 MNN Runtime 加载模型并完成流式输出和多轮对话。
 
-本仓库保留了这条基础链路，并在后续开发中补充了多模型加载、图片输入、生成控制、性能统计和模型管理。本文记录这些改动在当前版本中的实现方式。
+本仓库保留了这条基础链路，并在后续开发中补充了多模型加载、图片输入、生成控制、性能统计、模型管理和局域网 API 服务。本文记录这些改动在当前版本中的实现方式。
 
 ## 多模型加载
 
@@ -46,12 +46,20 @@ ArkTS 根据这些结果更新消息状态，并计算 TTFT、TPOT 和 tokens/s�
 
 下载、导入、切换、删除和推理共用统一的忙碌状态约束。例如，模型正在生成内容时不能同时删除其目录，切换模型前也会先结束并释放当前实例。模型广场的在线目录只保存模型信息和下载地址，权重文件仍由 ModelScope 等模型托管平台提供。
 
+## 局域网 API 服务
+
+`OpenAiApiServer` 使用 HarmonyOS 的 `TCPSocketServer` 在设备上监听端口，将 OpenAI 兼容请求转换为现有的文本生成调用。服务支持查询当前模型，并通过 Chat Completions API 或 Responses API 返回普通 JSON 和 SSE 流式结果。
+
+API 请求与 App 内对话共用同一个 `MnnLlmRunner` 实例和忙碌状态，因此同一时间只执行一个生成任务。第一版不自动切换模型，也不接收图片或工具调用。模型输出包含 `<think>` 时，Chat Completions API 通过 `reasoning_content` 返回思考过程，Responses API 使用独立 reasoning 输出项，最终回答仍保留在常规文本字段中。
+
+服务仅在用户手动开启后监听局域网地址，并可使用 Bearer API Key 鉴权。关闭服务或断开正在生成的客户端连接时，停止请求会继续传递到 native 推理层。
+
 ## 当前调用关系
 
 ```text
-ChatTab / ModelTab / MonitorTab
-                |
-          ChatViewModel
+ChatTab / ModelTab / MonitorTab          Cherry Studio 等局域网客户端
+                |                                   |
+          ChatViewModel <---------------- OpenAiApiServer
       |-- GenerationWorkflow -- ImagePayloadService
       |-- ModelLifecycleService
       |     |-- ModelDirectoryPreflightService
@@ -76,6 +84,7 @@ ChatTab / ModelTab / MonitorTab
 - `GenerationWorkflow` 组织单次生成流程，并协调文字与图片输入；
 - `ModelLifecycleService` 处理模型加载、切换、删除及相关状态检查；
 - `NativeInferenceService` 封装 ArkTS 对 N-API 的调用；
+- `OpenAiApiServer` 处理 HTTP、Bearer 鉴权和 OpenAI 协议转换；
 - N-API 负责参数转换、异步任务和流式回调；
 - `MnnLlmRunner` 直接调用 MNN，返回生成文本、停止原因和 token 统计。
 
@@ -100,6 +109,6 @@ ChatTab / ModelTab / MonitorTab
 
 ## English summary
 
-The upstream project established the initial ArkTS → N-API → C++ → MNN pipeline for Gemma 4 text generation on HarmonyOS. This repository retains that foundation and extends it with compatible multi-model loading, native image input, generation control, performance metrics, and model lifecycle management.
+The upstream project established the initial ArkTS → N-API → C++ → MNN pipeline for Gemma 4 text generation on HarmonyOS. This repository retains that foundation and extends it with compatible multi-model loading, native image input, generation control, performance metrics, model lifecycle management, and an OpenAI-compatible LAN API.
 
-Model-specific settings are read primarily from each MNN directory. Text, raw-prompt, and image requests share the same native boundary, while generation results include cancellation state, stop reason, and token counts. The internal runner was renamed from `GemmaRunner` to `MnnLlmRunner` to reflect its current responsibility. Public N-API methods and the existing application identity remain unchanged.
+Model-specific settings are read primarily from each MNN directory. Text, raw-prompt, image, and LAN API requests share the same native boundary, while generation results include cancellation state, stop reason, and token counts. The API server exposes the currently loaded model through `/v1/models`, `/v1/chat/completions`, and `/v1/responses`. The internal runner was renamed from `GemmaRunner` to `MnnLlmRunner` to reflect its current responsibility. Public N-API methods and the existing application identity remain unchanged.

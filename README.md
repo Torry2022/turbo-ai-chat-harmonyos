@@ -8,7 +8,7 @@
 
 ![Turbo AI Chat hero](docs/images/hero.png)
 
-**Turbo AI Chat 是一个 HarmonyOS NEXT 原生端侧大模型聊天应用**，用于验证在鸿蒙设备上直接运行本地 LLM 的完整链路。项目基于 ArkTS、C++ N-API 和 MNN Runtime 构建，预置 Qwen3-4B-Instruct、MiniCPM5-1B 和 Gemma-4-E2B-it，并可通过模型广场或本地导入扩展兼容的文本与多模态 MNN 模型；同时提供流式对话、模型切换、图片理解和运行监控能力。
+**Turbo AI Chat 是一个 HarmonyOS NEXT 原生端侧大模型聊天应用**，用于验证在鸿蒙设备上直接运行本地 LLM 的完整链路。项目基于 ArkTS、C++ N-API 和 MNN Runtime 构建，预置 Qwen3-4B-Instruct、MiniCPM5-1B 和 Gemma-4-E2B-it，并可通过模型广场或本地导入扩展兼容的文本与多模态 MNN 模型；同时提供流式对话、模型切换、图片理解、运行监控和局域网 OpenAI 兼容 API。
 
 本仓库 fork 自 [Turbo1123/turbo-ai-chat-harmonyos](https://github.com/Turbo1123/turbo-ai-chat-harmonyos)。上游完成了 Gemma 4 文本推理的 ArkTS → N-API → C++ → MNN 基础链路；本 fork 在此基础上进行了多模型、多模态和工程化演进。继承边界、架构变化与关键提交见[核心推理链演进说明](docs/architecture/core-inference-evolution.md)。
 
@@ -20,6 +20,7 @@
 - [快速开始](#快速开始)
 - [功能](#功能)
 - [截图](#截图)
+- [OpenAI 兼容 API 服务](#openai-兼容-api-服务)
 - [模型管理](#模型管理)
 - [模型格式说明](#模型格式说明)
 - [推理后端与性能](#推理后端与性能)
@@ -69,6 +70,11 @@
 - 监控页新增 App 存储占用、模型状态、版本/许可证信息和更紧凑的设备指标展示。
 - 模型加载失败时会保留加载弹窗中的错误提示并清理推理状态，便于用户识别可用内存不足等加载问题后重试。
 - 优化 Markdown 表格、列表、代码片段、思考块展示、原始输出日志和 MNN 对话模板处理，便于排查模型复读、停止符和模板问题。
+
+**API 服务**
+
+- 可将当前已加载的 MNN 模型作为局域网 OpenAI 兼容服务，供 Cherry Studio 等客户端调用。
+- 支持 `/v1/models`、`/v1/chat/completions` 和 `/v1/responses`，包括 SSE 流式输出与可选 Bearer API Key。
 
 ## 系统要求
 
@@ -124,12 +130,27 @@ App 和 HAP 均不内置模型权重。打开 App → 模型页 → 模型广场
 - 性能指标：TTFT、TPOT、tokens/s 实时显示
 - 模型管理：模型广场下载、调整模型排序、删除已安装模型目录
 - 导入本地 MNN 模型：支持 zip 导入，也支持 hdc 推送目录后扫描注册；正式 MNN 导出目录优先使用 `llm_config.json` 中的 `jinja.chat_template`
+- OpenAI 兼容 API：通过局域网向 Cherry Studio 等客户端提供当前已加载模型，支持流式输出和 Bearer 鉴权
 
 ## 截图
 
 | 聊天界面                          | 模型界面                              | 监控界面                                |
 |-------------------------------|-----------------------------------|-------------------------------------|
 | ![chat](docs/images/chat.jpg) | ![models](docs/images/models.jpg) | ![monitor](docs/images/monitor.jpg) |
+
+## OpenAI 兼容 API 服务
+
+模型加载完成后，进入“服务”页，设置端口并按需启用应用生成的 API Key 后启动服务。页面会显示形如 `http://192.168.1.126:8080` 的局域网地址。未加载模型时直接启动服务，App 会引导加载当前模型，并在加载成功后继续启动；释放、切换或删除当前模型时，正在运行的服务会自动停止。
+
+在 Cherry Studio 中添加 OpenAI 兼容服务时，填写页面显示的根地址，不要手动追加具体端点；如已启用 API Key，再填写同一密钥，然后获取模型列表。服务提供以下端点：
+
+- `GET /v1/models`
+- `POST /v1/chat/completions`
+- `POST /v1/responses`
+
+服务页会显示服务启停、请求路径、模型参数、响应状态、耗时和输出规模等运行日志，不记录 API Key、提示词或回答正文。
+
+第一版仅支持文本输入和当前已加载模型，同一时间处理一个生成请求。对于带 `<think>` 的模型，`/v1/chat/completions` 会将思考过程放入 `reasoning_content`，`/v1/responses` 会返回独立的 reasoning 输出项，最终回答仍保留在常规文本字段中。当前 `usage` 仅能准确提供生成 token 总数，暂不提供输入与 reasoning 的精确分项计数。服务随 App 运行，App 退出后停止；设备与客户端需要处于可互相访问的同一局域网。
 
 ## 从 HAP 直接安装
 

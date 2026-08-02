@@ -8,7 +8,7 @@
 
 ![Turbo AI Chat hero](docs/images/hero.png)
 
-**Turbo AI Chat is a HarmonyOS NEXT native on-device LLM chat application** for validating a complete local-inference pipeline on HarmonyOS devices. It is built with ArkTS, C++ N-API, and MNN Runtime, ships profiles for Qwen3-4B-Instruct, MiniCPM5-1B, and Gemma-4-E2B-it, and can add compatible text and multimodal MNN models through the Model Gallery or local import. The app also includes streaming chat, model switching, image understanding, and runtime monitoring.
+**Turbo AI Chat is a HarmonyOS NEXT native on-device LLM chat application** for validating a complete local-inference pipeline on HarmonyOS devices. It is built with ArkTS, C++ N-API, and MNN Runtime, ships profiles for Qwen3-4B-Instruct, MiniCPM5-1B, and Gemma-4-E2B-it, and can add compatible text and multimodal MNN models through the Model Gallery or local import. The app also includes streaming chat, model switching, image understanding, runtime monitoring, and an OpenAI-compatible LAN API.
 
 This repository is forked from [Turbo1123/turbo-ai-chat-harmonyos](https://github.com/Turbo1123/turbo-ai-chat-harmonyos). The upstream project established the ArkTS → N-API → C++ → MNN foundation for Gemma 4 text generation; this fork evolves it across multiple models, image input, and production-oriented workflows. See [Core Inference Pipeline Evolution](docs/architecture/core-inference-evolution.md) for the attribution boundary, architecture changes, and supporting commits.
 
@@ -20,6 +20,7 @@ This repository is forked from [Turbo1123/turbo-ai-chat-harmonyos](https://githu
 - [Quick Start](#quick-start)
 - [Features](#features)
 - [Screenshots](#screenshots)
+- [OpenAI-Compatible API Server](#openai-compatible-api-server)
 - [Model Management](#model-management)
 - [Model Format](#model-format)
 - [Inference Backend and Performance](#inference-backend-and-performance)
@@ -67,6 +68,11 @@ In the HarmonyOS ecosystem, on-device AI inference today largely depends on Andr
 - The Monitor tab includes app storage usage, model state, version/license text, and tighter device metrics.
 - Model load failures keep the error in the load dialog and reset inference state, making low-memory or failed-load recovery clearer.
 - Markdown tables, lists, code snippets, thinking blocks, raw output logs, and MNN chat-template handling were improved for diagnosing repetition, stop tokens, and prompt template issues.
+
+**API server**
+
+- The currently loaded MNN model can be exposed as an OpenAI-compatible LAN service for clients such as Cherry Studio.
+- `/v1/models`, `/v1/chat/completions`, and `/v1/responses` are supported, including SSE streaming and optional Bearer authentication.
 
 ## System Requirements
 
@@ -122,12 +128,27 @@ After the model loads, return to the Chat tab and send a message. MiniCPM5-1B di
 - Performance metrics: TTFT, TPOT, tokens/s per assistant message
 - Model management: model-market download, model ordering, and deleting installed model directories
 - Import local MNN models via zip, or by pushing a directory and scanning it in the app; standard MNN export directories use `jinja.chat_template` from `llm_config.json`
+- OpenAI-compatible API: serve the currently loaded model to Cherry Studio and other LAN clients with streaming output and Bearer authentication
 
 ## Screenshots
 
 | Chat | Model | Monitor |
 | --- | --- | --- |
 | ![chat](docs/images/chat.jpg) | ![models](docs/images/models.jpg) | ![monitor](docs/images/monitor.jpg) |
+
+## OpenAI-Compatible API Server
+
+After loading a model, open the **Service** tab, choose a port and optionally enable the app-generated API key, then start the server. The page displays a LAN address such as `http://192.168.1.126:8080`. If no model is loaded, starting the server opens the model-loading flow and continues automatically after a successful load. Releasing, switching, or deleting the current model stops a running server automatically.
+
+When adding an OpenAI-compatible provider in Cherry Studio, enter the displayed base URL without appending an endpoint. If API-key authentication is enabled, enter the same key, then fetch the model list. The server provides:
+
+- `GET /v1/models`
+- `POST /v1/chat/completions`
+- `POST /v1/responses`
+
+The Service tab shows operational logs for server lifecycle, request paths, model parameters, response status, latency, and output size. It does not log API keys, prompts, or response text.
+
+The first version accepts text input only, serves the currently loaded model, and processes one generation request at a time. For models that emit `<think>`, `/v1/chat/completions` returns reasoning in `reasoning_content`, while `/v1/responses` returns a separate reasoning output item; the final answer remains in the regular text field. For now, `usage` accurately reports only the total generated-token count; exact input and reasoning breakdowns are not available. The server runs with the app and stops when the app exits; the device and client must be reachable on the same LAN.
 
 ## Install from HAP
 

@@ -1,5 +1,6 @@
 import { common } from '@kit.AbilityKit'
 import { AppHeader } from '../components/AppHeader'
+import { ApiServerTab } from '../components/ApiServerTab'
 import { BottomTabs } from '../components/BottomTabs'
 import { BuiltinModelInstallDialog } from '../components/BuiltinModelInstallDialog'
 import { ChatTab } from '../components/ChatTab'
@@ -72,6 +73,8 @@ struct Index {
     this.activeTab = index
     if (index === 0) {
       this.viewModel.scrollToBottom()
+    } else if (index === 2) {
+      this.viewModel.refreshApiServerAddress()
     }
   }
 
@@ -96,6 +99,7 @@ struct Index {
             status: this.viewModel.status,
             loaded: this.viewModel.loaded,
             busy: this.viewModel.busy,
+            renderVersion: this.stateVersion,
             showNewChat: this.activeTab === 0,
             actionLabel: this.activeTab === 1 ? '模型广场' : '',
             onNewChat: () => {
@@ -135,7 +139,27 @@ struct Index {
           .height('100%')
           .visibility(this.activeTab === 1 ? Visibility.Visible : Visibility.Hidden)
 
-          if (this.activeTab === 2) {
+          ApiServerTab({
+            viewModel: this.viewModel,
+            renderVersion: this.stateVersion,
+            loaded: this.viewModel.loaded,
+            busy: this.viewModel.busy,
+            currentModelName: this.viewModel.currentModel().shortName,
+            apiServerRunning: this.viewModel.apiServerRunning,
+            apiServerStarting: this.viewModel.apiServerStarting,
+            apiServerPortInput: this.viewModel.apiServerPortInput,
+            apiServerRequireKey: this.viewModel.apiServerRequireKey,
+            apiServerKey: this.viewModel.apiServerKey,
+            apiServerAddress: this.viewModel.apiServerAddress,
+            apiServerStatus: this.viewModel.apiServerStatus,
+            apiServerRequestCount: this.viewModel.apiServerRequestCount,
+            apiServerLogs: this.viewModel.apiServerLogs
+          })
+          .padding({ left: 14, right: 14 })
+          .height('100%')
+          .visibility(this.activeTab === 2 ? Visibility.Visible : Visibility.Hidden)
+
+          if (this.activeTab === 3) {
             MonitorTab({
               viewModel: this.viewModel
             })

@@ -3,6 +3,7 @@ export struct AppHeader {
   @Prop status: string = ''
   @Prop loaded: boolean = false
   @Prop busy: boolean = false
+  @Prop renderVersion: number = 0
   @Prop showNewChat: boolean = true
   @Prop actionLabel: string = ''
   onNewChat: () => void = () => {}

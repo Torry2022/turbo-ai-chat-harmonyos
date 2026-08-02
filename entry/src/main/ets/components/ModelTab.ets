@@ -70,7 +70,8 @@ export struct ModelTab {
     return !this.viewModel.busy &&
       !this.viewModel.modelLoading &&
       !this.viewModel.modelImporting &&
-      !this.viewModel.builtinModelInstalling
+      !this.viewModel.builtinModelInstalling &&
+      !this.viewModel.apiServerStarting
   }
 
   private showToast(message: string): void {
@@ -844,8 +845,8 @@ export struct ModelTab {
       }
       .width('100%')
     }
-    .layoutWeight(1)
     .width('100%')
+    .height('100%')
     .align(Alignment.Top)
     .scrollBar(BarState.Off)
     .edgeEffect(EdgeEffect.Spring)

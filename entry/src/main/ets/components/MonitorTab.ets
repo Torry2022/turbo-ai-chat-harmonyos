@@ -265,8 +265,8 @@ export struct MonitorTab {
       }
       .width('100%')
     }
-    .layoutWeight(1)
     .width('100%')
+    .height('100%')
     .align(Alignment.Top)
     .scrollBar(BarState.Off)
     .edgeEffect(EdgeEffect.Spring)

@@ -30,7 +30,8 @@ export struct BottomTabs {
     Row({ space: 8 }) {
       this.TabButton(0, '聊天', '全屏对话')
       this.TabButton(1, '模型', '加载参数')
-      this.TabButton(2, '监控', 'CPU 内存')
+      this.TabButton(2, '服务', 'OpenAI API')
+      this.TabButton(3, '监控', 'CPU 内存')
     }
     .width('100%')
     .padding(4)

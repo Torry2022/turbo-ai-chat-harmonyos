@@ -1,6 +1,7 @@
 import { bundleManager, common } from '@kit.AbilityKit'
 import preferences from '@ohos.data.preferences'
-import { ChatMessage, ChatTurn, GenerationSettings, PerfMetrics } from '../models/ChatTypes'
+import cryptoFramework from '@ohos.security.cryptoFramework'
+import { ChatMessage, ChatTurn, GenerationResult, GenerationSettings, PerfMetrics } from '../models/ChatTypes'
 import { ImportedModelDraft } from '../models/ImportedModelTypes'
 import {
   BuiltinModelDownloadSpec,
@@ -33,6 +34,11 @@ import { BuiltinModelInstallService } from '../services/BuiltinModelInstallServi
 import { ModelImportService } from '../services/ModelImportService'
 import { ModelCatalogService } from '../services/ModelCatalogService'
 import { NativeInferenceService } from '../services/NativeInferenceService'
+import {
+  ApiGenerationRequest,
+  ApiServerModel,
+  OpenAiApiServer
+} from '../services/OpenAiApiServer'
 import { RuntimeStatsService } from '../services/RuntimeStatsService'
 import {
   SpeechRecognitionCallbacks,
@@ -49,6 +55,13 @@ import { formatDownloadError, formatError } from '../utils/formatters'
 import { reorderVisibleModelIds } from '../utils/modelDrag'
 import { ChatSession } from './ChatSession'
 import { ModelManager } from './ModelManager'
+
+export interface ApiServerLogEntry {
+  id: number
+  time: string
+  level: string
+  message: string
+}
 
 @Observed
 export class ChatViewModel {
@@ -107,6 +120,15 @@ export class ChatViewModel {
   importedModelSystemPromptInput: string = ''
   showDeleteModelDialog: boolean = false
   pendingDeleteModelId: string = ''
+  apiServerRunning: boolean = false
+  apiServerStarting: boolean = false
+  apiServerPortInput: string = '8080'
+  apiServerRequireKey: boolean = true
+  apiServerKey: string = ''
+  apiServerAddress: string = 'http://设备局域网 IP:8080'
+  apiServerStatus: string = 'API 服务未启动'
+  apiServerRequestCount: number = 0
+  apiServerLogs: ApiServerLogEntry[] = []
   stats: RuntimeStats = EMPTY_RUNTIME_STATS
   storageStats: StorageStats = EMPTY_STORAGE_STATS
   streamingChars: number = 0
@@ -131,6 +153,27 @@ export class ChatViewModel {
   private modelImportService: ModelImportService = new ModelImportService()
   private statsService: RuntimeStatsService = new RuntimeStatsService()
   private speechRecognitionService: SpeechRecognitionService = new SpeechRecognitionService()
+  private apiServer: OpenAiApiServer = new OpenAiApiServer({
+    isModelLoaded: () => this.loaded,
+    isGenerationReady: () => this.loaded && !this.busy && !this.modelLoading,
+    currentModel: () => this.apiServerModel(),
+    currentSettings: () => this.currentGenerationSettings(),
+    currentMaxNewTokens: () => this.maxNewTokens,
+    generate: (request: ApiGenerationRequest, onChunk: (chunk: string) => void) => {
+      return this.runApiGeneration(request, onChunk)
+    },
+    stopGeneration: () => this.stopGeneration(),
+    onStatus: (status: string) => {
+      if (status.startsWith('API 请求：')) {
+        this.apiServerRequestCount++
+      }
+      this.apiServerStatus = status
+      this.notify()
+    },
+    onLog: (level: string, message: string) => {
+      this.appendApiServerLog(level, message)
+    }
+  })
   private modelStorageStats: Map<string, string> = new Map()
   private generationWorkflow: GenerationWorkflow = new GenerationWorkflow(this.nativeService, this.imageService)
   private modelLifecycleService: ModelLifecycleService = new ModelLifecycleService(
@@ -140,9 +183,16 @@ export class ChatViewModel {
   )
   private pendingInstallCatalogItemId: string = ''
   private autoLoadAfterInstall: boolean = false
+  private apiServerStartAfterModelLoad: boolean = false
   private builtinModelInstallCancelRequested: boolean = false
   private readonly modelOrderPreferenceName: string = 'model-settings'
   private readonly modelOrderPreferenceKey: string = 'model-order'
+  private readonly apiServerPreferenceName: string = 'api-server-settings'
+  private readonly apiServerPortPreferenceKey: string = 'port'
+  private readonly apiServerRequireKeyPreferenceKey: string = 'require-key'
+  private readonly apiServerKeyPreferenceKey: string = 'api-key'
+  private readonly apiServerLogLimit: number = 100
+  private nextApiServerLogId: number = 1
 
   get modelPath(): string {
     return this.modelManager.modelPath
@@ -180,6 +230,7 @@ export class ChatViewModel {
     }
     this.modelManager.initialize(this.filesDir)
     this.loadModelOrder()
+    this.loadApiServerSettings()
     this.resetGenerationSettings(false)
     this.session.initializeWelcome(this.currentModel().shortName)
     this.syncMessages()
@@ -211,6 +262,9 @@ export class ChatViewModel {
     this.stopModelLoadProgress()
     this.speechRecognitionService.shutdown()
     this.resetSpeechRecognitionState()
+    this.apiServer.stop().catch((_err: Error) => {
+    })
+    this.apiServerRunning = false
   }
 
   modelProfiles(): ModelProfile[] {
@@ -273,6 +327,111 @@ export class ChatViewModel {
     this.notify()
   }
 
+  refreshApiServerAddress(): void {
+    const port = this.apiServerPort()
+    this.apiServer.refreshLanAddress(port).then((address: string) => {
+      this.apiServerAddress = address
+      this.notify()
+    }).catch((_err: Error) => {
+    })
+  }
+
+  clearApiServerLogs(): void {
+    this.apiServerLogs = []
+    this.notify()
+  }
+
+  updateApiServerPort(value: string): void {
+    if (this.apiServerRunning || this.apiServerStarting) {
+      return
+    }
+    this.apiServerPortInput = value.replace(/[^0-9]/g, '').substring(0, 5)
+    this.apiServerAddress = `http://设备局域网 IP:${this.apiServerPortInput.length > 0 ? this.apiServerPortInput : '8080'}`
+    this.saveApiServerSettings()
+    this.notify()
+  }
+
+  updateApiServerRequireKey(value: boolean): void {
+    if (this.apiServerRunning || this.apiServerStarting) {
+      return
+    }
+    this.apiServerRequireKey = value
+    this.saveApiServerSettings()
+    this.notify()
+  }
+
+  regenerateApiServerKey(): void {
+    if (this.apiServerRunning || this.apiServerStarting) {
+      return
+    }
+    this.createApiServerKey(true)
+  }
+
+  setApiServerEnabled(enabled: boolean): void {
+    if (this.apiServerStarting || enabled === this.apiServerRunning) {
+      return
+    }
+    if (!enabled) {
+      this.apiServerStartAfterModelLoad = false
+      this.apiServerStarting = true
+      this.apiServer.stop().then(() => {
+        this.apiServerRunning = false
+        this.apiServerStarting = false
+        this.notify()
+      }).catch((err: Error) => {
+        this.apiServerStarting = false
+        this.apiServerStatus = `停止 API 服务失败：${formatError(err as Object)}`
+        this.appendApiServerLog('ERROR', `停止服务失败：${formatError(err as Object)}`)
+        this.notify()
+      })
+      this.notify()
+      return
+    }
+    if (!this.loaded) {
+      this.apiServerStartAfterModelLoad = true
+      this.toastCallback('请先加载模型')
+      this.openModelLoadDialog(false)
+      this.notify()
+      return
+    }
+    this.apiServerStartAfterModelLoad = false
+    if (this.busy || this.modelLoading) {
+      this.apiServerStatus = '当前任务结束后才能启动 API 服务。'
+      this.notify()
+      return
+    }
+    const port = this.apiServerPort()
+    if (port < 1024 || port > 65535) {
+      this.apiServerStatus = '端口应为 1024 至 65535。'
+      this.notify()
+      return
+    }
+    if (this.apiServerRequireKey && this.apiServerKey.length <= 0) {
+      this.apiServerStatus = '请先生成 API Key。'
+      this.notify()
+      return
+    }
+    this.apiServerStarting = true
+    this.saveApiServerSettings()
+    this.apiServer.start({
+      port,
+      requireApiKey: this.apiServerRequireKey,
+      apiKey: this.apiServerKey
+    }).then((address: string) => {
+      this.apiServerAddress = address
+      this.apiServerRunning = true
+      this.apiServerStarting = false
+      this.notify()
+    }).catch((err: Error) => {
+      this.apiServerRunning = false
+      this.apiServerStarting = false
+      this.apiServerStatus = `启动 API 服务失败：${formatError(err as Object)}`
+      this.appendApiServerLog('ERROR', `启动服务失败：${formatError(err as Object)}`)
+      this.notify()
+    })
+    this.notify()
+  }
+
   updateModelMarketSearchText(value: string): void {
     this.modelMarketSearchText = value
     this.notify()
@@ -331,7 +490,7 @@ export class ChatViewModel {
   }
 
   switchModel(modelId: string): void {
-    if (this.busy || this.modelLoading || modelId === this.selectedModelId) {
+    if (this.busy || this.modelLoading || this.apiServerStarting || modelId === this.selectedModelId) {
       return
     }
 
@@ -540,7 +699,8 @@ export class ChatViewModel {
   }
 
   importModelPackage(): void {
-    if (this.busy || this.modelLoading || this.modelImporting || this.builtinModelInstalling) {
+    if (this.busy || this.modelLoading || this.modelImporting || this.builtinModelInstalling ||
+      this.apiServerStarting) {
       return
     }
     if (!this.context) {
@@ -587,7 +747,8 @@ export class ChatViewModel {
   }
 
   scanPushedModelDirectories(): void {
-    if (this.busy || this.modelLoading || this.modelImporting || this.builtinModelInstalling) {
+    if (this.busy || this.modelLoading || this.modelImporting || this.builtinModelInstalling ||
+      this.apiServerStarting) {
       return
     }
 
@@ -703,7 +864,8 @@ export class ChatViewModel {
   }
 
   requestDeleteModel(modelId: string): void {
-    if (this.busy || this.modelLoading || this.modelImporting || this.builtinModelInstalling) {
+    if (this.busy || this.modelLoading || this.modelImporting || this.builtinModelInstalling ||
+      this.apiServerStarting) {
       return
     }
     const profile = this.findProfile(modelId)
@@ -722,7 +884,8 @@ export class ChatViewModel {
   }
 
   confirmDeleteModel(): void {
-    if (this.pendingDeleteModelId.length <= 0 || this.busy || this.modelLoading || this.modelImporting || this.builtinModelInstalling) {
+    if (this.pendingDeleteModelId.length <= 0 || this.busy || this.modelLoading || this.modelImporting ||
+      this.builtinModelInstalling || this.apiServerStarting) {
       return
     }
     const modelId = this.pendingDeleteModelId
@@ -738,6 +901,9 @@ export class ChatViewModel {
     this.notify()
 
     const deletingCurrent = this.selectedModelId === modelId
+    if (deletingCurrent) {
+      this.stopApiServerForModelChange(false)
+    }
     this.modelLifecycleService.deleteModel(this.filesDir, profile, deletingCurrent && this.loaded)
       .then(async (result: ModelDeleteResult) => {
         if (deletingCurrent) {
@@ -854,6 +1020,7 @@ export class ChatViewModel {
     return this.busy ||
       this.generating ||
       this.generationStopping ||
+      this.apiServerStarting ||
       this.modelLoading ||
       this.modelImporting ||
       this.builtinModelInstalling
@@ -935,10 +1102,11 @@ export class ChatViewModel {
   }
 
   unloadModel(): void {
-    if (this.busy || this.modelLoading) {
+    if (this.busy || this.modelLoading || this.apiServerStarting) {
       return
     }
     this.cancelSpeechRecognition(false)
+    this.stopApiServerForModelChange(false)
     this.modelLifecycleService.reset()
     this.loaded = false
     this.status = '模型已释放'
@@ -1042,12 +1210,14 @@ export class ChatViewModel {
         }, 350)
       }
     }).catch((err: Error) => {
+      this.apiServerStartAfterModelLoad = false
       this.status = `检查模型失败：${formatError(err as Object)}`
       this.notify()
     })
   }
 
   closeModelLoadDialog(): void {
+    this.apiServerStartAfterModelLoad = false
     this.showModelLoadDialog = false
     this.notifyAndScroll()
   }
@@ -1060,16 +1230,20 @@ export class ChatViewModel {
       this.resetGenerationSettings(false)
       this.startModelLoad()
     }).catch((err: Error) => {
+      this.apiServerStartAfterModelLoad = false
       this.status = `检查模型失败：${formatError(err as Object)}`
       this.notify()
     })
   }
 
   applyRuntimeConfigAndLoad(): void {
-    if (this.busy || this.modelLoading || this.modelImporting || this.builtinModelInstalling) {
+    if (this.busy || this.modelLoading || this.modelImporting || this.builtinModelInstalling ||
+      this.apiServerStarting) {
       return
     }
     if (this.loaded) {
+      const restartApiServer = this.apiServerRunning
+      this.stopApiServerForModelChange(restartApiServer)
       this.modelLifecycleService.reset()
       this.loaded = false
     }
@@ -1079,6 +1253,7 @@ export class ChatViewModel {
       }
       this.startModelLoad()
     }).catch((err: Error) => {
+      this.apiServerStartAfterModelLoad = false
       this.status = `检查模型失败：${formatError(err as Object)}`
       this.notify()
     })
@@ -1107,6 +1282,9 @@ export class ChatViewModel {
       this.maxNewTokens,
       this.currentGenerationSettings()
     ).then((loaded: boolean) => {
+      if (!loaded) {
+        throw new Error('模型加载未完成。')
+      }
       this.loaded = loaded
       this.runtimeConfigDirty = false
       this.status = `${this.currentModel().shortName} 已加载`
@@ -1119,11 +1297,13 @@ export class ChatViewModel {
       this.modelLoading = false
       this.refreshStats()
       this.notifyAndScroll()
+      this.startPendingApiServerIfReady()
       setTimeout(() => {
         this.showModelLoadDialog = false
         this.notifyAndScroll()
       }, 450)
     }).catch((err: Error) => {
+      this.apiServerStartAfterModelLoad = false
       this.loaded = false
       this.status = `加载失败：${formatError(err as Object)}`
       const loadErrorMessage = `${this.currentModel().shortName} 加载失败，可能是设备可用内存不足。请关闭后台应用、释放其他模型或重启 App 后重试。\n\n${this.status}`
@@ -1150,6 +1330,7 @@ export class ChatViewModel {
       }
     }
     this.showBuiltinModelInstallDialog = false
+    this.apiServerStartAfterModelLoad = false
     this.pendingInstallCatalogItemId = ''
     this.autoLoadAfterInstall = false
     this.builtinModelInstallCanceled = false
@@ -1433,6 +1614,7 @@ export class ChatViewModel {
   }
 
   private resetLoadedModel(status: string): void {
+    this.stopApiServerForModelChange(false)
     if (this.loaded) {
       this.modelLifecycleService.reset()
     }
@@ -1440,6 +1622,36 @@ export class ChatViewModel {
     this.status = status
     this.modelLoadProgress = 0
     this.modelLoadMessage = status
+  }
+
+  private stopApiServerForModelChange(restartAfterLoad: boolean): void {
+    this.apiServerStartAfterModelLoad = restartAfterLoad
+    if (!this.apiServerRunning) {
+      return
+    }
+    this.apiServerRunning = false
+    this.apiServerStarting = true
+    this.apiServer.stop().then(() => {
+      this.apiServerStarting = false
+      this.notify()
+      this.startPendingApiServerIfReady()
+    }).catch((err: Error) => {
+      this.apiServerStarting = false
+      this.apiServerStartAfterModelLoad = false
+      this.apiServerStatus = `停止 API 服务失败：${formatError(err as Object)}`
+      this.appendApiServerLog('ERROR', `停止服务失败：${formatError(err as Object)}`)
+      this.notify()
+    })
+    this.notify()
+  }
+
+  private startPendingApiServerIfReady(): void {
+    if (!this.apiServerStartAfterModelLoad || !this.loaded || this.busy || this.modelLoading ||
+      this.apiServerStarting || this.apiServerRunning) {
+      return
+    }
+    this.apiServerStartAfterModelLoad = false
+    this.setApiServerEnabled(true)
   }
 
   private ensureCurrentModelInstalled(): Promise<boolean> {
@@ -1487,6 +1699,72 @@ export class ChatViewModel {
 
   private composeChatTurns(text: string): ChatTurn[] {
     return this.session.composeChatTurns(this.currentModel().systemPrompt, text, this.currentContextMessageLimit())
+  }
+
+  private apiServerModel(): ApiServerModel {
+    const model = this.currentModel()
+    return { id: model.id, name: model.name }
+  }
+
+  private appendApiServerLog(level: string, message: string): void {
+    const now = new Date()
+    const time = `${now.getHours().toString().padStart(2, '0')}:` +
+      `${now.getMinutes().toString().padStart(2, '0')}:` +
+      now.getSeconds().toString().padStart(2, '0')
+    const entry: ApiServerLogEntry = {
+      id: this.nextApiServerLogId++,
+      time,
+      level,
+      message
+    }
+    const logs = this.apiServerLogs.concat(entry)
+    this.apiServerLogs = logs.length > this.apiServerLogLimit ?
+      logs.slice(logs.length - this.apiServerLogLimit) : logs
+    this.notify()
+  }
+
+  private runApiGeneration(
+    request: ApiGenerationRequest,
+    onChunk: (chunk: string) => void
+  ): Promise<GenerationResult> {
+    if (!this.loaded || this.busy || this.modelLoading) {
+      return Promise.reject(new Error('模型未就绪或当前已有任务。'))
+    }
+    this.busy = true
+    this.generating = true
+    this.generationStopping = false
+    this.streamingChars = 0
+    this.latestPerfMetrics = undefined
+    this.status = '等待 API 首个输出片段...'
+    this.refreshStats()
+    this.notify()
+    return this.nativeService.generateText(
+      request.turns,
+      request.maxNewTokens,
+      request.settings,
+      (chunk: string) => {
+        this.streamingChars += chunk.length
+        this.status = `正在处理 API 请求... ${this.streamingChars} 字符`
+        onChunk(chunk)
+        this.notify()
+      }
+    ).then((result: GenerationResult) => {
+      this.busy = false
+      this.generating = false
+      this.generationStopping = false
+      this.status = `API 生成完成（${result.generatedTokens} tokens）`
+      this.refreshStats()
+      this.notify()
+      return result
+    }).catch((err: Error) => {
+      this.busy = false
+      this.generating = false
+      this.generationStopping = false
+      this.status = `API 生成失败：${formatError(err as Object)}`
+      this.refreshStats()
+      this.notify()
+      throw err
+    })
   }
 
   currentContextMessageLimit(): number {
@@ -1548,6 +1826,71 @@ export class ChatViewModel {
       this.modelManager.setModelOrder(order, this.filesDir)
       this.notify()
     }).catch((_err: Error) => {
+    })
+  }
+
+  private apiServerPort(): number {
+    const parsed = Number.parseInt(this.apiServerPortInput, 10)
+    return Number.isFinite(parsed) ? parsed : 8080
+  }
+
+  private loadApiServerSettings(): void {
+    if (this.context === undefined) {
+      return
+    }
+    preferences.getPreferences(this.context, this.apiServerPreferenceName).then(async (store: preferences.Preferences) => {
+      const portValue = await store.get(this.apiServerPortPreferenceKey, 8080)
+      const requireKeyValue = await store.get(this.apiServerRequireKeyPreferenceKey, true)
+      const keyValue = await store.get(this.apiServerKeyPreferenceKey, '')
+      if (typeof portValue === 'number') {
+        this.apiServerPortInput = `${Math.round(portValue)}`
+      }
+      if (typeof requireKeyValue === 'boolean') {
+        this.apiServerRequireKey = requireKeyValue
+      }
+      if (typeof keyValue === 'string') {
+        this.apiServerKey = keyValue
+      }
+      if (this.apiServerKey.length <= 0) {
+        this.createApiServerKey(false)
+      }
+      this.apiServerAddress = `http://设备局域网 IP:${this.apiServerPortInput}`
+      this.notify()
+    }).catch((_err: Error) => {
+      if (this.apiServerKey.length <= 0) {
+        this.createApiServerKey(false)
+      }
+    })
+  }
+
+  private saveApiServerSettings(): void {
+    if (this.context === undefined) {
+      return
+    }
+    preferences.getPreferences(this.context, this.apiServerPreferenceName).then((store: preferences.Preferences) => {
+      return store.put(this.apiServerPortPreferenceKey, this.apiServerPort())
+        .then(() => store.put(this.apiServerRequireKeyPreferenceKey, this.apiServerRequireKey))
+        .then(() => store.put(this.apiServerKeyPreferenceKey, this.apiServerKey))
+        .then(() => store.flush())
+    }).catch((_err: Error) => {
+    })
+  }
+
+  private createApiServerKey(showResult: boolean): void {
+    cryptoFramework.createRandom().generateRandom(16).then((blob: cryptoFramework.DataBlob) => {
+      let key = ''
+      for (let index = 0; index < blob.data.length; index++) {
+        key += blob.data[index].toString(16).padStart(2, '0')
+      }
+      this.apiServerKey = key
+      this.saveApiServerSettings()
+      if (showResult) {
+        this.toastCallback('已重新生成 API Key')
+      }
+      this.notify()
+    }).catch((err: Error) => {
+      this.apiServerStatus = `生成 API Key 失败：${formatError(err as Object)}`
+      this.notify()
     })
   }
 
