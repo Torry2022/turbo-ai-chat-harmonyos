@@ -6,7 +6,7 @@
     "buildTool": "hvigor",
     "directoryLevel": "module"
   },
-  "description": "Entry module for the MNN Gemma 4 native demo.",
+  "description": "Entry module for Turbo AI Chat on-device MNN inference.",
   "repository": {},
   "license": "ISC",
   "dependencies": {}

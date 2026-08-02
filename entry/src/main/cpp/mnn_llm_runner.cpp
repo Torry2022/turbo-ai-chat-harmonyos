@@ -1,4 +1,4 @@
-#include "gemma_runner.h"
+#include "mnn_llm_runner.h"
 
 #include <algorithm>
 #include <cctype>
@@ -269,7 +269,7 @@ int TokenCount(Llm* llm, const std::string& text) {
     return static_cast<int>(llm->tokenizer_encode(text).size());
 }
 
-std::string BuildSamplingConfigProperties(const GemmaRunner::SamplingConfig& sampling) {
+std::string BuildSamplingConfigProperties(const MnnLlmRunner::SamplingConfig& sampling) {
     std::ostringstream config;
     config << "\"max_new_tokens\":" << sampling.maxNewTokens << ","
            << "\"reuse_kv\":false,"
@@ -286,7 +286,7 @@ std::string BuildSamplingConfigProperties(const GemmaRunner::SamplingConfig& sam
     return config.str();
 }
 
-std::string BuildRuntimeConfig(int threadNum, const GemmaRunner::SamplingConfig& sampling) {
+std::string BuildRuntimeConfig(int threadNum, const MnnLlmRunner::SamplingConfig& sampling) {
     const int maxAllTokens = std::max(2048, sampling.maxNewTokens + 2048);
     std::ostringstream config;
     config << "{"
@@ -302,7 +302,7 @@ std::string BuildRuntimeConfig(int threadNum, const GemmaRunner::SamplingConfig&
     return config.str();
 }
 
-std::string BuildGenerationConfig(const GemmaRunner::SamplingConfig& sampling) {
+std::string BuildGenerationConfig(const MnnLlmRunner::SamplingConfig& sampling) {
     return "{" + BuildSamplingConfigProperties(sampling) + "}";
 }
 
@@ -310,8 +310,8 @@ void DumpRawPromptDebug(
     const std::string& prompt,
     const std::string& output,
     const std::vector<int>& inputIds,
-    const GemmaRunner::SamplingConfig& sampling,
-    const GemmaRunner::GenerationResult& result,
+    const MnnLlmRunner::SamplingConfig& sampling,
+    const MnnLlmRunner::GenerationResult& result,
     const Llm* llm) {
     std::ofstream dump("/data/storage/el2/base/haps/entry/files/raw_output_debug.txt",
                        std::ios::out | std::ios::trunc);
@@ -363,12 +363,12 @@ int ResolveGeneratedTokens(Llm* llm, const std::string& text, int maxNewTokens, 
     return estimatedTokens;
 }
 
-GemmaRunner::GenerationResult BuildGenerationResult(
+MnnLlmRunner::GenerationResult BuildGenerationResult(
     Llm* llm,
     const std::string& text,
     int maxNewTokens,
     const std::string& explicitEndWith = "") {
-    GemmaRunner::GenerationResult result;
+    MnnLlmRunner::GenerationResult result;
     result.text = text;
     const auto* context = llm == nullptr ? nullptr : llm->getContext();
     if (context == nullptr) {
@@ -397,7 +397,7 @@ GemmaRunner::GenerationResult BuildGenerationResult(
     return result;
 }
 
-void ApplyUserStop(GemmaRunner::GenerationResult& result, bool stopped) {
+void ApplyUserStop(MnnLlmRunner::GenerationResult& result, bool stopped) {
     if (stopped) {
         result.stopReason = "user_stop";
     }
@@ -405,10 +405,10 @@ void ApplyUserStop(GemmaRunner::GenerationResult& result, bool stopped) {
 
 } // namespace
 
-GemmaRunner::GemmaRunner() = default;
-GemmaRunner::~GemmaRunner() = default;
+MnnLlmRunner::MnnLlmRunner() = default;
+MnnLlmRunner::~MnnLlmRunner() = default;
 
-bool GemmaRunner::load(
+bool MnnLlmRunner::load(
     const std::string& configPath,
     int threadNum,
     const SamplingConfig& sampling,
@@ -440,7 +440,7 @@ bool GemmaRunner::load(
     return true;
 }
 
-std::string GemmaRunner::generate(const std::string& prompt, const SamplingConfig& sampling, std::string& error) {
+std::string MnnLlmRunner::generate(const std::string& prompt, const SamplingConfig& sampling, std::string& error) {
     std::lock_guard<std::mutex> lock(mutex_);
     error.clear();
 
@@ -460,7 +460,7 @@ std::string GemmaRunner::generate(const std::string& prompt, const SamplingConfi
     return output.str();
 }
 
-GemmaRunner::GenerationResult GemmaRunner::generateStreaming(
+MnnLlmRunner::GenerationResult MnnLlmRunner::generateStreaming(
     const std::string& prompt,
     const SamplingConfig& sampling,
     const std::function<void(const std::string&)>& onChunk,
@@ -502,7 +502,7 @@ GemmaRunner::GenerationResult GemmaRunner::generateStreaming(
     return result;
 }
 
-GemmaRunner::GenerationResult GemmaRunner::generateRawPromptStreaming(
+MnnLlmRunner::GenerationResult MnnLlmRunner::generateRawPromptStreaming(
     const std::string& prompt,
     const SamplingConfig& sampling,
     const std::string& endWith,
@@ -558,7 +558,7 @@ GemmaRunner::GenerationResult GemmaRunner::generateRawPromptStreaming(
     return result;
 }
 
-GemmaRunner::GenerationResult GemmaRunner::generateChatStreaming(
+MnnLlmRunner::GenerationResult MnnLlmRunner::generateChatStreaming(
     const std::vector<ChatTurn>& messages,
     const SamplingConfig& sampling,
     const std::function<void(const std::string&)>& onChunk,
@@ -628,7 +628,7 @@ GemmaRunner::GenerationResult GemmaRunner::generateChatStreaming(
     return result;
 }
 
-GemmaRunner::GenerationResult GemmaRunner::generateImageChatStreaming(
+MnnLlmRunner::GenerationResult MnnLlmRunner::generateImageChatStreaming(
     const std::vector<ChatTurn>& messages,
     const ImageData& image,
     const SamplingConfig& sampling,
@@ -723,17 +723,17 @@ GemmaRunner::GenerationResult GemmaRunner::generateImageChatStreaming(
     return result;
 }
 
-void GemmaRunner::requestStop() {
+void MnnLlmRunner::requestStop() {
     stopRequested_.store(true);
 }
 
-void GemmaRunner::reset() {
+void MnnLlmRunner::reset() {
     std::lock_guard<std::mutex> lock(mutex_);
     stopRequested_.store(false);
     llm_.reset();
 }
 
-bool GemmaRunner::isLoaded() const {
+bool MnnLlmRunner::isLoaded() const {
     std::lock_guard<std::mutex> lock(mutex_);
     return llm_ != nullptr;
 }

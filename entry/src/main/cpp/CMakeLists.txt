@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.5.0)
-project(gemma4_mnn_entry)
+project(turbo_ai_chat_entry)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -18,7 +18,7 @@ set_target_properties(mnn PROPERTIES
 
 add_library(entry SHARED
     napi_init.cpp
-    gemma_runner.cpp
+    mnn_llm_runner.cpp
 )
 
 set_target_properties(entry PROPERTIES

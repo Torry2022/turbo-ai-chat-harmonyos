@@ -1,12 +1,12 @@
 {
-  "name": "harmony-gemma4-demo",
+  "name": "turbo-ai-chat-harmonyos",
   "version": "1.0.0",
   "ohos": {
     "org": "huawei",
     "buildTool": "hvigor",
     "directoryLevel": "project"
   },
-  "description": "Minimal Harmony native Gemma 4 demo through MNN.",
+  "description": "HarmonyOS NEXT native on-device LLM chat with MNN Runtime.",
   "repository": {},
   "license": "ISC",
   "dependencies": {

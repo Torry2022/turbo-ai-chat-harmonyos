@@ -1,4 +1,4 @@
-#include "gemma_runner.h"
+#include "mnn_llm_runner.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -10,7 +10,7 @@
 
 namespace {
 
-GemmaRunner g_runner;
+MnnLlmRunner g_runner;
 
 struct StreamChunk {
     std::string value;
@@ -23,12 +23,12 @@ struct StreamWork {
     napi_threadsafe_function callback = nullptr;
     std::string prompt;
     std::string endWith;
-    std::vector<GemmaRunner::ChatTurn> chatMessages;
+    std::vector<MnnLlmRunner::ChatTurn> chatMessages;
     bool useChatMessages = false;
     bool useImage = false;
-    GemmaRunner::ImageData image;
-    GemmaRunner::SamplingConfig sampling;
-    GemmaRunner::GenerationResult output;
+    MnnLlmRunner::ImageData image;
+    MnnLlmRunner::SamplingConfig sampling;
+    MnnLlmRunner::GenerationResult output;
     std::string error;
 };
 
@@ -37,7 +37,7 @@ struct AsyncGenerateWork {
     napi_async_work work = nullptr;
     napi_deferred deferred = nullptr;
     std::string prompt;
-    GemmaRunner::SamplingConfig sampling;
+    MnnLlmRunner::SamplingConfig sampling;
     std::string output;
     std::string error;
 };
@@ -48,7 +48,7 @@ struct AsyncLoadWork {
     napi_deferred deferred = nullptr;
     std::string configPath;
     int32_t threadNum = 4;
-    GemmaRunner::SamplingConfig sampling;
+    MnnLlmRunner::SamplingConfig sampling;
     std::string error;
 };
 
@@ -130,14 +130,14 @@ int32_t ReadNamedInt(napi_env env, napi_value object, const char* name, int32_t 
     return result;
 }
 
-GemmaRunner::SamplingConfig ReadSamplingConfig(
+MnnLlmRunner::SamplingConfig ReadSamplingConfig(
     napi_env env,
     napi_value* args,
     size_t argc,
     size_t maxTokensIndex,
     int32_t fallbackMaxTokens,
     size_t settingsIndex) {
-    GemmaRunner::SamplingConfig sampling;
+    MnnLlmRunner::SamplingConfig sampling;
     sampling.maxNewTokens = std::clamp(
         ReadOptionalInt(env, args, argc, maxTokensIndex, fallbackMaxTokens),
         1,
@@ -181,7 +181,7 @@ GemmaRunner::SamplingConfig ReadSamplingConfig(
     return sampling;
 }
 
-napi_value MakeGenerationResult(napi_env env, const GemmaRunner::GenerationResult& value) {
+napi_value MakeGenerationResult(napi_env env, const MnnLlmRunner::GenerationResult& value) {
     napi_value result = nullptr;
     napi_create_object(env, &result);
 
@@ -198,7 +198,7 @@ napi_value MakeGenerationResult(napi_env env, const GemmaRunner::GenerationResul
     return result;
 }
 
-bool ReadChatMessages(napi_env env, napi_value value, std::vector<GemmaRunner::ChatTurn>& messages, std::string& error) {
+bool ReadChatMessages(napi_env env, napi_value value, std::vector<MnnLlmRunner::ChatTurn>& messages, std::string& error) {
     bool isArray = false;
     napi_is_array(env, value, &isArray);
     if (!isArray) {
@@ -260,7 +260,7 @@ bool ReadRgbaImage(
     napi_value bufferValue,
     int32_t width,
     int32_t height,
-    GemmaRunner::ImageData& image,
+    MnnLlmRunner::ImageData& image,
     std::string& error) {
     if (width <= 0 || height <= 0) {
         error = "image width and height must be positive";
@@ -308,7 +308,7 @@ napi_value LoadModel(napi_env env, napi_callback_info info) {
 
     std::string configPath = ReadString(env, args[0]);
     int32_t threadNum = std::clamp(ReadOptionalInt(env, args, argc, 1, 4), 1, 8);
-    GemmaRunner::SamplingConfig sampling = ReadSamplingConfig(env, args, argc, 2, 128, 3);
+    MnnLlmRunner::SamplingConfig sampling = ReadSamplingConfig(env, args, argc, 2, 128, 3);
 
     std::string error;
     if (!g_runner.load(configPath, threadNum, sampling, error)) {
@@ -339,7 +339,7 @@ napi_value LoadModelAsync(napi_env env, napi_callback_info info) {
     napi_create_promise(env, &work->deferred, &promise);
 
     napi_value resourceName = nullptr;
-    napi_create_string_utf8(env, "gemmaLoadModelAsync", NAPI_AUTO_LENGTH, &resourceName);
+    napi_create_string_utf8(env, "mnnLoadModelAsync", NAPI_AUTO_LENGTH, &resourceName);
     napi_create_async_work(
         env,
         nullptr,
@@ -380,7 +380,7 @@ napi_value Generate(napi_env env, napi_callback_info info) {
     }
 
     std::string prompt = ReadString(env, args[0]);
-    GemmaRunner::SamplingConfig sampling = ReadSamplingConfig(env, args, argc, 1, 128, 2);
+    MnnLlmRunner::SamplingConfig sampling = ReadSamplingConfig(env, args, argc, 1, 128, 2);
 
     std::string error;
     std::string output = g_runner.generate(prompt, sampling, error);
@@ -411,7 +411,7 @@ napi_value GenerateAsync(napi_env env, napi_callback_info info) {
     napi_create_promise(env, &work->deferred, &promise);
 
     napi_value resourceName = nullptr;
-    napi_create_string_utf8(env, "gemmaGenerateAsync", NAPI_AUTO_LENGTH, &resourceName);
+    napi_create_string_utf8(env, "mnnGenerateAsync", NAPI_AUTO_LENGTH, &resourceName);
     napi_create_async_work(
         env,
         nullptr,
@@ -486,7 +486,7 @@ napi_value GenerateStream(napi_env env, napi_callback_info info) {
     napi_create_promise(env, &streamWork->deferred, &promise);
 
     napi_value resourceName = nullptr;
-    napi_create_string_utf8(env, "gemmaGenerateStream", NAPI_AUTO_LENGTH, &resourceName);
+    napi_create_string_utf8(env, "mnnGenerateStream", NAPI_AUTO_LENGTH, &resourceName);
     napi_status tsfnStatus = napi_create_threadsafe_function(
         env,
         args[callbackIndex],
@@ -582,7 +582,7 @@ napi_value GenerateRawPromptStream(napi_env env, napi_callback_info info) {
     napi_create_promise(env, &streamWork->deferred, &promise);
 
     napi_value resourceName = nullptr;
-    napi_create_string_utf8(env, "gemmaGenerateRawPromptStream", NAPI_AUTO_LENGTH, &resourceName);
+    napi_create_string_utf8(env, "mnnGenerateRawPromptStream", NAPI_AUTO_LENGTH, &resourceName);
     napi_status tsfnStatus = napi_create_threadsafe_function(
         env,
         args[callbackIndex],
@@ -679,7 +679,7 @@ napi_value GenerateChatStream(napi_env env, napi_callback_info info) {
     napi_create_promise(env, &streamWork->deferred, &promise);
 
     napi_value resourceName = nullptr;
-    napi_create_string_utf8(env, "gemmaGenerateChatStream", NAPI_AUTO_LENGTH, &resourceName);
+    napi_create_string_utf8(env, "mnnGenerateChatStream", NAPI_AUTO_LENGTH, &resourceName);
     napi_create_threadsafe_function(
         env,
         args[callbackIndex],
@@ -784,7 +784,7 @@ napi_value GenerateImageChatStream(napi_env env, napi_callback_info info) {
     napi_create_promise(env, &streamWork->deferred, &promise);
 
     napi_value resourceName = nullptr;
-    napi_create_string_utf8(env, "gemmaGenerateImageChatStream", NAPI_AUTO_LENGTH, &resourceName);
+    napi_create_string_utf8(env, "mnnGenerateImageChatStream", NAPI_AUTO_LENGTH, &resourceName);
     napi_create_threadsafe_function(
         env,
         args[callbackIndex],
@@ -887,6 +887,6 @@ static napi_module entryModule = {
 
 } // namespace
 
-extern "C" __attribute__((constructor)) void RegisterGemma4MnnModule() {
+extern "C" __attribute__((constructor)) void RegisterEntryModule() {
     napi_module_register(&entryModule);
 }

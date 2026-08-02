@@ -10,7 +10,7 @@
 
 **Turbo AI Chat 是一个 HarmonyOS NEXT 原生端侧大模型聊天应用**，用于验证在鸿蒙设备上直接运行本地 LLM 的完整链路。项目基于 ArkTS、C++ N-API 和 MNN Runtime 构建，预置 Qwen3-4B-Instruct、MiniCPM5-1B 和 Gemma-4-E2B-it，并可通过模型广场或本地导入扩展兼容的文本与多模态 MNN 模型；同时提供流式对话、模型切换、图片理解和运行监控能力。
 
-本仓库 fork 自 [Turbo1123/turbo-ai-chat-harmonyos](https://github.com/Turbo1123/turbo-ai-chat-harmonyos)。
+本仓库 fork 自 [Turbo1123/turbo-ai-chat-harmonyos](https://github.com/Turbo1123/turbo-ai-chat-harmonyos)。上游完成了 Gemma 4 文本推理的 ArkTS → N-API → C++ → MNN 基础链路；本 fork 在此基础上进行了多模型、多模态和工程化演进。继承边界、架构变化与关键提交见[核心推理链演进说明](docs/architecture/core-inference-evolution.md)。
 
 ## 目录
 
@@ -233,21 +233,25 @@ App 使用 **MNN 模型目录**格式。内置模型当前从 ModelScope 下载�
 ## 架构
 
 ```text
-ArkTS UI Layer
 ChatTab / ModelTab / MonitorTab / ...
-        |
-NativeInferenceService (ArkTS)
-        |
-N-API Bridge (libentry.so)
-        |
-GemmaRunner (gemma_runner.cpp)
-        |
-MNN Runtime (libMNN.so)
-        |
-CPU Backend
+                |
+          ChatViewModel
+      |-- GenerationWorkflow -- ImagePayloadService
+      |-- ModelLifecycleService -- 目录预检 / 安装 / 导入 / 扫描
+      `-- NativeInferenceService（由上述工作流共享）
+                |
+        N-API Bridge (libentry.so)
+                |
+     MnnLlmRunner (mnn_llm_runner.cpp)
+        |          |           |
+      文本      原始 Prompt    图片
+                |
+       MNN Runtime (libMNN.so)
+                |
+           CPU Backend
 ```
 
-`GemmaRunner` 命名保留自早期 Gemma 原型阶段；当前 native 封装已用于 Qwen、MiniCPM、Gemma 以及其他兼容 MNN LLM 目录的模型。
+`MnnLlmRunner` 负责兼容 MNN `Transformer::Llm` 目录的 native 推理。模型安装、导入和目录预检由 ArkTS 生命周期服务处理，文本、原始 Prompt 和图片生成共享稳定的 N-API 边界。详细演进见[核心推理链演进说明](docs/architecture/core-inference-evolution.md)。
 
 ## 原生接口
 
@@ -257,6 +261,7 @@ ArkTS 通过 `import entry from 'libentry.so'` 调用 N-API：
 entry.loadModelAsync(configPath, threadNum, maxNewTokens, settings): Promise<string>
 entry.generateRawPromptStream(prompt, maxNewTokens, endWith, settings, onChunk): Promise<GenerationResult>
 entry.generateChatStream(messages, maxNewTokens, settings, onChunk): Promise<GenerationResult>
+entry.generateImageChatStream(messages, pixels, width, height, maxNewTokens, settings, onChunk): Promise<GenerationResult>
 entry.stopGeneration(): void
 entry.reset(): void
 entry.isLoaded(): boolean

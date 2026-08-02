@@ -13,7 +13,7 @@ class Llm;
 }
 }
 
-class GemmaRunner {
+class MnnLlmRunner {
 public:
     struct SamplingConfig {
         int maxNewTokens = 256;
@@ -43,8 +43,8 @@ public:
         std::string stopReason = "unknown";
     };
 
-    GemmaRunner();
-    ~GemmaRunner();
+    MnnLlmRunner();
+    ~MnnLlmRunner();
 
     bool load(const std::string& configPath, int threadNum, const SamplingConfig& sampling, std::string& error);
     std::string generate(const std::string& prompt, const SamplingConfig& sampling, std::string& error);

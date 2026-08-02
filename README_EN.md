@@ -10,7 +10,7 @@
 
 **Turbo AI Chat is a HarmonyOS NEXT native on-device LLM chat application** for validating a complete local-inference pipeline on HarmonyOS devices. It is built with ArkTS, C++ N-API, and MNN Runtime, ships profiles for Qwen3-4B-Instruct, MiniCPM5-1B, and Gemma-4-E2B-it, and can add compatible text and multimodal MNN models through the Model Gallery or local import. The app also includes streaming chat, model switching, image understanding, and runtime monitoring.
 
-This repository is forked from [Turbo1123/turbo-ai-chat-harmonyos](https://github.com/Turbo1123/turbo-ai-chat-harmonyos).
+This repository is forked from [Turbo1123/turbo-ai-chat-harmonyos](https://github.com/Turbo1123/turbo-ai-chat-harmonyos). The upstream project established the ArkTS → N-API → C++ → MNN foundation for Gemma 4 text generation; this fork evolves it across multiple models, image input, and production-oriented workflows. See [Core Inference Pipeline Evolution](docs/architecture/core-inference-evolution.md) for the attribution boundary, architecture changes, and supporting commits.
 
 ## Table of Contents
 
@@ -229,21 +229,25 @@ On-device LLM decoding includes token-by-token serial stages, and actual through
 ## Architecture
 
 ```text
-ArkTS UI Layer
 ChatTab / ModelTab / MonitorTab / ...
-        |
-NativeInferenceService (ArkTS)
-        |
-N-API Bridge (libentry.so)
-        |
-GemmaRunner (gemma_runner.cpp)
-        |
-MNN Runtime (libMNN.so)
-        |
-CPU Backend
+                |
+          ChatViewModel
+      |-- GenerationWorkflow -- ImagePayloadService
+      |-- ModelLifecycleService -- preflight / install / import / scan
+      `-- NativeInferenceService (shared by both workflows)
+                |
+        N-API Bridge (libentry.so)
+                |
+     MnnLlmRunner (mnn_llm_runner.cpp)
+        |          |           |
+      text      raw prompt     image
+                |
+       MNN Runtime (libMNN.so)
+                |
+           CPU Backend
 ```
 
-The `GemmaRunner` name is kept from the early Gemma prototype. The current native wrapper is used for Qwen, MiniCPM, Gemma, and other compatible MNN LLM directories.
+`MnnLlmRunner` provides native inference for compatible MNN `Transformer::Llm` directories. ArkTS lifecycle services handle installation, import, and directory preflight, while text, raw-prompt, and image generation share a stable N-API boundary. See [Core Inference Pipeline Evolution](docs/architecture/core-inference-evolution.md) for details.
 
 ## Native API
 
@@ -253,6 +257,7 @@ ArkTS calls N-API via `import entry from 'libentry.so'`:
 entry.loadModelAsync(configPath, threadNum, maxNewTokens, settings): Promise<string>
 entry.generateRawPromptStream(prompt, maxNewTokens, endWith, settings, onChunk): Promise<GenerationResult>
 entry.generateChatStream(messages, maxNewTokens, settings, onChunk): Promise<GenerationResult>
+entry.generateImageChatStream(messages, pixels, width, height, maxNewTokens, settings, onChunk): Promise<GenerationResult>
 entry.stopGeneration(): void
 entry.reset(): void
 entry.isLoaded(): boolean
