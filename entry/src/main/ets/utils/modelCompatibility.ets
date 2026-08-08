@@ -47,6 +47,7 @@ interface MnnConfig {
 }
 
 interface MnnLlmConfig {
+  is_visual?: boolean
   prompt_template?: string
   jinja?: MnnJinjaConfig
   tie_embeddings?: number[]
@@ -54,6 +55,15 @@ interface MnnLlmConfig {
 
 interface MnnJinjaConfig {
   chat_template?: string
+}
+
+export function inferSupportsImageFromLlmConfig(llmConfigText: string): boolean {
+  try {
+    const config = JSON.parse(stripBom(llmConfigText)) as MnnLlmConfig
+    return config.is_visual === true
+  } catch (_) {
+    return false
+  }
 }
 
 export function validateModelDirectorySnapshot(snapshot: ModelDirectorySnapshot): ModelPreflightResult {

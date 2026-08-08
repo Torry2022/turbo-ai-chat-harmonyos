@@ -216,6 +216,8 @@ hdc file send -b com.example.gemma4mnn Qwen3-4B-Instruct-2507-MNN /data/storage/
 6. 点击“扫描已推送目录”。App 会自动查找 `config.json`、`.mnn` 文件和可识别的对话模板，生成导入模型配置并保存到 `model-imports/imported-models.json`。
 7. 在模型列表中选择新增的导入模型并加载。
 
+无论通过 zip 还是目录扫描导入，App 都会读取 `llm_config.json` 中的 `is_visual` 自动识别图片能力；自动生成短名称时会尽量保留 `0.6B`、`1.8B` 等参数量信息。
+
 扫描只识别 `model-imports/` 下的一级子目录；目录名不要包含 `/`、`\` 或 `..`。在 Windows 终端中建议从模型目录的父目录执行 `hdc file send`，避免把更多上级路径或反斜杠写入 App 沙箱。若你的模型不在仓库 `models/` 下，也可以 `cd` 到该模型目录的父目录后再推送。
 
 App 会统一检查 MNN 模型目录的对话模板：模型广场下载、预置模型安装和导入模型扫描都会优先使用 `llm_config.json` 中已有的 `jinja.chat_template`；如果缺少该字段，App 仅额外兼容可自动识别的旧 ChatML 模板，否则会跳过该目录并提示模板不兼容。

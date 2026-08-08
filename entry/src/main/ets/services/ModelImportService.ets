@@ -18,8 +18,10 @@ import {
   ModelProfile
 } from '../models/ModelProfile'
 import { formatError } from '../utils/formatters'
+import { inferSupportsImageFromLlmConfig } from '../utils/modelCompatibility'
 import {
   importedModelShortName,
+  isLegacyFamilyOnlyImportedShortName,
   legacyImportedModelShortName,
   safeModelId,
   stripMnnSuffix,
@@ -60,7 +62,8 @@ export class ModelImportService {
         throw new Error('模型包中未找到 config.json')
       }
 
-      await this.preflightService.requireCompatible(configPath, false)
+      const supportsImage = await this.detectSupportsImage(configPath)
+      await this.preflightService.requireCompatible(configPath, supportsImage)
 
       const inferredName = uniqueModelName(this.inferName(zipUri, configPath, targetDir), existingProfiles)
       const inferredShortName = uniqueModelShortName(importedModelShortName(inferredName), existingProfiles)
@@ -70,7 +73,7 @@ export class ModelImportService {
         shortName: inferredShortName,
         directoryName: modelId,
         description: '用户导入的 MNN 模型。',
-        supportsImage: false,
+        supportsImage,
         systemPrompt: DEFAULT_IMPORTED_MODEL_PROMPT,
         source: IMPORTED_MODEL_SOURCE,
         configPath,
@@ -136,7 +139,8 @@ export class ModelImportService {
         continue
       }
 
-      const preflight = await this.preflightService.validate(configPath, false)
+      const supportsImage = await this.detectSupportsImage(configPath)
+      const preflight = await this.preflightService.validate(configPath, supportsImage)
       if (!preflight.compatible) {
         skippedCount++
         errors.push(`${directoryName}：${preflight.message}`)
@@ -152,7 +156,7 @@ export class ModelImportService {
         shortName: inferredShortName,
         directoryName,
         description: '用户导入的 MNN 模型。',
-        supportsImage: false,
+        supportsImage,
         systemPrompt: DEFAULT_IMPORTED_MODEL_PROMPT,
         source: IMPORTED_MODEL_SOURCE,
         configPath,
@@ -410,9 +414,15 @@ export class ModelImportService {
   }
 
   private async normalizeImportedProfile(profile: ModelProfile): Promise<ModelProfile> {
+    let normalizedSupportsImage = profile.supportsImage
     if (profile.configPath !== undefined && profile.configPath.length > 0) {
       try {
-        await this.preflightService.validate(profile.configPath, profile.supportsImage)
+        const detectedSupportsImage = await this.detectSupportsImage(profile.configPath)
+        const candidateSupportsImage = profile.supportsImage || detectedSupportsImage
+        const preflight = await this.preflightService.validate(profile.configPath, candidateSupportsImage)
+        if (preflight.compatible) {
+          normalizedSupportsImage = candidateSupportsImage
+        }
       } catch (_) {}
     }
     const normalizedName = stripMnnSuffix(profile.name)
@@ -422,6 +432,7 @@ export class ModelImportService {
     const shouldRefreshShortName =
       profile.shortName.length === 12 && profile.name.length > 12 && profile.shortName === profile.name.substring(0, 12) ||
       profile.shortName === legacyImportedModelShortName(normalizedName) ||
+      isLegacyFamilyOnlyImportedShortName(normalizedName, profile.shortName) ||
       profile.shortName === normalizedName ||
       profile.shortName === profile.name
     const normalizedChatFormat = CHAT_FORMAT_MNN_AUTO
@@ -435,6 +446,7 @@ export class ModelImportService {
       (profile.promptTemplate ?? '') !== normalizedPromptTemplate ||
       (profile.stopSequence ?? '') !== normalizedStopSequence ||
       profile.templateOverride !== hasTemplateOverride ||
+      profile.supportsImage !== normalizedSupportsImage ||
       shouldRefreshShortName
     ) {
       return {
@@ -443,7 +455,7 @@ export class ModelImportService {
         shortName: shouldRefreshShortName ? importedModelShortName(normalizedName) : profile.shortName,
         directoryName: profile.directoryName,
         description: profile.description,
-        supportsImage: profile.supportsImage,
+        supportsImage: normalizedSupportsImage,
         systemPrompt: normalizedSystemPrompt,
         source: profile.source,
         configPath: profile.configPath,
@@ -456,6 +468,23 @@ export class ModelImportService {
       }
     }
     return profile
+  }
+
+  private async detectSupportsImage(configPath: string): Promise<boolean> {
+    const normalized = configPath.replace(/\\/g, '/')
+    const suffix = '/config.json'
+    if (!normalized.toLowerCase().endsWith(suffix)) {
+      return false
+    }
+    const llmConfigPath = `${normalized.substring(0, normalized.length - suffix.length)}/llm_config.json`
+    if (!await this.exists(llmConfigPath)) {
+      return false
+    }
+    try {
+      return inferSupportsImageFromLlmConfig(await fs.readText(llmConfigPath))
+    } catch (_) {
+      return false
+    }
   }
 
   private isSafeImportedProfile(profile: ModelProfile, importRoot: string): boolean {

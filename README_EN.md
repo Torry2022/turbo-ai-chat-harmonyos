@@ -212,6 +212,8 @@ To register a pushed model as an imported model:
 6. Tap "Scan pushed directory". The app will find `config.json`, `.mnn` files, and a compatible chat template, then update `model-imports/imported-models.json` automatically.
 7. Select the new imported model from the model list and load it.
 
+For both zip import and directory scanning, the app reads `is_visual` from `llm_config.json` to detect image capability automatically. Generated short names retain parameter sizes such as `0.6B` and `1.8B` whenever possible.
+
 The scanner only checks first-level subdirectories under `model-imports/`. Directory names must not contain `/`, `\`, or `..`. On Windows, run `hdc file send` from the parent directory of the model directory to avoid preserving extra parent paths or writing backslashes into the app sandbox. If your model is not under the repository `models/` directory, `cd` to that model directory's parent before pushing.
 
 The app checks MNN chat templates consistently across model-market downloads, preset model installation, and imported model scanning. If `llm_config.json` contains `jinja.chat_template`, the app uses it directly. If that field is missing, the app only provides extra compatibility for automatically recognized legacy ChatML templates; otherwise, the directory is skipped as incompatible.
