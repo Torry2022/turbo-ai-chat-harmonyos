@@ -24,7 +24,7 @@ export function importedModelShortName(name: string): string {
     }
   }
   if (parameterIndex < 0) {
-    return tokens[0]
+    return normalized.length > 32 ? normalized.substring(0, 32) : normalized
   }
 
   let endIndex = tokens.length
@@ -32,7 +32,25 @@ export function importedModelShortName(name: string): string {
     endIndex--
   }
   const shortName = tokens.slice(0, endIndex).join('-')
-  return shortName.length > 32 ? shortName.substring(0, 32) : shortName
+  if (shortName.length <= 32) {
+    return shortName
+  }
+
+  const nameWithParameter = tokens.slice(0, parameterIndex + 1).join('-')
+  if (nameWithParameter.length <= 32) {
+    return nameWithParameter
+  }
+  const parameterToken = tokens[parameterIndex]
+  const familyName = tokens.slice(0, parameterIndex).join('-')
+  return `${familyName.substring(0, 31 - parameterToken.length)}-${parameterToken}`
+}
+
+export function isLegacyFamilyOnlyImportedShortName(name: string, shortName: string): boolean {
+  const tokens = stripMnnSuffix(name).split('-').filter((token: string) => token.length > 0)
+  if (tokens.length <= 1 || shortName !== tokens[0]) {
+    return false
+  }
+  return tokens.some((token: string, index: number) => index > 0 && isParameterToken(token))
 }
 
 export function legacyImportedModelShortName(name: string): string {
@@ -88,7 +106,7 @@ export function safeModelId(name: string): string {
 }
 
 function isParameterToken(token: string): boolean {
-  return /^[0-9]+(\.[0-9]+)?[BMbK]?$/.test(token) || /^E[0-9]+B$/i.test(token)
+  return /^[0-9]+([._][0-9]+)?[BMK]?$/i.test(token) || /^E[0-9]+B$/i.test(token)
 }
 
 function isTrailingModelMetadataToken(token: string): boolean {

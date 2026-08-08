@@ -10,10 +10,9 @@
 
 **Turbo AI Chat is a HarmonyOS NEXT native on-device LLM chat application** for validating a complete local-inference pipeline on HarmonyOS devices. It is built with ArkTS, C++ N-API, and MNN Runtime, ships profiles for Qwen3-4B-Instruct, MiniCPM5-1B, and Gemma-4-E2B-it, and can add compatible text and multimodal MNN models through the Model Gallery or local import. The app also includes streaming chat, model switching, image understanding, runtime monitoring, and an OpenAI-compatible LAN API.
 
-This repository is forked from [Turbo1123/turbo-ai-chat-harmonyos](https://github.com/Turbo1123/turbo-ai-chat-harmonyos). The upstream project established the ArkTS → N-API → C++ → MNN foundation for Gemma 4 text generation; this fork evolves it across multiple models, image input, and production-oriented workflows. See [Core Inference Pipeline Evolution](docs/architecture/core-inference-evolution.md) for the attribution boundary, architecture changes, and supporting commits.
-
 ## Table of Contents
 
+- [Project Origin](#project-origin)
 - [Background](#background)
 - [Recent Highlights](#recent-highlights)
 - [System Requirements](#system-requirements)
@@ -27,6 +26,12 @@ This repository is forked from [Turbo1123/turbo-ai-chat-harmonyos](https://githu
 - [Architecture](#architecture)
 - [Native API](#native-api)
 - [License](#license)
+
+## Project Origin
+
+This project began as a continuation of [Turbo1123/turbo-ai-chat-harmonyos](https://github.com/Turbo1123/turbo-ai-chat-harmonyos). The upstream project established the ArkTS → N-API → C++ → MNN pipeline required for Gemma 4 text generation. This repository preserves the original commit history and Apache-2.0 license while following an independent maintenance path. Subsequent work includes multi-model and multimodal inference, local RAG, model management and an online catalog, offline voice input, an OpenAI-compatible API, runtime monitoring, and real-device validation.
+
+See [Core Inference Pipeline Evolution](docs/architecture/core-inference-evolution.md) for the upstream baseline, the scope of subsequent changes, and the corresponding commits.
 
 ## Background
 
@@ -211,6 +216,8 @@ To register a pushed model as an imported model:
 5. Open the app → Model tab → expand "Model Management".
 6. Tap "Scan pushed directory". The app will find `config.json`, `.mnn` files, and a compatible chat template, then update `model-imports/imported-models.json` automatically.
 7. Select the new imported model from the model list and load it.
+
+For both zip import and directory scanning, the app reads `is_visual` from `llm_config.json` to detect image capability automatically. Generated short names retain parameter sizes such as `0.6B` and `1.8B` whenever possible.
 
 The scanner only checks first-level subdirectories under `model-imports/`. Directory names must not contain `/`, `\`, or `..`. On Windows, run `hdc file send` from the parent directory of the model directory to avoid preserving extra parent paths or writing backslashes into the app sandbox. If your model is not under the repository `models/` directory, `cd` to that model directory's parent before pushing.
 

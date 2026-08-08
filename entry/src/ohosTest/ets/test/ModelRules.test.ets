@@ -7,10 +7,15 @@ import {
   MODEL_PREFLIGHT_TEMPLATE_INCOMPATIBLE,
   MODEL_PREFLIGHT_VISUAL_FILES_MISSING,
   ExpectedModelFile,
+  inferSupportsImageFromLlmConfig,
   ModelDirectorySnapshot,
   validateModelDirectorySnapshot
 } from '../../../main/ets/utils/modelCompatibility'
-import { importedModelShortName, stripMnnSuffix } from '../../../main/ets/utils/modelNaming'
+import {
+  importedModelShortName,
+  isLegacyFamilyOnlyImportedShortName,
+  stripMnnSuffix
+} from '../../../main/ets/utils/modelNaming'
 import {
   MODEL_CATALOG_ITEMS,
   findModelCatalogItem
@@ -110,10 +115,23 @@ export default function modelRulesTest(): void {
       expect(result.code).assertEqual(MODEL_PREFLIGHT_VISUAL_FILES_MISSING)
     })
 
+    it('detectsVisualCapabilityFromLlmConfig', 0, () => {
+      expect(inferSupportsImageFromLlmConfig('{"is_visual":true}')).assertTrue()
+      expect(inferSupportsImageFromLlmConfig('{"is_visual":false}')).assertFalse()
+      expect(inferSupportsImageFromLlmConfig('invalid json')).assertFalse()
+    })
+
     it('normalizesImportedModelNames', 0, () => {
       expect(stripMnnSuffix('Qwen2-0.5B-Instruct-MNN')).assertEqual('Qwen2-0.5B-Instruct')
       expect(importedModelShortName('Qwen2-0.5B-Instruct-MNN')).assertEqual('Qwen2-0.5B-Instruct')
       expect(importedModelShortName('Qwen3-4B-Instruct-2507-MNN')).assertEqual('Qwen3-4B-Instruct')
+      expect(importedModelShortName('Qwen-1_8B-Chat-MNN')).assertEqual('Qwen-1_8B-Chat')
+      expect(importedModelShortName('Model-Family-Instruct-MNN')).assertEqual('Model-Family-Instruct')
+      expect(importedModelShortName('Very-Long-Model-Family-Name-1.5B-Instruct-MNN')).assertEqual(
+        'Very-Long-Model-Family-Name-1.5B'
+      )
+      expect(isLegacyFamilyOnlyImportedShortName('Qwen3-0.6B-MNN', 'Qwen3')).assertTrue()
+      expect(isLegacyFamilyOnlyImportedShortName('MiniMind2-MNN', 'MiniMind2')).assertFalse()
     })
 
     it('updatesImportedModelDescription', 0, () => {

@@ -10,10 +10,9 @@
 
 **Turbo AI Chat 是一个 HarmonyOS NEXT 原生端侧大模型聊天应用**，用于验证在鸿蒙设备上直接运行本地 LLM 的完整链路。项目基于 ArkTS、C++ N-API 和 MNN Runtime 构建，预置 Qwen3-4B-Instruct、MiniCPM5-1B 和 Gemma-4-E2B-it，并可通过模型广场或本地导入扩展兼容的文本与多模态 MNN 模型；同时提供流式对话、模型切换、图片理解、运行监控和局域网 OpenAI 兼容 API。
 
-本仓库 fork 自 [Turbo1123/turbo-ai-chat-harmonyos](https://github.com/Turbo1123/turbo-ai-chat-harmonyos)。上游完成了 Gemma 4 文本推理的 ArkTS → N-API → C++ → MNN 基础链路；本 fork 在此基础上进行了多模型、多模态和工程化演进。继承边界、架构变化与关键提交见[核心推理链演进说明](docs/architecture/core-inference-evolution.md)。
-
 ## 目录
 
+- [项目来源](#项目来源)
 - [项目背景](#项目背景)
 - [近期重要改进](#近期重要改进)
 - [系统要求](#系统要求)
@@ -27,6 +26,12 @@
 - [架构](#架构)
 - [原生接口](#原生接口)
 - [许可证](#许可证)
+
+## 项目来源
+
+本项目最初基于 [Turbo1123/turbo-ai-chat-harmonyos](https://github.com/Turbo1123/turbo-ai-chat-harmonyos) 继续开发。上游实现了 Gemma 4 文本生成所需的 ArkTS → N-API → C++ → MNN 基础链路。本仓库保留原始提交历史和 Apache-2.0 许可证，并沿独立方向维护；后续工作包括多模型与多模态推理、本地 RAG、模型管理和在线模型目录、离线语音输入、OpenAI 兼容 API、运行监控及真机验证。
+
+上游基础、后续改动范围和对应提交见[核心推理链演进说明](docs/architecture/core-inference-evolution.md)。
 
 ## 项目背景
 
@@ -215,6 +220,8 @@ hdc file send -b com.example.gemma4mnn Qwen3-4B-Instruct-2507-MNN /data/storage/
 5. 打开 App → 模型页 → 展开“模型管理”。
 6. 点击“扫描已推送目录”。App 会自动查找 `config.json`、`.mnn` 文件和可识别的对话模板，生成导入模型配置并保存到 `model-imports/imported-models.json`。
 7. 在模型列表中选择新增的导入模型并加载。
+
+无论通过 zip 还是目录扫描导入，App 都会读取 `llm_config.json` 中的 `is_visual` 自动识别图片能力；自动生成短名称时会尽量保留 `0.6B`、`1.8B` 等参数量信息。
 
 扫描只识别 `model-imports/` 下的一级子目录；目录名不要包含 `/`、`\` 或 `..`。在 Windows 终端中建议从模型目录的父目录执行 `hdc file send`，避免把更多上级路径或反斜杠写入 App 沙箱。若你的模型不在仓库 `models/` 下，也可以 `cd` 到该模型目录的父目录后再推送。
 
