@@ -1,3 +1,6 @@
+# Derived from Turbo1123/turbo-ai-chat-harmonyos and subsequently modified.
+# See README.md and Git history for provenance and change details.
+
 cmake_minimum_required(VERSION 3.5.0)
 project(turbo_ai_chat_entry)
 

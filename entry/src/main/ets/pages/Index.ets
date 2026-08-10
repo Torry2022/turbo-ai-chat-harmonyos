@@ -1,3 +1,6 @@
+// Derived from Turbo1123/turbo-ai-chat-harmonyos and subsequently modified.
+// See README.md and Git history for provenance and change details.
+
 import { common } from '@kit.AbilityKit'
 import { AppHeader } from '../components/AppHeader'
 import { ApiServerTab } from '../components/ApiServerTab'

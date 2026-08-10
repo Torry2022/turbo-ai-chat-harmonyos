@@ -12,7 +12,7 @@
 
 ## Table of Contents
 
-- [Project Origin](#project-origin)
+- [Project Origin and Evolution](#project-origin-and-evolution)
 - [Background](#background)
 - [Recent Highlights](#recent-highlights)
 - [System Requirements](#system-requirements)
@@ -27,11 +27,13 @@
 - [Native API](#native-api)
 - [License](#license)
 
-## Project Origin
+## Project Origin and Evolution
 
-This project began as a continuation of [Turbo1123/turbo-ai-chat-harmonyos](https://github.com/Turbo1123/turbo-ai-chat-harmonyos). The upstream project established the ArkTS → N-API → C++ → MNN pipeline required for Gemma 4 text generation. This repository preserves the original commit history and Apache-2.0 license while following an independent maintenance path. Subsequent work includes multi-model and multimodal inference, local RAG, model management and an online catalog, offline voice input, an OpenAI-compatible API, runtime monitoring, and real-device validation.
+This project started from [Turbo1123/turbo-ai-chat-harmonyos](https://github.com/Turbo1123/turbo-ai-chat-harmonyos). The upstream repository's first two commits established an on-device ArkTS → N-API → C++ → MNN inference pipeline with Gemma 4 text generation, streaming output, and multi-turn conversation, providing a working foundation for subsequent development.
 
-See [Core Inference Pipeline Evolution](docs/architecture/core-inference-evolution.md) for the upstream baseline, the scope of subsequent changes, and the corresponding commits.
+While retaining that foundation, this repository gradually expanded the Gemma 4-oriented implementation into a general inference path for compatible MNN model directories. It completed the image-input path from ArkTS to MNN and added generation control, stop reasons, token statistics, model-directory validation, and lifecycle management. At the application layer, subsequent work added model switching and import, the online Model Gallery, offline voice input, runtime monitoring, an OpenAI-compatible LAN API, and repeated regression testing on physical devices.
+
+The repository has since left the original fork network and is now maintained independently, while preserving the upstream commit history, Apache-2.0 license, and source attribution. See [Core Inference Pipeline Evolution](docs/architecture/core-inference-evolution.md) for the upstream baseline, implementation changes, and corresponding commits, and [`MODIFICATIONS.md`](MODIFICATIONS.md) for file-level modification notices. The complete code difference is available at [`f946a84...main`](https://github.com/Torry2022/turbo-ai-chat-harmonyos/compare/f946a842...main).
 
 ## Background
 

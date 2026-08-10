@@ -1,3 +1,6 @@
+// Derived from Turbo1123/turbo-ai-chat-harmonyos and subsequently modified.
+// See README.md and Git history for provenance and change details.
+
 #include "mnn_llm_runner.h"
 
 #include <algorithm>

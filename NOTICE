@@ -1,5 +1,12 @@
 Turbo AI Chat
 
+This project is derived from Turbo1123/turbo-ai-chat-harmonyos:
+https://github.com/Turbo1123/turbo-ai-chat-harmonyos
+
+The upstream baseline is commit f946a842c371fd2d00e0e33369ae8efc7b564474.
+This repository contains substantial subsequent modifications. See README.md,
+MODIFICATIONS.md, and the Git history for provenance and change details.
+
 This project includes a staged HarmonyOS arm64 MNN runtime binary and minimal
 MNN headers for demo build convenience. MNN is developed by Alibaba and is
 licensed under the Apache License 2.0. See https://github.com/alibaba/MNN.

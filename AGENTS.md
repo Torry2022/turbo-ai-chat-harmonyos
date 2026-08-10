@@ -85,6 +85,7 @@ Do not describe the app as cloud AI or assume server-side inference unless the u
 ## Documentation And Release Notes
 
 - User-facing changes that affect setup, model installation, model market, import flow, signing, HAP packaging, or device testing should be documented.
+- Every GitHub Release that distributes a HAP must also provide a ZIP containing that HAP together with the `LICENSE` and `NOTICE` files from the tagged commit. Do not leave a bare HAP as the only binary download. This is a release-packaging requirement and does not by itself require an app code change, version bump, new commit, or new tag; an existing Release may be supplemented with the compliant ZIP asset.
 - Every version bump or release tag must leave a local-only `docs/archive/vX.Y.Z相对vA.B.C变更说明.md` document for drafting the GitHub Release. Keep it ignored and do not stage, commit, or push it unless the user explicitly requests otherwise.
 - Other release helper documents belong under `docs/archive/` only when the user asks for them. Do not commit temporary release notes unless requested.
 - The study log skill writes learning logs, not release notes. Keep those concepts separate.

@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Derived from Turbo1123/turbo-ai-chat-harmonyos and subsequently modified.
+# See README.md and Git history for provenance and change details.
+
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

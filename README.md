@@ -12,7 +12,7 @@
 
 ## 目录
 
-- [项目来源](#项目来源)
+- [项目来源与演进](#项目来源与演进)
 - [项目背景](#项目背景)
 - [近期重要改进](#近期重要改进)
 - [系统要求](#系统要求)
@@ -27,11 +27,13 @@
 - [原生接口](#原生接口)
 - [许可证](#许可证)
 
-## 项目来源
+## 项目来源与演进
 
-本项目最初基于 [Turbo1123/turbo-ai-chat-harmonyos](https://github.com/Turbo1123/turbo-ai-chat-harmonyos) 继续开发。上游实现了 Gemma 4 文本生成所需的 ArkTS → N-API → C++ → MNN 基础链路。本仓库保留原始提交历史和 Apache-2.0 许可证，并沿独立方向维护；后续工作包括多模型与多模态推理、本地 RAG、模型管理和在线模型目录、离线语音输入、OpenAI 兼容 API、运行监控及真机验证。
+本项目起步于 [Turbo1123/turbo-ai-chat-harmonyos](https://github.com/Turbo1123/turbo-ai-chat-harmonyos)。上游仓库最初的两个提交打通了 ArkTS → N-API → C++ → MNN 的端侧推理链路，实现了 Gemma 4 的文本生成、流式输出和多轮对话，为后续开发提供了可运行的基础。
 
-上游基础、后续改动范围和对应提交见[核心推理链演进说明](docs/architecture/core-inference-evolution.md)。
+在保留这条基础链路的同时，本仓库将原先面向 Gemma 4 的实现逐步扩展为可加载兼容 MNN 模型目录的通用推理能力，接入了从 ArkTS 到 MNN 的完整图片输入链路，并完善了生成控制、停止原因、token 统计、模型目录校验和生命周期管理。在应用层，项目继续加入模型切换与导入、在线模型广场、离线语音输入、运行监控、OpenAI 兼容局域网 API，以及多轮真机回归验证。
+
+本仓库现已脱离原 fork network，由当前仓库独立维护，但仍完整保留上游提交历史、Apache-2.0 许可证和相关来源说明。上游基线、核心链路的演进过程及对应提交见[核心推理链演进说明](docs/architecture/core-inference-evolution.md)，文件修改声明见 [`MODIFICATIONS.md`](MODIFICATIONS.md)；完整代码差异可查看 [`f946a84...main`](https://github.com/Torry2022/turbo-ai-chat-harmonyos/compare/f946a842...main)。
 
 ## 项目背景
 
