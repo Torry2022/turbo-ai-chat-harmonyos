@@ -18,7 +18,21 @@ export struct ApiServerTab {
   @Prop apiServerRequestCount: number = 0
   @Prop apiServerLogs: ApiServerLogEntry[] = []
   @State apiKeyVisible: boolean = false
+  @State private contentWidth: number = 0
+  @State private viewportHeight: number = 0
   private portInputController: TextInputController = new TextInputController()
+
+  private wideLayout(): boolean {
+    return this.contentWidth >= 800
+  }
+
+  private columnWidth(): number {
+    return this.wideLayout() ? (this.contentWidth - 16) / 2 : this.contentWidth
+  }
+
+  private logHeight(): number {
+    return this.wideLayout() ? Math.max(240, Math.min(640, this.viewportHeight - 48)) : 180
+  }
 
   aboutToAppear(): void {
     this.viewModel.refreshApiServerAddress()
@@ -108,254 +122,267 @@ export struct ApiServerTab {
         .width('100%')
         .padding({ left: 4, bottom: 4 })
 
-        Column({ space: 6 }) {
-          Row() {
-            this.SectionTitle('服务状态')
-            Blank()
-            Toggle({ type: ToggleType.Switch, isOn: this.apiServerRunning })
-              .height(22)
-              .enabled(!this.apiServerStarting && (!this.busy || this.apiServerRunning))
-              .selectedColor('#45D6A4')
-              .onChange((enabled: boolean) => {
-                this.viewModel.setApiServerEnabled(enabled)
-              })
-          }
-          .height(22)
-          .width('100%')
-          .alignItems(VerticalAlign.Center)
-          Text(this.apiServerStatus)
-            .fontSize(13)
-            .lineHeight(19)
-            .fontColor(this.apiServerRunning ? '#45D6A4' : '#B7CDE1')
-            .width('100%')
-          Text(`当前模型：${this.currentModelName} · 已处理 ${this.apiServerRequestCount} 个请求`)
-            .fontSize(11)
-            .fontColor('#6F86A0')
-            .width('100%')
-          if (!this.loaded) {
-            Text('请先在模型页加载模型，再启动 API 服务。')
-              .fontSize(11)
-              .lineHeight(17)
-              .fontColor('#F2B35D')
-              .width('100%')
-          }
-        }
-        .width('100%')
-        .alignItems(HorizontalAlign.Start)
-        .padding(10)
-        .backgroundColor('#0D1A28')
-        .borderRadius(8)
-
-        Column({ space: 6 }) {
-          this.SectionTitle('连接设置')
-          Row({ space: 8 }) {
-            Column({ space: 4 }) {
-              this.Label('API 地址（点击下方复制）')
+        Flex({ direction: this.wideLayout() ? FlexDirection.Row : FlexDirection.Column }) {
+          Column({ space: 10 }) {
+            Column({ space: 6 }) {
               Row() {
-                Text(this.apiServerAddress)
-                  .fontSize(12)
-                  .fontColor('#5AB0F2')
-                  .maxLines(1)
-                  .textOverflow({ overflow: TextOverflow.Ellipsis })
-                  .copyOption(CopyOptions.LocalDevice)
+                this.SectionTitle('服务状态')
+                Blank()
+                Toggle({ type: ToggleType.Switch, isOn: this.apiServerRunning })
+                  .height(22)
+                  .enabled(!this.apiServerStarting && (!this.busy || this.apiServerRunning))
+                  .selectedColor('#45D6A4')
+                  .onChange((enabled: boolean) => {
+                    this.viewModel.setApiServerEnabled(enabled)
+                  })
               }
-              .height(38)
+              .height(22)
               .width('100%')
-              .padding({ left: 10, right: 10 })
-              .backgroundColor('#101D2B')
-              .borderRadius(8)
-              .onClick(async () => {
-                await this.copyText(this.apiServerAddress, 'API 地址')
-              })
-            }
-            .layoutWeight(1)
-            .alignItems(HorizontalAlign.Start)
-
-            Column({ space: 4 }) {
-              this.Label('端口')
-              TextInput({
-                text: this.apiServerPortInput,
-                placeholder: '8080',
-                controller: this.portInputController
-              })
-                .height(38)
-                .width('100%')
+              .alignItems(VerticalAlign.Center)
+              Text(this.apiServerStatus)
                 .fontSize(13)
-                .fontColor('#EAF4FF')
-                .textAlign(TextAlign.Center)
-                .inputFilter('[0-9]')
-                .enabled(!this.apiServerRunning && !this.apiServerStarting)
-                .backgroundColor('#101D2B')
-                .borderRadius(8)
-                .onChange((value: string) => {
-                  this.viewModel.updateApiServerPort(value)
-                })
-            }
-            .width(82)
-            .alignItems(HorizontalAlign.Start)
-          }
-          .width('100%')
-          .alignItems(VerticalAlign.Bottom)
-        }
-        .width('100%')
-        .alignItems(HorizontalAlign.Start)
-        .padding(10)
-        .backgroundColor('#0D1A28')
-        .borderRadius(8)
-
-        Column({ space: 6 }) {
-          Row() {
-            this.SectionTitle('访问控制')
-            Blank()
-            Toggle({ type: ToggleType.Switch, isOn: this.apiServerRequireKey })
-              .height(22)
-              .enabled(!this.apiServerRunning && !this.apiServerStarting)
-              .selectedColor('#45D6A4')
-              .onChange((enabled: boolean) => {
-                this.viewModel.updateApiServerRequireKey(enabled)
-              })
-          }
-          .height(22)
-          .width('100%')
-          .alignItems(VerticalAlign.Center)
-
-          if (this.apiServerRequireKey) {
-            this.Label('API Key（点击下方复制）')
-            Row() {
-              Text(this.apiKeyVisible ? this.apiServerKey : '••••••••••••••••••••••••')
-                .fontSize(12)
-                .fontColor('#EAF4FF')
-                .maxLines(1)
-                .textOverflow({ overflow: TextOverflow.Ellipsis })
-            }
-              .height(38)
-              .width('100%')
-              .padding({ left: 12, right: 12 })
-              .backgroundColor('#101D2B')
-              .borderRadius(8)
-              .onClick(async () => {
-                await this.copyText(this.apiServerKey, 'API Key')
-              })
-
-            Row({ space: 8 }) {
-              Button(this.apiKeyVisible ? '隐藏 API Key' : '显示 API Key')
-                .height(30)
-                .layoutWeight(1)
+                .lineHeight(19)
+                .fontColor(this.apiServerRunning ? '#45D6A4' : '#B7CDE1')
+                .width('100%')
+              Text(`当前模型：${this.currentModelName} · 已处理 ${this.apiServerRequestCount} 个请求`)
                 .fontSize(11)
-                .fontColor('#F4FBFF')
-                .backgroundColor('#26384D')
-                .onClick(() => {
-                  this.apiKeyVisible = !this.apiKeyVisible
-                })
-              Button('重新生成')
-                .height(30)
-                .layoutWeight(1)
-                .fontSize(11)
-                .fontColor('#8DE4C3')
-                .backgroundColor('#12372E')
-                .enabled(!this.apiServerRunning && !this.apiServerStarting)
-                .onClick(() => {
-                  this.viewModel.regenerateApiServerKey()
-                })
-            }
-            .width('100%')
-          }
-        }
-        .width('100%')
-        .alignItems(HorizontalAlign.Start)
-        .padding(10)
-        .backgroundColor('#0D1A28')
-        .borderRadius(8)
-
-        Column({ space: 6 }) {
-          Row() {
-            this.SectionTitle('API 日志')
-            Blank()
-            Button('清空')
-              .height(22)
-              .width(64)
-              .fontSize(10)
-              .fontColor('#8CA2B8')
-              .backgroundColor('#101D2B')
-              .enabled(this.apiServerLogs.length > 0)
-              .onClick(() => {
-                this.viewModel.clearApiServerLogs()
-              })
-          }
-          .height(22)
-          .width('100%')
-          .alignItems(VerticalAlign.Top)
-
-          if (this.apiServerLogs.length <= 0) {
-            Text('暂无 API 请求日志')
-              .height(120)
-              .fontSize(12)
-              .fontColor('#5F758C')
-              .width('100%')
-              .textAlign(TextAlign.Center)
-          } else {
-            List({ space: 5 }) {
-              ForEach(this.logItems(), (item: ApiServerLogEntry) => {
-                ListItem() {
-                  Row({ space: 7 }) {
-                    Text(item.time)
-                      .width(50)
-                      .fontSize(10)
-                      .lineHeight(16)
-                      .fontColor('#5F758C')
-                      .textAlign(TextAlign.Start)
-                    Text(item.level)
-                      .width(42)
-                      .fontSize(10)
-                      .lineHeight(16)
-                      .fontWeight(FontWeight.Medium)
-                      .fontColor(this.logLevelColor(item.level))
-                      .textAlign(TextAlign.Start)
-                    Text(item.message)
-                      .fontSize(10)
-                      .lineHeight(16)
-                      .fontColor('#B7CDE1')
-                      .layoutWeight(1)
-                      .maxLines(2)
-                      .textOverflow({ overflow: TextOverflow.Ellipsis })
-                  }
+                .fontColor('#6F86A0')
+                .width('100%')
+              if (!this.loaded) {
+                Text('请先在模型页加载模型，再启动 API 服务。')
+                  .fontSize(11)
+                  .lineHeight(17)
+                  .fontColor('#F2B35D')
                   .width('100%')
-                  .alignItems(VerticalAlign.Top)
-                }
-              }, (item: ApiServerLogEntry) => `${item.id}`)
+              }
             }
             .width('100%')
-            .height(180)
-            .scrollBar(BarState.Auto)
-            .edgeEffect(EdgeEffect.Spring)
-          }
-        }
-        .width('100%')
-        .alignItems(HorizontalAlign.Start)
-        .padding(10)
-        .backgroundColor('#0D1A28')
-        .borderRadius(8)
+            .alignItems(HorizontalAlign.Start)
+            .padding(10)
+            .backgroundColor('#0D1A28')
+            .borderRadius(8)
 
-        Column({ space: 6 }) {
-          this.SectionTitle('支持的端点')
-          Column({ space: 0 }) {
-            this.Endpoint('GET', '/v1/models', '#69D38A')
-            this.Endpoint('POST', '/v1/chat/completions', '#5AB0F2')
-            this.Endpoint('POST', '/v1/responses', '#5AB0F2')
-          }
-          .width('100%')
-          .alignItems(HorizontalAlign.Start)
-          Text('当前版本仅支持文本输入和当前已加载模型，同时只处理一个生成请求。App 退出后服务会停止。')
-            .fontSize(11)
-            .lineHeight(17)
-            .fontColor('#6F86A0')
+            Column({ space: 6 }) {
+              this.SectionTitle('连接设置')
+              Row({ space: 8 }) {
+                Column({ space: 4 }) {
+                  this.Label('API 地址（点击下方复制）')
+                  Row() {
+                    Text(this.apiServerAddress)
+                      .fontSize(12)
+                      .fontColor('#5AB0F2')
+                      .maxLines(1)
+                      .textOverflow({ overflow: TextOverflow.Ellipsis })
+                      .copyOption(CopyOptions.LocalDevice)
+                  }
+                  .height(38)
+                  .width('100%')
+                  .padding({ left: 10, right: 10 })
+                  .backgroundColor('#101D2B')
+                  .borderRadius(8)
+                  .onClick(async () => {
+                    await this.copyText(this.apiServerAddress, 'API 地址')
+                  })
+                }
+                .layoutWeight(1)
+                .alignItems(HorizontalAlign.Start)
+
+                Column({ space: 4 }) {
+                  this.Label('端口')
+                  TextInput({
+                    text: this.apiServerPortInput,
+                    placeholder: '8080',
+                    controller: this.portInputController
+                  })
+                    .height(38)
+                    .width('100%')
+                    .fontSize(13)
+                    .fontColor('#EAF4FF')
+                    .textAlign(TextAlign.Center)
+                    .inputFilter('[0-9]')
+                    .enabled(!this.apiServerRunning && !this.apiServerStarting)
+                    .backgroundColor('#101D2B')
+                    .borderRadius(8)
+                    .onChange((value: string) => {
+                      this.viewModel.updateApiServerPort(value)
+                    })
+                }
+                .width(82)
+                .alignItems(HorizontalAlign.Start)
+              }
+              .width('100%')
+              .alignItems(VerticalAlign.Bottom)
+            }
             .width('100%')
+            .alignItems(HorizontalAlign.Start)
+            .padding(10)
+            .backgroundColor('#0D1A28')
+            .borderRadius(8)
+
+            Column({ space: 6 }) {
+              Row() {
+                this.SectionTitle('访问控制')
+                Blank()
+                Toggle({ type: ToggleType.Switch, isOn: this.apiServerRequireKey })
+                  .height(22)
+                  .enabled(!this.apiServerRunning && !this.apiServerStarting)
+                  .selectedColor('#45D6A4')
+                  .onChange((enabled: boolean) => {
+                    this.viewModel.updateApiServerRequireKey(enabled)
+                  })
+              }
+              .height(22)
+              .width('100%')
+              .alignItems(VerticalAlign.Center)
+
+              if (this.apiServerRequireKey) {
+                this.Label('API Key（点击下方复制）')
+                Row() {
+                  Text(this.apiKeyVisible ? this.apiServerKey : '••••••••••••••••••••••••')
+                    .fontSize(12)
+                    .fontColor('#EAF4FF')
+                    .maxLines(1)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis })
+                }
+                  .height(38)
+                  .width('100%')
+                  .padding({ left: 12, right: 12 })
+                  .backgroundColor('#101D2B')
+                  .borderRadius(8)
+                  .onClick(async () => {
+                    await this.copyText(this.apiServerKey, 'API Key')
+                  })
+
+                Row({ space: 8 }) {
+                  Button(this.apiKeyVisible ? '隐藏 API Key' : '显示 API Key')
+                    .height(30)
+                    .layoutWeight(1)
+                    .fontSize(11)
+                    .fontColor('#F4FBFF')
+                    .backgroundColor('#26384D')
+                    .onClick(() => {
+                      this.apiKeyVisible = !this.apiKeyVisible
+                    })
+                  Button('重新生成')
+                    .height(30)
+                    .layoutWeight(1)
+                    .fontSize(11)
+                    .fontColor('#8DE4C3')
+                    .backgroundColor('#12372E')
+                    .enabled(!this.apiServerRunning && !this.apiServerStarting)
+                    .onClick(() => {
+                      this.viewModel.regenerateApiServerKey()
+                    })
+                }
+                .width('100%')
+              }
+            }
+            .width('100%')
+            .alignItems(HorizontalAlign.Start)
+            .padding(10)
+            .backgroundColor('#0D1A28')
+            .borderRadius(8)
+
+          }
+          .width(this.columnWidth())
+          .flexShrink(0)
+          .margin({ right: this.wideLayout() ? 16 : 0, bottom: this.wideLayout() ? 0 : 10 })
+
+          Column({ space: 10 }) {
+            Column({ space: 6 }) {
+              Row() {
+                this.SectionTitle('API 日志')
+                Blank()
+                Button('清空')
+                  .height(22)
+                  .width(64)
+                  .fontSize(10)
+                  .fontColor('#8CA2B8')
+                  .backgroundColor('#101D2B')
+                  .enabled(this.apiServerLogs.length > 0)
+                  .onClick(() => {
+                    this.viewModel.clearApiServerLogs()
+                  })
+              }
+              .height(22)
+              .width('100%')
+              .alignItems(VerticalAlign.Top)
+
+              if (this.apiServerLogs.length <= 0) {
+                Text('暂无 API 请求日志')
+                  .height(this.wideLayout() ? 240 : 120)
+                  .fontSize(12)
+                  .fontColor('#5F758C')
+                  .width('100%')
+                  .textAlign(TextAlign.Center)
+              } else {
+                List({ space: 5 }) {
+                  ForEach(this.logItems(), (item: ApiServerLogEntry) => {
+                    ListItem() {
+                      Row({ space: 7 }) {
+                        Text(item.time)
+                          .width(50)
+                          .fontSize(10)
+                          .lineHeight(16)
+                          .fontColor('#5F758C')
+                          .textAlign(TextAlign.Start)
+                        Text(item.level)
+                          .width(42)
+                          .fontSize(10)
+                          .lineHeight(16)
+                          .fontWeight(FontWeight.Medium)
+                          .fontColor(this.logLevelColor(item.level))
+                          .textAlign(TextAlign.Start)
+                        Text(item.message)
+                          .fontSize(10)
+                          .lineHeight(16)
+                          .fontColor('#B7CDE1')
+                          .layoutWeight(1)
+                          .maxLines(2)
+                          .textOverflow({ overflow: TextOverflow.Ellipsis })
+                      }
+                      .width('100%')
+                      .alignItems(VerticalAlign.Top)
+                    }
+                  }, (item: ApiServerLogEntry) => `${item.id}`)
+                }
+                .width('100%')
+                .height(this.logHeight())
+                .scrollBar(BarState.Auto)
+                .edgeEffect(EdgeEffect.Spring)
+              }
+            }
+            .width('100%')
+            .alignItems(HorizontalAlign.Start)
+            .padding(10)
+            .backgroundColor('#0D1A28')
+            .borderRadius(8)
+
+            Column({ space: 6 }) {
+              this.SectionTitle('支持的端点')
+              Column({ space: 0 }) {
+                this.Endpoint('GET', '/v1/models', '#69D38A')
+                this.Endpoint('POST', '/v1/chat/completions', '#5AB0F2')
+                this.Endpoint('POST', '/v1/responses', '#5AB0F2')
+              }
+              .width('100%')
+              .alignItems(HorizontalAlign.Start)
+              Text('当前版本仅支持文本输入和当前已加载模型，同时只处理一个生成请求。App 退出后服务会停止。')
+                .fontSize(11)
+                .lineHeight(17)
+                .fontColor('#6F86A0')
+                .width('100%')
+            }
+            .width('100%')
+            .alignItems(HorizontalAlign.Start)
+            .padding(10)
+            .backgroundColor('#0D1A28')
+            .borderRadius(8)
+          }
+          .width(this.columnWidth())
+          .flexShrink(0)
         }
         .width('100%')
-        .alignItems(HorizontalAlign.Start)
-        .padding(10)
-        .backgroundColor('#0D1A28')
-        .borderRadius(8)
       }
       .width('100%')
       .padding({ bottom: 8 })
@@ -365,6 +392,10 @@ export struct ApiServerTab {
     }
     .width('100%')
     .height('100%')
+    .onAreaChange((_oldArea: Area, newArea: Area) => {
+      this.contentWidth = Number(newArea.width)
+      this.viewportHeight = Number(newArea.height)
+    })
     .align(Alignment.Top)
     .scrollBar(BarState.Off)
     .edgeEffect(EdgeEffect.Spring)

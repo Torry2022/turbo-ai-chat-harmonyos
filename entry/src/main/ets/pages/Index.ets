@@ -24,6 +24,7 @@ struct Index {
   @State private activeTab: number = 0
   @State private stateVersion: number = 0
   @State private modelCardDragging: boolean = false
+  @State private windowWidth: number = 0
   private lastBackTime: number = 0
   private abilityContext?: common.UIAbilityContext
 
@@ -74,9 +75,7 @@ struct Index {
       }
     }
     this.activeTab = index
-    if (index === 0) {
-      this.viewModel.scrollToBottom()
-    } else if (index === 2) {
+    if (index === 2) {
       this.viewModel.refreshApiServerAddress()
     }
   }
@@ -84,6 +83,10 @@ struct Index {
   private newChat(): void {
     this.viewModel.newChat()
     this.activeTab = 0
+  }
+
+  private pagePadding(): number {
+    return this.windowWidth >= 840 ? 24 : this.windowWidth >= 600 ? 20 : 14
   }
 
   private showToast(message: string, duration: number): void {
@@ -114,77 +117,98 @@ struct Index {
               }
             }
           })
-          .padding({ left: 14, right: 14 })
-          if (this.activeTab === 0) {
-            ChatRunTicker({
-              viewModel: this.viewModel
-            })
-          }
+          .padding({ left: this.pagePadding(), right: this.pagePadding() })
         }
         .width('100%')
-        Stack() {
-          ChatTab({
-            viewModel: this.viewModel,
-            renderVersion: this.stateVersion
-          })
-          .padding({ left: 14, right: 14 })
-          .height('100%')
-          .visibility(this.activeTab === 0 ? Visibility.Visible : Visibility.Hidden)
+        Flex({ direction: this.windowWidth >= 600 ? FlexDirection.RowReverse : FlexDirection.Column }) {
+          Column({ space: 8 }) {
+            if (this.activeTab === 0) {
+              ChatRunTicker({
+                viewModel: this.viewModel,
+                topSpacing: this.windowWidth >= 600 ? 4 : 6
+              })
+            }
+            Stack() {
+              ChatTab({
+                viewModel: this.viewModel,
+                renderVersion: this.stateVersion
+              })
+              .padding({ left: this.pagePadding(), right: this.pagePadding() })
+              .width(Math.max(1, Math.min(1280 + 2 * this.pagePadding(), this.windowWidth -
+                (this.windowWidth >= 840 ? 160 : this.windowWidth >= 600 ? 88 : 0))))
+              .height('100%')
+              .visibility(this.activeTab === 0 ? Visibility.Visible : Visibility.Hidden)
 
-          ModelTab({
-            viewModel: this.viewModel,
-            renderVersion: this.stateVersion,
-            onDragStateChange: (dragging: boolean) => {
-              this.modelCardDragging = dragging
+              ModelTab({
+                viewModel: this.viewModel,
+                renderVersion: this.stateVersion,
+                onDragStateChange: (dragging: boolean) => {
+                  this.modelCardDragging = dragging
+                }
+              })
+              .padding({ left: this.pagePadding(), right: this.pagePadding() })
+              .width(Math.max(1, Math.min(1280 + 2 * this.pagePadding(), this.windowWidth -
+                (this.windowWidth >= 840 ? 160 : this.windowWidth >= 600 ? 88 : 0))))
+              .height('100%')
+              .visibility(this.activeTab === 1 ? Visibility.Visible : Visibility.Hidden)
+
+              ApiServerTab({
+                viewModel: this.viewModel,
+                renderVersion: this.stateVersion,
+                loaded: this.viewModel.loaded,
+                busy: this.viewModel.busy,
+                currentModelName: this.viewModel.currentModel().shortName,
+                apiServerRunning: this.viewModel.apiServerRunning,
+                apiServerStarting: this.viewModel.apiServerStarting,
+                apiServerPortInput: this.viewModel.apiServerPortInput,
+                apiServerRequireKey: this.viewModel.apiServerRequireKey,
+                apiServerKey: this.viewModel.apiServerKey,
+                apiServerAddress: this.viewModel.apiServerAddress,
+                apiServerStatus: this.viewModel.apiServerStatus,
+                apiServerRequestCount: this.viewModel.apiServerRequestCount,
+                apiServerLogs: this.viewModel.apiServerLogs
+              })
+              .padding({ left: this.pagePadding(), right: this.pagePadding() })
+              .width(Math.max(1, Math.min(1280 + 2 * this.pagePadding(), this.windowWidth -
+                (this.windowWidth >= 840 ? 160 : this.windowWidth >= 600 ? 88 : 0))))
+              .height('100%')
+              .visibility(this.activeTab === 2 ? Visibility.Visible : Visibility.Hidden)
+
+              MonitorTab({
+                viewModel: this.viewModel,
+                active: this.activeTab === 3
+              })
+              .padding({ left: this.pagePadding(), right: this.pagePadding() })
+              .width(Math.max(1, Math.min(1280 + 2 * this.pagePadding(), this.windowWidth -
+                (this.windowWidth >= 840 ? 160 : this.windowWidth >= 600 ? 88 : 0))))
+              .height('100%')
+              .visibility(this.activeTab === 3 ? Visibility.Visible : Visibility.Hidden)
+            }
+            .width('100%')
+            .layoutWeight(1)
+          }
+          .layoutWeight(1)
+          .width(this.windowWidth >= 600 ? 0 : '100%')
+          .height(this.windowWidth >= 600 ? '100%' : 0)
+          .zIndex(this.modelCardDragging ? 10 : 0)
+          BottomTabs({
+            activeTab: this.activeTab,
+            windowWidth: this.windowWidth,
+            onTabChange: (index: number) => {
+              this.changeTab(index)
             }
           })
-          .padding({ left: 14, right: 14 })
-          .height('100%')
-          .visibility(this.activeTab === 1 ? Visibility.Visible : Visibility.Hidden)
-
-          ApiServerTab({
-            viewModel: this.viewModel,
-            renderVersion: this.stateVersion,
-            loaded: this.viewModel.loaded,
-            busy: this.viewModel.busy,
-            currentModelName: this.viewModel.currentModel().shortName,
-            apiServerRunning: this.viewModel.apiServerRunning,
-            apiServerStarting: this.viewModel.apiServerStarting,
-            apiServerPortInput: this.viewModel.apiServerPortInput,
-            apiServerRequireKey: this.viewModel.apiServerRequireKey,
-            apiServerKey: this.viewModel.apiServerKey,
-            apiServerAddress: this.viewModel.apiServerAddress,
-            apiServerStatus: this.viewModel.apiServerStatus,
-            apiServerRequestCount: this.viewModel.apiServerRequestCount,
-            apiServerLogs: this.viewModel.apiServerLogs
-          })
-          .padding({ left: 14, right: 14 })
-          .height('100%')
-          .visibility(this.activeTab === 2 ? Visibility.Visible : Visibility.Hidden)
-
-          if (this.activeTab === 3) {
-            MonitorTab({
-              viewModel: this.viewModel
-            })
-            .padding({ left: 14, right: 14 })
-            .height('100%')
-          }
+          .width(this.windowWidth >= 840 ? 160 : this.windowWidth >= 600 ? 88 : '100%')
+          .height(this.windowWidth >= 600 ? '100%' : 62)
+          .flexShrink(0)
         }
-        .layoutWeight(1)
         .width('100%')
-        .zIndex(this.modelCardDragging ? 10 : 0)
-        BottomTabs({
-          activeTab: this.activeTab,
-          onTabChange: (index: number) => {
-            this.changeTab(index)
-          }
-        })
-        .padding({ left: 14, right: 14 })
+        .layoutWeight(1)
       }
       .width('100%')
       .height('100%')
       .justifyContent(FlexAlign.Start)
-      .padding({ top: 42, bottom: 12 })
+      .padding({ top: 8, bottom: 8 })
 
       if (this.viewModel.showModelLoadDialog) {
         ModelLoadDialog({
@@ -210,8 +234,9 @@ struct Index {
     .width('100%')
     .height('100%')
     .backgroundColor('#06121F')
-    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
-    .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.TOP, LayoutSafeAreaEdge.BOTTOM])
+    .onAreaChange((_oldArea: Area, newArea: Area) => {
+      this.windowWidth = Number(newArea.width)
+    })
   }
 
   build() {
@@ -224,5 +249,6 @@ struct Index {
     }
     .width('100%')
     .height('100%')
+    .backgroundColor('#06121F')
   }
 }

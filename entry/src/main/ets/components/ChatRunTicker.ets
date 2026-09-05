@@ -6,6 +6,7 @@ import { colorForAppCpu, colorForMemoryUsage, colorForTemperature } from '../uti
 @Component
 export struct ChatRunTicker {
   @ObjectLink viewModel: ChatViewModel
+  @Prop topSpacing: number = 6
   @State private stats: RuntimeStats = EMPTY_RUNTIME_STATS
   private statsTimer: number = -1
   private statsService: RuntimeStatsService = new RuntimeStatsService()
@@ -78,7 +79,7 @@ export struct ChatRunTicker {
     .width('100%')
     .height(20)
     .padding({ left: 8, right: 8 })
-    .margin({ top: 6 })
+    .margin({ top: this.topSpacing })
     .backgroundColor('#0D2232')
     .justifyContent(FlexAlign.Center)
   }

@@ -32,6 +32,7 @@ export struct ModelTab {
   @State draggingModelId: string = ''
   @State dragOffsetY: number = 0
   @State dragTargetIndex: number = -1
+  @State private contentWidth: number = 0
   private modelScroller: Scroller = new Scroller()
   private readonly modelCardGap: number = 8
   private dragStartIndex: number = -1
@@ -835,18 +836,32 @@ export struct ModelTab {
 
   build() {
     Scroll(this.modelScroller) {
-      Column({ space: 12 }) {
-        this.ModelListCard()
-        this.GenerationSettingsCard()
-        this.RuntimeSettingsCard()
-        this.ImportedModelConfigCard()
-        this.ContextCard()
-        this.ModelManagementCard()
+      Flex({ direction: this.contentWidth >= 800 ? FlexDirection.Row : FlexDirection.Column }) {
+        Column() {
+          this.ModelListCard()
+        }
+        .width(this.contentWidth >= 800 ? Math.max(320, Math.min(420, this.contentWidth * 0.4)) : this.contentWidth)
+        .flexShrink(0)
+        .zIndex(this.draggingModelId.length > 0 ? 10 : 0)
+        .margin({ right: this.contentWidth >= 800 ? 16 : 0, bottom: this.contentWidth >= 800 ? 0 : 12 })
+        Column({ space: 12 }) {
+          this.GenerationSettingsCard()
+          this.RuntimeSettingsCard()
+          this.ImportedModelConfigCard()
+          this.ContextCard()
+          this.ModelManagementCard()
+        }
+        .width(this.contentWidth >= 800 ?
+          this.contentWidth - Math.max(320, Math.min(420, this.contentWidth * 0.4)) - 16 : this.contentWidth)
+        .flexShrink(0)
       }
       .width('100%')
     }
     .width('100%')
     .height('100%')
+    .onAreaChange((_oldArea: Area, newArea: Area) => {
+      this.contentWidth = Number(newArea.width)
+    })
     .align(Alignment.Top)
     .scrollBar(BarState.Off)
     .edgeEffect(EdgeEffect.Spring)

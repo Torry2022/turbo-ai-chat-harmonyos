@@ -343,6 +343,7 @@ export struct MessageBubble {
       .backgroundColor(this.message.role === 'user' ? '#1267A8' : '#111E2C')
       .borderRadius(8)
       .width(this.message.role === 'user' ? '84%' : '94%')
+      .constraintSize({ maxWidth: this.message.role === 'user' ? 720 : 880 })
       .bindContextMenu(this.CopyMenuBuilder, ResponseType.LongPress)
       if (this.message.role !== 'user') {
         Blank()

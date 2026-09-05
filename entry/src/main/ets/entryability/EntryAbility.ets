@@ -10,18 +10,19 @@ export default class EntryAbility extends UIAbility {
     hilog.info(0x0000, 'TurboAIChat', 'Ability created')
   }
 
-  private configureImmersiveWindow(windowStage: window.WindowStage): void {
+  private configureWindow(windowStage: window.WindowStage): void {
     try {
       const mainWindow = windowStage.getMainWindowSync()
-      mainWindow.setWindowLayoutFullScreen(true).catch((err: Error) => {
-        hilog.warn(0x0000, 'TurboAIChat', 'set fullscreen failed: %{public}s', JSON.stringify(err))
+      mainWindow.setWindowBackgroundColor('#06121F')
+      mainWindow.setWindowLayoutFullScreen(false).catch((err: Error) => {
+        hilog.warn(0x0000, 'TurboAIChat', 'set window layout failed: %{public}s', JSON.stringify(err))
       })
       mainWindow.setWindowSystemBarEnable(['status', 'navigation']).catch((err: Error) => {
         hilog.warn(0x0000, 'TurboAIChat', 'set system bar enable failed: %{public}s', JSON.stringify(err))
       })
       mainWindow.setWindowSystemBarProperties({
-        statusBarColor: '#00000000',
-        navigationBarColor: '#00000000',
+        statusBarColor: '#06121F',
+        navigationBarColor: '#06121F',
         statusBarContentColor: '#F4FBFF',
         navigationBarContentColor: '#F4FBFF',
         isStatusBarLightIcon: true,
@@ -35,12 +36,12 @@ export default class EntryAbility extends UIAbility {
   }
 
   onWindowStageCreate(windowStage: window.WindowStage): void {
-    this.configureImmersiveWindow(windowStage)
+    this.configureWindow(windowStage)
     windowStage.loadContent('pages/Index', (err) => {
       if (err.code) {
         hilog.error(0x0000, 'TurboAIChat', 'loadContent failed: %{public}s', JSON.stringify(err))
       }
-      this.configureImmersiveWindow(windowStage)
+      this.configureWindow(windowStage)
     })
   }
 }

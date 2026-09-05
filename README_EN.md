@@ -86,7 +86,7 @@ In the HarmonyOS ecosystem, on-device AI inference today largely depends on Andr
 | Item | Recommended |
 |------|-------------|
 | System | HarmonyOS NEXT. The project currently uses `compatibleSdkVersion` `6.1.0(23)` and `targetSdkVersion` `6.1.1(24)` |
-| Device | Real device. The emulator is not the target environment for local MNN inference in this project |
+| Device | ARM64 HarmonyOS phone, tablet, or PC (`phone` / `tablet` / `2in1`). The emulator is not the target environment for local MNN inference in this project |
 | RAM | 8 GB or more is recommended for Qwen3-4B-Instruct / Gemma-4-E2B-it. MiniCPM5-1B is better suited for lower-memory validation |
 | Storage | The HAP is small; model weights dominate storage. A single MNN model directory usually requires several GB |
 | Network | In-app model-market installation downloads from ModelScope, so first-time model installation requires ModelScope access |
@@ -123,6 +123,7 @@ After the model loads, return to the Chat tab and send a message. MiniCPM5-1B di
 
 ## Features
 
+- Adaptive navigation: bottom tabs in narrow windows and a sidebar in wider windows. Resizing retains page instances; monitoring pauses when hidden and preserves its scroll position.
 - Local inference: models run on-device, no network required
 - Streaming output: updates responses from native inference callback chunks in real time
 - Stop generation: interrupt the current response while it is streaming
