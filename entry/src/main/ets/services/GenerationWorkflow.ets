@@ -60,7 +60,11 @@ export class GenerationWorkflow {
     const generationStartedAt = Date.now()
     let firstChunkAt = 0
     let streamedText = ''
+    let streamFinished = false
     const onChunk = (chunk: string): void => {
+      if (streamFinished) {
+        return
+      }
       if (firstChunkAt <= 0) {
         firstChunkAt = Date.now()
       }
@@ -76,32 +80,37 @@ export class GenerationWorkflow {
     }
 
     let result: GenerationResult
-    if (request.imageUri.length > 0) {
-      callbacks.onStatus('正在读取图片...')
-      const payload: ImagePayload = await this.imageService.buildImagePayload(request.imageUri)
-      if (callbacks.isStopRequested()) {
-        result = {
-          text: streamedText,
-          generatedTokens: 0,
-          stopReason: 'user_stop'
+    try {
+      if (request.imageUri.length > 0) {
+        callbacks.onStatus('正在读取图片...')
+        const payload: ImagePayload = await this.imageService.buildImagePayload(request.imageUri)
+        if (callbacks.isStopRequested()) {
+          result = {
+            text: streamedText,
+            generatedTokens: 0,
+            stopReason: 'user_stop'
+          }
+        } else {
+          callbacks.onStatus('等待视觉模型...')
+          result = await this.nativeService.generateImage(
+            request.turns,
+            payload,
+            request.maxNewTokens,
+            request.settings,
+            onChunk
+          )
         }
       } else {
-        callbacks.onStatus('等待视觉模型...')
-        result = await this.nativeService.generateImage(
+        result = await this.nativeService.generateText(
           request.turns,
-          payload,
           request.maxNewTokens,
           request.settings,
           onChunk
         )
       }
-    } else {
-      result = await this.nativeService.generateText(
-        request.turns,
-        request.maxNewTokens,
-        request.settings,
-        onChunk
-      )
+
+    } finally {
+      streamFinished = true
     }
 
     const answer = finalAssistantAnswer(
