@@ -3,6 +3,8 @@ import { ChatViewModel } from '../state/ChatViewModel'
 @Component
 export struct DeleteModelDialog {
   @ObjectLink viewModel: ChatViewModel
+  @Prop availableWidth: number = 360
+  @Prop availableHeight: number = 640
 
   private modelName(): string {
     const model = this.viewModel.pendingDeleteModel()
@@ -20,6 +22,7 @@ export struct DeleteModelDialog {
   build() {
     Stack({ alignContent: Alignment.Center }) {
       Column()
+        .focusable(false)
         .width('100%')
         .height('100%')
         .backgroundColor('#00000099')
@@ -34,15 +37,24 @@ export struct DeleteModelDialog {
           .fontColor('#F4FBFF')
           .width('100%')
 
-        Text(this.description())
-          .fontSize(14)
-          .lineHeight(21)
-          .fontColor('#B7CDE1')
+        Scroll() {
+          Column({ space: 14 }) {
+            Text(this.description())
+              .fontSize(14)
+              .lineHeight(21)
+              .fontColor('#B7CDE1')
+              .width('100%')
+
+          }
           .width('100%')
+        }
+        .width('100%')
+        .constraintSize({ maxHeight: Math.max(40, this.availableHeight - 220) })
+        .scrollBar(BarState.Auto)
 
         Row({ space: 10 }) {
           Button('取消')
-            .height(38)
+            .height(40)
             .layoutWeight(1)
             .fontColor('#F4FBFF')
             .backgroundColor('#26384D')
@@ -50,7 +62,7 @@ export struct DeleteModelDialog {
               this.viewModel.cancelDeleteModel()
             })
           Button('确认')
-            .height(38)
+            .height(40)
             .layoutWeight(1)
             .backgroundColor('#B43B3B')
             .onClick(() => {
@@ -59,7 +71,8 @@ export struct DeleteModelDialog {
         }
         .width('100%')
       }
-      .width('90%')
+      .width(Math.max(1, Math.min(480, this.availableWidth - 32)))
+      .constraintSize({ maxHeight: Math.max(1, this.availableHeight - 32) })
       .padding(18)
       .backgroundColor('#102235')
       .border({ width: 1, color: '#23445F' })

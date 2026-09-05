@@ -2,6 +2,8 @@
 // See README.md and Git history for provenance and change details.
 
 import { common } from '@kit.AbilityKit'
+import { KeyCode } from '@kit.InputKit'
+import { KeyboardAvoidMode } from '@kit.ArkUI'
 import { AppHeader } from '../components/AppHeader'
 import { ApiServerTab } from '../components/ApiServerTab'
 import { BottomTabs } from '../components/BottomTabs'
@@ -25,7 +27,11 @@ struct Index {
   @State private stateVersion: number = 0
   @State private modelCardDragging: boolean = false
   @State private windowWidth: number = 0
+  @State private windowHeight: number = 0
   private lastBackTime: number = 0
+  private newChatKeyHeld: boolean = false
+  private focusScope: string = ''
+  private focusTimer: number = -1
   private abilityContext?: common.UIAbilityContext
 
   onBackPress(): boolean {
@@ -45,8 +51,10 @@ struct Index {
   }
 
   aboutToAppear(): void {
+    this.getUIContext().setKeyboardAvoidMode(KeyboardAvoidMode.RESIZE)
     this.viewModel.bindNotify(() => {
       this.stateVersion++
+      this.updateModalFocus()
     })
     this.viewModel.bindToast((message: string) => {
       this.showToast(message, 1800)
@@ -63,7 +71,29 @@ struct Index {
   }
 
   aboutToDisappear(): void {
+    clearTimeout(this.focusTimer)
     this.viewModel.dispose()
+  }
+
+  private modalFocusId(): string {
+    if (this.viewModel.showDeleteModelDialog) return 'delete-dialog'
+    if (this.viewModel.showModelMarketDialog) return 'market-dialog'
+    if (this.viewModel.showBuiltinModelInstallDialog) return 'install-dialog'
+    if (this.viewModel.showModelLoadDialog) return 'load-dialog'
+    return 'app-content'
+  }
+
+  private updateModalFocus(force: boolean = false): void {
+    const id = this.modalFocusId()
+    if (!force && this.focusScope === id) return
+    this.focusScope = id
+    clearTimeout(this.focusTimer)
+    this.focusTimer = setTimeout(() => {
+      try {
+        this.getUIContext().getFocusController().requestFocus(this.modalFocusId())
+      } catch (_) {
+      }
+    }, 0)
   }
 
   private changeTab(index: number): void {
@@ -83,6 +113,29 @@ struct Index {
   private newChat(): void {
     this.viewModel.newChat()
     this.activeTab = 0
+  }
+
+  private handleKey(event: KeyEvent): boolean {
+    if (event.keyCode === KeyCode.KEYCODE_ESCAPE && event.type === KeyType.Down) {
+      return this.viewModel.dismissTopDialogIfIdle()
+    }
+    if (event.keyCode !== KeyCode.KEYCODE_N) {
+      return false
+    }
+    if (event.type === KeyType.Up) {
+      this.newChatKeyHeld = false
+      return false
+    }
+    if (this.activeTab !== 0 || !event.getModifierKeyState?.(['ctrl']) ||
+      this.viewModel.showModelLoadDialog || this.viewModel.showBuiltinModelInstallDialog ||
+      this.viewModel.showModelMarketDialog || this.viewModel.showDeleteModelDialog) {
+      return false
+    }
+    if (!this.newChatKeyHeld && !this.viewModel.busy && !this.viewModel.generating) {
+      this.newChat()
+    }
+    this.newChatKeyHeld = true
+    return true
   }
 
   private pagePadding(): number {
@@ -131,7 +184,10 @@ struct Index {
             Stack() {
               ChatTab({
                 viewModel: this.viewModel,
-                renderVersion: this.stateVersion
+                renderVersion: this.stateVersion,
+                active: this.activeTab === 0,
+                dialogVisible: this.viewModel.showModelLoadDialog || this.viewModel.showBuiltinModelInstallDialog ||
+                  this.viewModel.showModelMarketDialog || this.viewModel.showDeleteModelDialog
               })
               .padding({ left: this.pagePadding(), right: this.pagePadding() })
               .width(Math.max(1, Math.min(1280 + 2 * this.pagePadding(), this.windowWidth -
@@ -209,26 +265,48 @@ struct Index {
       .height('100%')
       .justifyContent(FlexAlign.Start)
       .padding({ top: 8, bottom: 8 })
+      .id('app-content')
+      .focusable(this.modalFocusId() === 'app-content')
 
       if (this.viewModel.showModelLoadDialog) {
         ModelLoadDialog({
-          viewModel: this.viewModel
+          viewModel: this.viewModel,
+          availableWidth: this.windowWidth,
+          availableHeight: this.windowHeight
         })
+        .id('load-dialog')
+        .focusable(this.modalFocusId() === 'load-dialog')
+        .onAppear(() => this.updateModalFocus(true))
       }
       if (this.viewModel.showBuiltinModelInstallDialog) {
         BuiltinModelInstallDialog({
-          viewModel: this.viewModel
+          viewModel: this.viewModel,
+          availableWidth: this.windowWidth,
+          availableHeight: this.windowHeight
         })
+        .id('install-dialog')
+        .focusable(this.modalFocusId() === 'install-dialog')
+        .onAppear(() => this.updateModalFocus(true))
       }
       if (this.viewModel.showModelMarketDialog) {
         ModelMarketDialog({
-          viewModel: this.viewModel
+          viewModel: this.viewModel,
+          availableWidth: this.windowWidth,
+          availableHeight: this.windowHeight
         })
+        .id('market-dialog')
+        .focusable(this.modalFocusId() === 'market-dialog')
+        .onAppear(() => this.updateModalFocus(true))
       }
       if (this.viewModel.showDeleteModelDialog) {
         DeleteModelDialog({
-          viewModel: this.viewModel
+          viewModel: this.viewModel,
+          availableWidth: this.windowWidth,
+          availableHeight: this.windowHeight
         })
+        .id('delete-dialog')
+        .focusable(this.modalFocusId() === 'delete-dialog')
+        .onAppear(() => this.updateModalFocus(true))
       }
     }
     .width('100%')
@@ -236,6 +314,7 @@ struct Index {
     .backgroundColor('#06121F')
     .onAreaChange((_oldArea: Area, newArea: Area) => {
       this.windowWidth = Number(newArea.width)
+      this.windowHeight = Number(newArea.height)
     })
   }
 
@@ -250,5 +329,6 @@ struct Index {
     .width('100%')
     .height('100%')
     .backgroundColor('#06121F')
+    .onKeyEvent((event: KeyEvent): boolean => this.handleKey(event))
   }
 }

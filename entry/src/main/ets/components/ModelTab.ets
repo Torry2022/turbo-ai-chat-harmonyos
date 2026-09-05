@@ -33,6 +33,7 @@ export struct ModelTab {
   @State dragOffsetY: number = 0
   @State dragTargetIndex: number = -1
   @State private contentWidth: number = 0
+  private dragFrames: ModelDragFrame[] = []
   private modelScroller: Scroller = new Scroller()
   private readonly modelCardGap: number = 8
   private dragStartIndex: number = -1
@@ -91,6 +92,7 @@ export struct ModelTab {
       return
     }
     this.draggingModelId = profile.id
+    this.dragFrames = this.currentModelCardFrames() ?? []
     this.dragStartIndex = index
     this.dragTargetIndex = index
     this.dragOffsetY = 0
@@ -101,8 +103,8 @@ export struct ModelTab {
     if (this.draggingModelId.length <= 0 || this.dragStartIndex < 0) {
       return
     }
-    const frames = this.currentModelCardFrames()
-    if (frames === undefined) {
+    const frames = this.dragFrames
+    if (frames.length !== this.visibleModelProfiles.length) {
       this.dragOffsetY = offsetY
       return
     }
@@ -115,17 +117,22 @@ export struct ModelTab {
     const modelId = this.draggingModelId
     const startIndex = this.dragStartIndex
     const targetIndex = this.dragTargetIndex
-    if (modelId.length > 0) {
+    this.cancelModelDrag()
+    if (modelId.length > 0 && targetIndex >= 0 && targetIndex !== startIndex) {
+      this.viewModel.moveModelToIndex(modelId, targetIndex)
+    }
+    this.refreshModelProfiles()
+  }
+
+  private cancelModelDrag(): void {
+    if (this.draggingModelId.length > 0) {
       this.onDragStateChange(false)
     }
     this.draggingModelId = ''
     this.dragStartIndex = -1
     this.dragTargetIndex = -1
     this.dragOffsetY = 0
-    if (modelId.length > 0 && targetIndex >= 0 && targetIndex !== startIndex) {
-      this.viewModel.moveModelToIndex(modelId, targetIndex)
-    }
-    this.refreshModelProfiles()
+    this.dragFrames = []
   }
 
   private modelCardOffset(modelId: string): number {
@@ -136,7 +143,7 @@ export struct ModelTab {
       return this.dragOffsetY
     }
     const index = this.visibleModelProfiles.findIndex((profile: ModelProfile) => profile.id === modelId)
-    const draggedFrame = this.modelCardFrames.get(this.draggingModelId)
+    const draggedFrame = this.dragFrames[this.dragStartIndex]
     if (index < 0 || draggedFrame === undefined) {
       return 0
     }
@@ -253,9 +260,14 @@ export struct ModelTab {
                 this.endModelDrag()
               })
               .onActionCancel(() => {
-                this.endModelDrag()
+                this.cancelModelDrag()
               }),
             PanGesture({ direction: PanDirection.Vertical, distance: 1 })
+              .onActionStart((event: GestureEvent) => {
+                if (event.source === SourceType.Mouse) {
+                  this.beginModelDrag(profile)
+                }
+              })
               .onActionUpdate((event: GestureEvent) => {
                 this.updateModelDrag(event.offsetY)
               })
@@ -263,7 +275,7 @@ export struct ModelTab {
                 this.endModelDrag()
               })
               .onActionCancel(() => {
-                this.endModelDrag()
+                this.cancelModelDrag()
               })
           )
         )
@@ -859,7 +871,10 @@ export struct ModelTab {
     }
     .width('100%')
     .height('100%')
-    .onAreaChange((_oldArea: Area, newArea: Area) => {
+    .onAreaChange((oldArea: Area, newArea: Area) => {
+      if (oldArea.width !== newArea.width || oldArea.height !== newArea.height) {
+        this.cancelModelDrag()
+      }
       this.contentWidth = Number(newArea.width)
     })
     .align(Alignment.Top)

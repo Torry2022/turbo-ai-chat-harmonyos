@@ -50,6 +50,12 @@ In the HarmonyOS ecosystem, on-device AI inference today largely depends on Andr
 
 ## Recent Highlights
 
+**Tablet and PC support**
+
+- Navigation switches between bottom tabs, a compact sidebar, and a full sidebar according to actual window width. Model and monitoring pages use columns in wide windows.
+- Physical keyboards support Enter to send, Shift+Enter for a line break, Ctrl+N for a new conversation, and Esc to leave input or close dismissible dialogs. Input-method candidate selection takes priority.
+- Updated launch backgrounds, system safe areas, dialog sizing, chat reading width, and runtime-strip placement, with mouse dragging for model reordering.
+
 **Models and market**
 
 - Switched the default text model to Qwen3-4B-Instruct, with in-app model-market installation from ModelScope for preset models and additional MNN model entries.
@@ -121,9 +127,15 @@ The app and HAP do not include model weights. Open the app → Model tab → Mod
 
 After the model loads, return to the Chat tab and send a message. MiniCPM5-1B displays thinking blocks (`<think>`). Gemma-4-E2B-it supports image input.
 
+With a physical keyboard, Enter sends from the chat input and Shift+Enter inserts a line break; the input method handles candidate selection first. Ctrl+N starts a new conversation. Esc leaves the input or closes a dismissible dialog without exiting the app. With the on-screen keyboard, use the send button. Chat content is centered with a maximum width in wide windows; opening the on-screen keyboard reduces the content area while keeping the header and input visible.
+
 ## Features
 
 - Adaptive navigation: bottom tabs in narrow windows and a sidebar in wider windows. Resizing retains page instances; monitoring pauses when hidden and preserves its scroll position.
+- The chat runtime strip spans only the page content area and does not shift the sidebar. Wide-screen chat uses the same maximum page width as other tabs, with separate message-width limits for readability.
+- Wide model pages place the model list beside its settings. Long-press a handle to reorder by touch, or drag it directly with a mouse. Resizing cancels an active drag without applying its tentative order.
+- Monitoring cards switch between one and two columns according to available width, with metrics sharing the space inside each card.
+- Dialogs fit the available window width and allow long body text to scroll. The Model Gallery shrinks when the on-screen keyboard opens, and keyboard focus stays out of the underlying page while a dialog is open.
 - Local inference: models run on-device, no network required
 - Streaming output: updates responses from native inference callback chunks in real time
 - Stop generation: interrupt the current response while it is streaming
@@ -144,6 +156,14 @@ After the model loads, return to the Chat tab and send a message. MiniCPM5-1B di
 | --- | --- | --- |
 | ![chat](docs/images/chat.jpg) | ![models](docs/images/models.jpg) | ![monitor](docs/images/monitor.jpg) |
 
+Tablet in landscape:
+
+![Tablet model page](docs/images/tablet-models.jpg)
+
+Maximized PC window:
+
+![PC model page](docs/images/pc-models.jpg)
+
 ## OpenAI-Compatible API Server
 
 After loading a model, open the **Service** tab, choose a port and optionally enable the app-generated API key, then start the server. The page displays a LAN address such as `http://192.168.1.126:8080`. If no model is loaded, starting the server opens the model-loading flow and continues automatically after a successful load. Releasing, switching, or deleting the current model stops a running server automatically.
@@ -155,6 +175,8 @@ When adding an OpenAI-compatible provider in Cherry Studio, enter the displayed 
 - `POST /v1/responses`
 
 The Service tab shows operational logs for server lifecycle, request paths, model parameters, response status, latency, and output size. It does not log API keys, prompts, or response text.
+
+Wide windows place service settings beside the API logs. Narrowing the window restores a single column without restarting an active server.
 
 The first version accepts text input only, serves the currently loaded model, and processes one generation request at a time. For models that emit `<think>`, `/v1/chat/completions` returns reasoning in `reasoning_content`, while `/v1/responses` returns a separate reasoning output item; the final answer remains in the regular text field. For now, `usage` accurately reports only the total generated-token count; exact input and reasoning breakdowns are not available. The server runs with the app and stops when the app exits; the device and client must be reachable on the same LAN.
 

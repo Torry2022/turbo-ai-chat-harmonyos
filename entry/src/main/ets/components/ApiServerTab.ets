@@ -132,8 +132,8 @@ export struct ApiServerTab {
                   .height(22)
                   .enabled(!this.apiServerStarting && (!this.busy || this.apiServerRunning))
                   .selectedColor('#45D6A4')
-                  .onChange((enabled: boolean) => {
-                    this.viewModel.setApiServerEnabled(enabled)
+                  .onClick(() => {
+                    this.viewModel.setApiServerEnabled(!this.apiServerRunning)
                   })
               }
               .height(22)

@@ -21,8 +21,8 @@ export default class EntryAbility extends UIAbility {
         hilog.warn(0x0000, 'TurboAIChat', 'set system bar enable failed: %{public}s', JSON.stringify(err))
       })
       mainWindow.setWindowSystemBarProperties({
-        statusBarColor: '#06121F',
-        navigationBarColor: '#06121F',
+        statusBarColor: '#00000000',
+        navigationBarColor: '#00000000',
         statusBarContentColor: '#F4FBFF',
         navigationBarContentColor: '#F4FBFF',
         isStatusBarLightIcon: true,

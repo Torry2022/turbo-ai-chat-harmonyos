@@ -4,7 +4,10 @@ import { ModelCatalogItem, formatBytes } from '../models/BuiltinModelDownloadTyp
 @Component
 export struct ModelMarketDialog {
   @ObjectLink viewModel: ChatViewModel
+  @Prop availableWidth: number = 360
+  @Prop availableHeight: number = 640
   @State isClosePressed: boolean = false
+  private searchController: TextInputController = new TextInputController()
 
   private padTimePart(value: number): string {
     return value < 10 ? `0${value}` : `${value}`
@@ -37,7 +40,7 @@ export struct ModelMarketDialog {
   @Builder
   private FilterButton(label: string) {
     Button(label)
-      .height(30)
+      .height(40)
       .fontSize(12)
       .fontColor(this.viewModel.modelMarketCapabilityFilter === label ? '#F4FBFF' : '#5AB0F2')
       .backgroundColor(this.viewModel.modelMarketCapabilityFilter === label ? '#14344A' : '#0A1623')
@@ -112,7 +115,7 @@ export struct ModelMarketDialog {
       .alignItems(HorizontalAlign.Start)
 
       Button(this.viewModel.isCatalogItemInstalled(item.id) ? '已安装' : '下载')
-        .height(28)
+        .height(40)
         .width(68)
         .fontSize(12)
         .fontColor(this.viewModel.isCatalogItemInstalled(item.id) ? '#8DE4C3' : '#F4FBFF')
@@ -137,6 +140,7 @@ export struct ModelMarketDialog {
   build() {
     Stack({ alignContent: Alignment.Center }) {
       Column()
+        .focusable(false)
         .width('100%')
         .height('100%')
         .backgroundColor('#000000B3')
@@ -152,7 +156,7 @@ export struct ModelMarketDialog {
             .fontColor('#F4FBFF')
             .layoutWeight(1)
           Button(this.viewModel.modelCatalogRefreshing ? '更新中' : '刷新')
-            .height(28)
+            .height(40)
             .width(58)
             .fontSize(11)
             .fontColor('#5AB0F2')
@@ -162,14 +166,17 @@ export struct ModelMarketDialog {
             .onClick(() => {
               this.viewModel.refreshModelCatalog()
             })
-          Row() {
+          Button({ type: ButtonType.Normal }) {
             Image(this.isClosePressed ? $r('app.media.model_market_close_icon_pressed') : $r('app.media.model_market_close_icon'))
               .width(24)
               .height(24)
           }
-          .width(30)
-          .height(30)
-          .justifyContent(FlexAlign.Center)
+          .width(40)
+          .height(40)
+          .focusable(true)
+          .accessibilityText('关闭模型广场')
+          .hoverEffect(HoverEffect.Auto)
+          .backgroundColor(Color.Transparent)
           .enabled(!this.viewModel.builtinModelInstalling)
           .opacity(this.viewModel.builtinModelInstalling ? 0.4 : 1)
           .onTouch((event: TouchEvent) => {
@@ -206,7 +213,8 @@ export struct ModelMarketDialog {
         .alignItems(HorizontalAlign.Start)
         .width('100%')
 
-        TextInput({ text: this.viewModel.modelMarketSearchText, placeholder: '搜索模型名称或厂商' })
+        TextInput({ text: this.viewModel.modelMarketSearchText, placeholder: '搜索模型名称或厂商',
+          controller: this.searchController })
           .height(40)
           .fontSize(13)
           .fontColor('#EAF4FF')
@@ -226,6 +234,7 @@ export struct ModelMarketDialog {
         }
         .width('100%')
         .scrollable(ScrollDirection.Horizontal)
+        .align(Alignment.Start)
         .scrollBar(BarState.Off)
         .edgeEffect(EdgeEffect.Spring)
 
@@ -237,15 +246,17 @@ export struct ModelMarketDialog {
           }
           .width('100%')
         }
-        .height(380)
+        .layoutWeight(1)
         .width('100%')
         .align(Alignment.Top)
         .scrollBar(BarState.Off)
         .edgeEffect(EdgeEffect.Spring, {
           alwaysEnabled: true
         })
+        .onClick(() => this.searchController.stopEditing())
       }
-      .width('90%')
+      .width(Math.max(1, Math.min(840, this.availableWidth - 32)))
+      .height(Math.max(1, Math.min(800, this.availableHeight * 0.85)))
       .padding({ top: 14, bottom: 14, left: 12, right: 12 })
       .backgroundColor('#102235')
       .border({ width: 1, color: '#23445F' })

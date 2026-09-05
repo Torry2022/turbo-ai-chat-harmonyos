@@ -6,6 +6,7 @@ export struct LaunchScreen {
         .width('100%')
         .height('100%')
         .objectFit(ImageFit.Cover)
+        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
       Column({ space: 12 }) {
         Image($r('app.media.app_icon'))
           .width(92)
