@@ -1,0 +1,36 @@
+{
+  "float": [
+    {
+      "name": "button_radius",
+      "value": "8vp"
+    },
+    {
+      "name": "button_height",
+      "value": "40vp"
+    },
+    {
+      "name": "button_font_size",
+      "value": "14fp"
+    },
+    {
+      "name": "button_compact_height",
+      "value": "22vp"
+    },
+    {
+      "name": "button_compact_font_size",
+      "value": "12fp"
+    },
+    {
+      "name": "button_compact_hit_offset",
+      "value": "-9vp"
+    },
+    {
+      "name": "card_radius",
+      "value": "8vp"
+    },
+    {
+      "name": "dialog_radius",
+      "value": "16vp"
+    }
+  ]
+}

@@ -31,7 +31,7 @@ struct MonitorStatItem {
     .alignItems(HorizontalAlign.Start)
     .padding(10)
     .backgroundColor('#101D2B')
-    .borderRadius(8)
+    .borderRadius($r('app.float.card_radius'))
     .layoutWeight(this.itemWeight)
   }
 }
@@ -159,7 +159,7 @@ export struct MonitorTab {
           .margin({ right: this.contentWidth >= 720 ? 16 : 0, bottom: 10 })
           .padding(10)
           .backgroundColor('#0D1A28')
-          .borderRadius(8)
+          .borderRadius($r('app.float.card_radius'))
 
           // CPU
           Column({ space: 6 }) {
@@ -196,7 +196,7 @@ export struct MonitorTab {
           .margin({ bottom: 10 })
           .padding(10)
           .backgroundColor('#0D1A28')
-          .borderRadius(8)
+          .borderRadius($r('app.float.card_radius'))
 
           // App memory
           Column({ space: 6 }) {
@@ -222,7 +222,7 @@ export struct MonitorTab {
           .margin({ right: this.contentWidth >= 720 ? 16 : 0, bottom: 10 })
           .padding(10)
           .backgroundColor('#0D1A28')
-          .borderRadius(8)
+          .borderRadius($r('app.float.card_radius'))
 
           // System memory
           Column({ space: 6 }) {
@@ -243,7 +243,7 @@ export struct MonitorTab {
           .margin({ bottom: 10 })
           .padding(10)
           .backgroundColor('#0D1A28')
-          .borderRadius(8)
+          .borderRadius($r('app.float.card_radius'))
 
           // App storage
           Column({ space: 6 }) {
@@ -259,7 +259,7 @@ export struct MonitorTab {
           .margin({ right: this.contentWidth >= 720 ? 16 : 0, bottom: 10 })
           .padding(10)
           .backgroundColor('#0D1A28')
-          .borderRadius(8)
+          .borderRadius($r('app.float.card_radius'))
 
         }
         .width('100%')

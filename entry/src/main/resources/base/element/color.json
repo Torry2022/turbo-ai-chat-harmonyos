@@ -1,5 +1,20 @@
 {
   "color": [
+    { "name": "input_background", "value": "#0A1623" },
+    { "name": "input_text", "value": "#EAF4FF" },
+    { "name": "input_placeholder", "value": "#8CA2B8" },
+    { "name": "control_accent", "value": "#326BD1" },
+    { "name": "control_track", "value": "#26384D" },
+    { "name": "button_primary_background", "value": "#326BD1" },
+    { "name": "button_primary_text", "value": "#F4FBFF" },
+    { "name": "button_secondary_background", "value": "#26384D" },
+    { "name": "button_secondary_text", "value": "#DCE7F2" },
+    { "name": "button_action_background", "value": "#00000000" },
+    { "name": "button_action_text", "value": "#8DBBEB" },
+    { "name": "button_danger_background", "value": "#30232B" },
+    { "name": "button_danger_text", "value": "#FF9C9C" },
+    { "name": "button_destructive_background", "value": "#B43B3B" },
+    { "name": "button_destructive_text", "value": "#F4FBFF" },
     {
       "name": "start_window_background",
       "value": "#06121F"

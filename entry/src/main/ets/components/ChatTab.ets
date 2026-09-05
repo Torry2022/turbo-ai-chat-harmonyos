@@ -1,3 +1,4 @@
+import { ActionButtonStyle } from './ButtonStyles'
 import { ChatMessage } from '../models/ChatTypes'
 import { ChatViewModel } from '../state/ChatViewModel'
 import { MessageBubble } from './MessageBubble'
@@ -169,7 +170,7 @@ export struct ChatTab {
             .textOverflow({ overflow: TextOverflow.Ellipsis })
             .layoutWeight(1)
           Button('清除')
-            .height(34)
+            .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
             .onClick(() => {
               this.inputController.stopEditing()
               this.viewModel.clearSelectedImage()

@@ -50,6 +50,11 @@ In the HarmonyOS ecosystem, on-device AI inference today largely depends on Andr
 
 ## Recent Highlights
 
+**Interface styling (v1.9.1)**
+
+- Retained the existing page layouts while aligning button colors, text, sizes, and corner radii, with consistent input fields and parameter sliders.
+- Expanded touch targets for compact actions, reserved space for code-block copy buttons, and fixed clipped refresh-state text in the Model Gallery.
+
 **Tablet and PC support**
 
 - Navigation switches between bottom tabs, a compact sidebar, and a full sidebar according to actual window width. Model and monitoring pages use columns in wide windows.

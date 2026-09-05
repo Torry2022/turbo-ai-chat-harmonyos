@@ -1,3 +1,4 @@
+import { ActionButtonStyle } from './ButtonStyles'
 import { ChatViewModel } from '../state/ChatViewModel'
 
 @Component
@@ -80,15 +81,13 @@ export struct ModelLoadDialog {
         if (!this.viewModel.modelLoading && !this.viewModel.loaded) {
           Row({ space: 10 }) {
             Button('关闭')
-              .height(40)
+              .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
               .layoutWeight(1)
-              .fontColor('#F4FBFF')
-              .backgroundColor('#26384D')
               .onClick(() => {
                 this.viewModel.closeModelLoadDialog()
               })
             Button('加载模型')
-              .height(40)
+              .attributeModifier(new ActionButtonStyle($r('app.color.button_primary_background'), $r('app.color.button_primary_text')))
               .layoutWeight(1)
               .onClick(() => {
                 this.viewModel.loadModel()
@@ -102,7 +101,7 @@ export struct ModelLoadDialog {
       .padding(18)
       .backgroundColor('#102235')
       .border({ width: 1, color: '#23445F' })
-      .borderRadius(10)
+      .borderRadius($r('app.float.dialog_radius'))
     }
     .width('100%')
     .height('100%')

@@ -1,3 +1,5 @@
+import { InputFieldStyle, ParameterSliderStyle } from './ControlStyles'
+import { ActionButtonStyle } from './ButtonStyles'
 import {
   DEFAULT_FREQUENCY_PENALTY,
   DEFAULT_MAX_NEW_TOKENS,
@@ -188,7 +190,7 @@ export struct ModelTab {
   }
 
   @Builder
-  private SectionTitle(title: string, subtitle: string = '') {
+  private SectionTitle(title: string, subtitle: string = '', bottomMargin: number = 0) {
     Column({ space: 2 }) {
       Text(title)
         .fontSize(16)
@@ -204,6 +206,7 @@ export struct ModelTab {
       }
     }
     .width('100%')
+    .margin({ bottom: bottomMargin })
   }
 
   @Builder
@@ -332,11 +335,9 @@ export struct ModelTab {
       .width('100%')
       .zIndex(this.draggingModelId.length > 0 ? 10 : 0)
       Button(this.viewModel.loaded ? '释放模型' : '加载模型')
+        .attributeModifier(new ActionButtonStyle(this.viewModel.loaded ? $r('app.color.button_secondary_background') : $r('app.color.button_primary_background'), this.viewModel.loaded ? $r('app.color.button_secondary_text') : $r('app.color.button_primary_text')))
         .enabled(this.controlsEnabled())
-        .height(38)
         .width('100%')
-        .fontColor('#F4FBFF')
-        .backgroundColor(this.viewModel.loaded ? '#26384D' : '#0F62FE')
         .onClick(() => {
           if (this.viewModel.loaded) {
             this.viewModel.unloadModel()
@@ -346,11 +347,9 @@ export struct ModelTab {
           })
       if (this.viewModel.canDeleteModel(this.viewModel.selectedModelId)) {
         Button('删除当前模型')
+          .attributeModifier(new ActionButtonStyle($r('app.color.button_danger_background'), $r('app.color.button_danger_text')))
           .enabled(this.controlsEnabled())
-          .height(38)
           .width('100%')
-          .fontColor('#F4FBFF')
-          .backgroundColor('#B43B3B')
           .onClick(() => {
             this.viewModel.requestDeleteModel(this.viewModel.selectedModelId)
           })
@@ -359,7 +358,7 @@ export struct ModelTab {
     .width('100%')
     .padding(12)
     .backgroundColor('#0D1A28')
-    .borderRadius(8)
+    .borderRadius($r('app.float.card_radius'))
     .zIndex(this.draggingModelId.length > 0 ? 10 : 0)
   }
 
@@ -377,6 +376,7 @@ export struct ModelTab {
       }
       .width('100%')
       Slider({ value: this.sliderMaxNewTokens, min: 128, max: this.viewModel.maxGenerationTokens, step: 128 })
+        .attributeModifier(new ParameterSliderStyle())
         .enabled(this.controlsEnabled())
         .onChange((value: number, _mode: SliderChangeMode) => {
           this.sliderMaxNewTokens = Math.round(value)
@@ -397,6 +397,7 @@ export struct ModelTab {
       }
       .width('100%')
       Slider({ value: this.sliderTemperature, min: 0, max: 2, step: 0.05 })
+        .attributeModifier(new ParameterSliderStyle())
         .enabled(this.controlsEnabled())
         .onChange((value: number, _mode: SliderChangeMode) => {
           this.sliderTemperature = Math.round(value * 100) / 100
@@ -417,6 +418,7 @@ export struct ModelTab {
       }
       .width('100%')
       Slider({ value: this.sliderTopP, min: 0.05, max: 1, step: 0.05 })
+        .attributeModifier(new ParameterSliderStyle())
         .enabled(this.controlsEnabled())
         .onChange((value: number, _mode: SliderChangeMode) => {
           this.sliderTopP = Math.round(value * 100) / 100
@@ -437,6 +439,7 @@ export struct ModelTab {
       }
       .width('100%')
       Slider({ value: this.sliderTopK, min: 1, max: 128, step: 1 })
+        .attributeModifier(new ParameterSliderStyle())
         .enabled(this.controlsEnabled())
         .onChange((value: number, _mode: SliderChangeMode) => {
           this.sliderTopK = Math.round(value)
@@ -457,6 +460,7 @@ export struct ModelTab {
       }
       .width('100%')
       Slider({ value: this.sliderRepetitionPenalty, min: 0.8, max: 1.5, step: 0.05 })
+        .attributeModifier(new ParameterSliderStyle())
         .enabled(this.controlsEnabled())
         .onChange((value: number, _mode: SliderChangeMode) => {
           this.sliderRepetitionPenalty = Math.round(value * 100) / 100
@@ -477,6 +481,7 @@ export struct ModelTab {
       }
       .width('100%')
       Slider({ value: this.sliderFrequencyPenalty, min: 0, max: 1, step: 0.05 })
+        .attributeModifier(new ParameterSliderStyle())
         .enabled(this.controlsEnabled())
         .onChange((value: number, _mode: SliderChangeMode) => {
           this.sliderFrequencyPenalty = Math.round(value * 100) / 100
@@ -497,6 +502,7 @@ export struct ModelTab {
       }
       .width('100%')
       Slider({ value: this.sliderPresencePenalty, min: 0, max: 1, step: 0.05 })
+        .attributeModifier(new ParameterSliderStyle())
         .enabled(this.controlsEnabled())
         .onChange((value: number, _mode: SliderChangeMode) => {
           this.sliderPresencePenalty = Math.round(value * 100) / 100
@@ -517,6 +523,7 @@ export struct ModelTab {
       }
       .width('100%')
       Slider({ value: this.sliderPenaltyWindow, min: 0, max: 2048, step: 64 })
+        .attributeModifier(new ParameterSliderStyle())
         .enabled(this.controlsEnabled())
         .onChange((value: number, _mode: SliderChangeMode) => {
           this.sliderPenaltyWindow = Math.round(value)
@@ -538,7 +545,7 @@ export struct ModelTab {
         Row({ space: 4 }) {
           Text(this.generationExpanded ? '收起 ▲' : '展开 ▼')
             .fontSize(12)
-            .fontColor('#5A7A9A')
+            .fontColor($r('app.color.button_action_text'))
         }
       }
       .width('100%')
@@ -577,10 +584,9 @@ export struct ModelTab {
       if (this.generationExpanded) {
         this.GenerationSliders()
         Button('恢复默认')
+          .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
           .enabled(this.controlsEnabled())
-          .height(36)
           .width('100%')
-          .fontColor('#F4FBFF')
           .onClick(() => {
             this.resetGenerationSliders()
           })
@@ -589,7 +595,7 @@ export struct ModelTab {
     .width('100%')
     .padding(12)
     .backgroundColor('#101D2B')
-    .borderRadius(8)
+    .borderRadius($r('app.float.card_radius'))
   }
 
   @Builder
@@ -604,7 +610,7 @@ export struct ModelTab {
         Row({ space: 4 }) {
           Text(this.runtimeExpanded ? '收起 ▲' : '展开 ▼')
             .fontSize(12)
-            .fontColor('#5A7A9A')
+            .fontColor($r('app.color.button_action_text'))
         }
       }
       .width('100%')
@@ -622,14 +628,13 @@ export struct ModelTab {
           .fontColor('#8CA2B8')
           .width('100%')
         TextInput({ text: this.viewModel.modelPath, placeholder: '模型配置路径' })
+          .attributeModifier(new InputFieldStyle())
           .onChange((value: string) => {
             this.viewModel.updateModelPath(value)
           })
           .enabled(this.controlsEnabled())
           .height(42)
           .fontSize(12)
-          .fontColor('#EAF4FF')
-          .backgroundColor('#0A1623')
           .width('100%')
       }
       .width('100%')
@@ -645,6 +650,7 @@ export struct ModelTab {
         }
         .width('100%')
         Slider({ value: this.viewModel.threadNum, min: 2, max: 8, step: 1 })
+          .attributeModifier(new ParameterSliderStyle())
           .enabled(this.controlsEnabled())
           .onChange((value: number, _mode: SliderChangeMode) => {
             this.viewModel.updateThreadNum(value)
@@ -656,11 +662,9 @@ export struct ModelTab {
       }
       .width('100%')
         Button(this.viewModel.loaded ? '应用并重新加载' : '应用并加载')
+          .attributeModifier(new ActionButtonStyle($r('app.color.button_primary_background'), $r('app.color.button_primary_text')))
           .enabled(this.controlsEnabled())
-          .height(38)
           .width('100%')
-          .fontColor('#F4FBFF')
-          .backgroundColor('#0F62FE')
           .onClick(() => {
             this.viewModel.applyRuntimeConfigAndLoad()
           })
@@ -669,7 +673,7 @@ export struct ModelTab {
     .width('100%')
     .padding(12)
     .backgroundColor('#101D2B')
-    .borderRadius(8)
+    .borderRadius($r('app.float.card_radius'))
   }
 
   @Builder
@@ -685,7 +689,7 @@ export struct ModelTab {
           Row({ space: 4 }) {
             Text(this.importedConfigExpanded ? '收起 ▲' : '展开 ▼')
               .fontSize(12)
-              .fontColor('#5A7A9A')
+              .fontColor($r('app.color.button_action_text'))
           }
         }
         .width('100%')
@@ -703,14 +707,13 @@ export struct ModelTab {
               .fontColor('#8CA2B8')
               .width('100%')
             TextInput({ text: this.viewModel.importedModelNameInput, placeholder: '模型名称' })
+              .attributeModifier(new InputFieldStyle())
               .onChange((value: string) => {
                 this.viewModel.updateImportedModelName(value)
               })
               .enabled(this.controlsEnabled())
               .height(40)
               .fontSize(12)
-              .fontColor('#EAF4FF')
-              .backgroundColor('#0A1623')
               .width('100%')
           }
           .width('100%')
@@ -721,14 +724,13 @@ export struct ModelTab {
               .fontColor('#8CA2B8')
               .width('100%')
             TextInput({ text: this.viewModel.importedModelShortNameInput, placeholder: '短名称' })
+              .attributeModifier(new InputFieldStyle())
               .onChange((value: string) => {
                 this.viewModel.updateImportedModelShortName(value)
               })
               .enabled(this.controlsEnabled())
               .height(40)
               .fontSize(12)
-              .fontColor('#EAF4FF')
-              .backgroundColor('#0A1623')
               .width('100%')
           }
           .width('100%')
@@ -739,14 +741,13 @@ export struct ModelTab {
               .fontColor('#8CA2B8')
               .width('100%')
             TextInput({ text: this.viewModel.importedModelDescriptionInput, placeholder: '模型描述' })
+              .attributeModifier(new InputFieldStyle())
               .onChange((value: string) => {
                 this.viewModel.updateImportedModelDescription(value)
               })
               .enabled(this.controlsEnabled())
               .height(40)
               .fontSize(12)
-              .fontColor('#EAF4FF')
-              .backgroundColor('#0A1623')
               .width('100%')
           }
           .width('100%')
@@ -757,23 +758,21 @@ export struct ModelTab {
               .fontColor('#8CA2B8')
               .width('100%')
             TextInput({ text: this.viewModel.importedModelSystemPromptInput, placeholder: '系统提示词' })
+              .attributeModifier(new InputFieldStyle())
               .onChange((value: string) => {
                 this.viewModel.updateImportedModelSystemPrompt(value)
               })
               .enabled(this.controlsEnabled())
               .height(44)
               .fontSize(12)
-              .fontColor('#EAF4FF')
-              .backgroundColor('#0A1623')
               .width('100%')
           }
           .width('100%')
 
           Button('保存配置')
+            .attributeModifier(new ActionButtonStyle($r('app.color.button_primary_background'), $r('app.color.button_primary_text')))
             .enabled(this.controlsEnabled())
-            .height(38)
             .width('100%')
-            .fontColor('#F4FBFF')
             .onClick(() => {
               this.viewModel.saveImportedModelProfile().then((saved: boolean) => {
                 if (saved) {
@@ -787,28 +786,25 @@ export struct ModelTab {
       .width('100%')
       .padding(12)
       .backgroundColor('#101D2B')
-      .borderRadius(8)
+      .borderRadius($r('app.float.card_radius'))
     }
   }
 
   @Builder
   private ModelManagementCard() {
     Column({ space: 8 }) {
-      this.SectionTitle('模型管理')
+      this.SectionTitle('模型管理', '', 2)
       Button('扫描已推送目录')
+        .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
         .enabled(this.controlsEnabled())
-        .height(38)
         .width('100%')
-        .fontColor('#F4FBFF')
-        .backgroundColor('#26384D')
         .onClick(() => {
           this.viewModel.scanPushedModelDirectories()
         })
       Button(this.viewModel.modelImporting ? '正在导入' : '导入模型压缩包')
+        .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
         .enabled(this.controlsEnabled())
-        .height(38)
         .width('100%')
-        .fontColor('#F4FBFF')
         .onClick(() => {
           this.viewModel.importModelPackage()
         })
@@ -827,13 +823,13 @@ export struct ModelTab {
     .width('100%')
     .padding(12)
     .backgroundColor('#101D2B')
-    .borderRadius(8)
+    .borderRadius($r('app.float.card_radius'))
   }
 
   @Builder
   private ContextCard() {
     Column({ space: 6 }) {
-      this.SectionTitle('上下文')
+      this.SectionTitle('上下文', '', 4)
       Text(this.contextDescription())
         .width('100%')
         .fontSize(13)
@@ -843,7 +839,7 @@ export struct ModelTab {
     .width('100%')
     .padding(12)
     .backgroundColor('#101D2B')
-    .borderRadius(8)
+    .borderRadius($r('app.float.card_radius'))
   }
 
   build() {

@@ -1,3 +1,4 @@
+import { CompactActionStyle } from './ButtonStyles'
 import { ChatMessage } from '../models/ChatTypes'
 import { MarkdownBlock, MarkdownSpan, parseInlineMarkdown, parseLightMarkdown } from '../utils/markdown'
 import { parseAssistantText } from '../utils/thinking'
@@ -142,17 +143,13 @@ export struct MessageBubble {
           .lineHeight(19)
           .fontColor('#D7E8F7')
           .fontFamily('monospace')
-          .padding(8)
+          .padding({ top: 44, bottom: 8, left: 8, right: 8 })
           .backgroundColor('#0B1724')
-          .borderRadius(6)
+          .borderRadius($r('app.float.card_radius'))
         Button('复制')
-          .fontSize(11)
-          .height(28)
+          .attributeModifier(new CompactActionStyle())
           .padding({ left: 8, right: 8 })
-          .backgroundColor('#1A3048')
-          .fontColor('#8CA2B8')
-          .borderRadius(4)
-          .margin({ top: 4, right: 4 })
+          .margin({ top: 9, right: 4 })
           .onClick(async () => {
             try {
               const data = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, block.text)

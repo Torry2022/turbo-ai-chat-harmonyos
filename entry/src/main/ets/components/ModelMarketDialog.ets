@@ -1,3 +1,5 @@
+import { InputFieldStyle } from './ControlStyles'
+import { ActionButtonStyle, CompactActionStyle } from './ButtonStyles'
 import { ChatViewModel } from '../state/ChatViewModel'
 import { ModelCatalogItem, formatBytes } from '../models/BuiltinModelDownloadTypes'
 
@@ -40,12 +42,11 @@ export struct ModelMarketDialog {
   @Builder
   private FilterButton(label: string) {
     Button(label)
-      .height(40)
-      .fontSize(12)
-      .fontColor(this.viewModel.modelMarketCapabilityFilter === label ? '#F4FBFF' : '#5AB0F2')
-      .backgroundColor(this.viewModel.modelMarketCapabilityFilter === label ? '#14344A' : '#0A1623')
-      .border({ width: 1, color: '#1F5C83' })
-      .borderRadius(15)
+      .attributeModifier(new ActionButtonStyle(
+        this.viewModel.modelMarketCapabilityFilter === label ?
+          $r('app.color.button_primary_background') : $r('app.color.button_secondary_background'),
+        this.viewModel.modelMarketCapabilityFilter === label ?
+          $r('app.color.button_primary_text') : $r('app.color.button_secondary_text')))
       .onClick(() => {
         this.viewModel.updateModelMarketCapabilityFilter(label)
       })
@@ -115,12 +116,10 @@ export struct ModelMarketDialog {
       .alignItems(HorizontalAlign.Start)
 
       Button(this.viewModel.isCatalogItemInstalled(item.id) ? '已安装' : '下载')
-        .height(40)
+        .attributeModifier(new ActionButtonStyle(this.viewModel.isCatalogItemInstalled(item.id) ? '#12372E' : $r('app.color.button_primary_background'), this.viewModel.isCatalogItemInstalled(item.id) ? '#8DE4C3' : $r('app.color.button_primary_text')))
         .width(68)
-        .fontSize(12)
-        .fontColor(this.viewModel.isCatalogItemInstalled(item.id) ? '#8DE4C3' : '#F4FBFF')
-        .backgroundColor(this.viewModel.isCatalogItemInstalled(item.id) ? '#12372E' : '#0F62FE')
-        .borderRadius(8)
+        .fontSize(this.viewModel.isCatalogItemInstalled(item.id) ? $r('app.float.button_compact_font_size') : $r('app.float.button_font_size'))
+        .fontWeight(this.viewModel.isCatalogItemInstalled(item.id) ? FontWeight.Normal : FontWeight.Medium)
         .enabled(!this.viewModel.isCatalogItemInstalled(item.id) &&
           !this.viewModel.busy &&
           !this.viewModel.modelLoading &&
@@ -156,12 +155,11 @@ export struct ModelMarketDialog {
             .fontColor('#F4FBFF')
             .layoutWeight(1)
           Button(this.viewModel.modelCatalogRefreshing ? '更新中' : '刷新')
-            .height(40)
-            .width(58)
-            .fontSize(11)
-            .fontColor('#5AB0F2')
-            .backgroundColor('#0A1623')
-            .border({ width: 1, color: '#1F5C83' })
+            .attributeModifier(new CompactActionStyle())
+            .height($r('app.float.button_height'))
+            .responseRegion({ x: 0, y: 0, width: '100%', height: '100%' })
+            .constraintSize({ minWidth: 64 })
+            .padding({ left: 8, right: 8 })
             .enabled(!this.viewModel.modelCatalogRefreshing && !this.viewModel.builtinModelInstalling)
             .onClick(() => {
               this.viewModel.refreshModelCatalog()
@@ -215,12 +213,9 @@ export struct ModelMarketDialog {
 
         TextInput({ text: this.viewModel.modelMarketSearchText, placeholder: '搜索模型名称或厂商',
           controller: this.searchController })
+          .attributeModifier(new InputFieldStyle())
           .height(40)
           .fontSize(13)
-          .fontColor('#EAF4FF')
-          .placeholderColor('#6F86A0')
-          .backgroundColor('#0A1623')
-          .borderRadius(8)
           .onChange((value: string) => {
             this.viewModel.updateModelMarketSearchText(value)
           })
@@ -260,7 +255,7 @@ export struct ModelMarketDialog {
       .padding({ top: 14, bottom: 14, left: 12, right: 12 })
       .backgroundColor('#102235')
       .border({ width: 1, color: '#23445F' })
-      .borderRadius(10)
+      .borderRadius($r('app.float.dialog_radius'))
       .shadow({
         radius: 24,
         color: '#00000088',

@@ -1,3 +1,4 @@
+import { ActionButtonStyle } from './ButtonStyles'
 import { ChatViewModel } from '../state/ChatViewModel'
 import { formatBytes } from '../models/BuiltinModelDownloadTypes'
 
@@ -88,10 +89,8 @@ export struct BuiltinModelInstallDialog {
 
         Row({ space: 10 }) {
           Button(this.viewModel.builtinModelInstalling ? '停止下载' : (this.viewModel.builtinModelInstallCanceled ? '关闭' : '稍后'))
-            .height(40)
+            .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
             .layoutWeight(1)
-            .fontColor('#F4FBFF')
-            .backgroundColor(this.viewModel.builtinModelInstalling ? '#B43B3B' : '#26384D')
             .onClick(() => {
               if (this.viewModel.builtinModelInstalling) {
                 this.viewModel.cancelBuiltinModelInstall()
@@ -101,11 +100,9 @@ export struct BuiltinModelInstallDialog {
             })
 
           Button(this.viewModel.builtinModelInstalling ? '下载中...' : (this.viewModel.builtinModelInstallCanceled ? '继续下载' : '下载并安装'))
-            .height(40)
+            .attributeModifier(new ActionButtonStyle($r('app.color.button_primary_background'), $r('app.color.button_primary_text')))
             .layoutWeight(1)
             .enabled(!this.viewModel.builtinModelInstalling)
-            .fontColor('#F7FCFF')
-            .backgroundColor('#1466F4')
             .onClick(() => {
               this.viewModel.startBuiltinModelInstall()
             })
@@ -117,7 +114,7 @@ export struct BuiltinModelInstallDialog {
       .padding(18)
       .backgroundColor('#102235')
       .border({ width: 1, color: '#23445F' })
-      .borderRadius(10)
+      .borderRadius($r('app.float.dialog_radius'))
     }
     .width('100%')
     .height('100%')

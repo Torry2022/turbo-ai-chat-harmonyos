@@ -1,3 +1,4 @@
+import { ActionButtonStyle } from './ButtonStyles'
 import { ChatViewModel } from '../state/ChatViewModel'
 
 @Component
@@ -54,17 +55,14 @@ export struct DeleteModelDialog {
 
         Row({ space: 10 }) {
           Button('取消')
-            .height(40)
+            .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
             .layoutWeight(1)
-            .fontColor('#F4FBFF')
-            .backgroundColor('#26384D')
             .onClick(() => {
               this.viewModel.cancelDeleteModel()
             })
           Button('确认')
-            .height(40)
+            .attributeModifier(new ActionButtonStyle($r('app.color.button_destructive_background'), $r('app.color.button_destructive_text')))
             .layoutWeight(1)
-            .backgroundColor('#B43B3B')
             .onClick(() => {
               this.viewModel.confirmDeleteModel()
             })
@@ -76,7 +74,7 @@ export struct DeleteModelDialog {
       .padding(18)
       .backgroundColor('#102235')
       .border({ width: 1, color: '#23445F' })
-      .borderRadius(10)
+      .borderRadius($r('app.float.dialog_radius'))
     }
     .width('100%')
     .height('100%')

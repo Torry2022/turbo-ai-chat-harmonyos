@@ -1,3 +1,5 @@
+import { InputFieldStyle } from './ControlStyles'
+import { ActionButtonStyle, CompactActionStyle } from './ButtonStyles'
 import { ApiServerLogEntry, ChatViewModel } from '../state/ChatViewModel'
 import { pasteboard } from '@kit.BasicServicesKit'
 
@@ -160,7 +162,7 @@ export struct ApiServerTab {
             .alignItems(HorizontalAlign.Start)
             .padding(10)
             .backgroundColor('#0D1A28')
-            .borderRadius(8)
+            .borderRadius($r('app.float.card_radius'))
 
             Column({ space: 6 }) {
               this.SectionTitle('连接设置')
@@ -194,15 +196,13 @@ export struct ApiServerTab {
                     placeholder: '8080',
                     controller: this.portInputController
                   })
+                    .attributeModifier(new InputFieldStyle())
                     .height(38)
                     .width('100%')
                     .fontSize(13)
-                    .fontColor('#EAF4FF')
                     .textAlign(TextAlign.Center)
                     .inputFilter('[0-9]')
                     .enabled(!this.apiServerRunning && !this.apiServerStarting)
-                    .backgroundColor('#101D2B')
-                    .borderRadius(8)
                     .onChange((value: string) => {
                       this.viewModel.updateApiServerPort(value)
                     })
@@ -217,7 +217,7 @@ export struct ApiServerTab {
             .alignItems(HorizontalAlign.Start)
             .padding(10)
             .backgroundColor('#0D1A28')
-            .borderRadius(8)
+            .borderRadius($r('app.float.card_radius'))
 
             Column({ space: 6 }) {
               Row() {
@@ -255,20 +255,14 @@ export struct ApiServerTab {
 
                 Row({ space: 8 }) {
                   Button(this.apiKeyVisible ? '隐藏 API Key' : '显示 API Key')
-                    .height(30)
+                    .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
                     .layoutWeight(1)
-                    .fontSize(11)
-                    .fontColor('#F4FBFF')
-                    .backgroundColor('#26384D')
                     .onClick(() => {
                       this.apiKeyVisible = !this.apiKeyVisible
                     })
                   Button('重新生成')
-                    .height(30)
+                    .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
                     .layoutWeight(1)
-                    .fontSize(11)
-                    .fontColor('#8DE4C3')
-                    .backgroundColor('#12372E')
                     .enabled(!this.apiServerRunning && !this.apiServerStarting)
                     .onClick(() => {
                       this.viewModel.regenerateApiServerKey()
@@ -281,7 +275,7 @@ export struct ApiServerTab {
             .alignItems(HorizontalAlign.Start)
             .padding(10)
             .backgroundColor('#0D1A28')
-            .borderRadius(8)
+            .borderRadius($r('app.float.card_radius'))
 
           }
           .width(this.columnWidth())
@@ -294,11 +288,8 @@ export struct ApiServerTab {
                 this.SectionTitle('API 日志')
                 Blank()
                 Button('清空')
-                  .height(22)
+                  .attributeModifier(new CompactActionStyle())
                   .width(64)
-                  .fontSize(10)
-                  .fontColor('#8CA2B8')
-                  .backgroundColor('#101D2B')
                   .enabled(this.apiServerLogs.length > 0)
                   .onClick(() => {
                     this.viewModel.clearApiServerLogs()
@@ -356,7 +347,7 @@ export struct ApiServerTab {
             .alignItems(HorizontalAlign.Start)
             .padding(10)
             .backgroundColor('#0D1A28')
-            .borderRadius(8)
+            .borderRadius($r('app.float.card_radius'))
 
             Column({ space: 6 }) {
               this.SectionTitle('支持的端点')
@@ -377,7 +368,7 @@ export struct ApiServerTab {
             .alignItems(HorizontalAlign.Start)
             .padding(10)
             .backgroundColor('#0D1A28')
-            .borderRadius(8)
+            .borderRadius($r('app.float.card_radius'))
           }
           .width(this.columnWidth())
           .flexShrink(0)
