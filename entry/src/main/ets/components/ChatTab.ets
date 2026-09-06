@@ -86,7 +86,7 @@ export struct ChatTab {
           Row()
             .width(3)
             .height(this.voiceWaveHeight(index))
-            .backgroundColor(this.viewModel.speechDetected ? '#F4FAFF' : '#7FA9C7')
+            .backgroundColor(this.viewModel.speechDetected ? $r('app.color.composer_text') : $r('app.color.attachment_icon'))
             .borderRadius(2)
             .animation({
               duration: 280 + index * 55,
@@ -109,8 +109,8 @@ export struct ChatTab {
     .height(40)
     .padding({ left: 5, right: 2 })
     .justifyContent(FlexAlign.SpaceBetween)
-    .backgroundColor('#142C40')
-    .border({ width: 1, color: '#286B9C' })
+    .backgroundColor($r('app.color.attachment_background'))
+    .border({ width: 1, color: $r('app.color.attachment_border') })
     .borderRadius(18)
     .onAppear(() => {
       this.voiceWaveRaised = true
@@ -165,7 +165,7 @@ export struct ChatTab {
             .borderRadius(8)
           Text(this.viewModel.selectedImageUri)
             .fontSize(12)
-            .fontColor('#8CA2B8')
+            .fontColor($r('app.color.text_muted'))
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
             .layoutWeight(1)
@@ -178,7 +178,7 @@ export struct ChatTab {
         }
         .width('100%')
         .padding(8)
-        .backgroundColor('#101D2B')
+        .backgroundColor($r('app.color.composer_background'))
         .borderRadius(8)
         .onClick(() => {
           this.inputController.stopEditing()
@@ -191,8 +191,8 @@ export struct ChatTab {
             !this.viewModel.speechRecognizing)
           .constraintSize({ minHeight: 44, maxHeight: 120 })
           .fontSize(14)
-          .fontColor('#EAF4FF')
-          .backgroundColor('#101D2B')
+          .fontColor($r('app.color.text_body'))
+          .backgroundColor($r('app.color.composer_background'))
           .borderRadius(10)
           .padding({ left: 16, right: 94, top: 13, bottom: 10 })
           .onChange((value: string, previewText?: PreviewText) => {
@@ -248,7 +248,7 @@ export struct ChatTab {
           Text(this.viewModel.speechRecognizing ? '正在聆听...' :
             (this.viewModel.loaded ? '输入您的问题...' : '请先加载模型...'))
             .fontSize(15)
-            .fontColor('#8CA2B8')
+            .fontColor($r('app.color.text_muted'))
             .width('100%')
             .height(38)
             .textAlign(TextAlign.Start)

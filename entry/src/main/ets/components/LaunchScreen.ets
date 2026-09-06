@@ -15,7 +15,7 @@ export struct LaunchScreen {
         Text('Turbo AI Chat')
           .fontSize(28)
           .fontWeight(FontWeight.Bold)
-          .fontColor('#F4FBFF')
+          .fontColor($r('app.color.launch_text'))
       }
       .width('100%')
       .height('100%')
@@ -23,6 +23,6 @@ export struct LaunchScreen {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor('#06121F')
+    .backgroundColor($r('app.color.start_window_background'))
   }
 }

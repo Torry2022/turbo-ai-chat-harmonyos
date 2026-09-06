@@ -1,6 +1,8 @@
 import { ActionButtonStyle } from './ButtonStyles'
 import { ChatViewModel } from '../state/ChatViewModel'
 
+import { dialogFade, dialogScale } from './DialogMotion'
+
 @Component
 export struct DeleteModelDialog {
   @ObjectLink viewModel: ChatViewModel
@@ -26,7 +28,8 @@ export struct DeleteModelDialog {
         .focusable(false)
         .width('100%')
         .height('100%')
-        .backgroundColor('#00000099')
+        .backgroundColor($r('app.color.scrim'))
+        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
         .onClick(() => {
           this.viewModel.dismissTopDialogIfIdle()
         })
@@ -35,7 +38,7 @@ export struct DeleteModelDialog {
         Text(`删除 ${this.modelName()}`)
           .fontSize(20)
           .fontWeight(FontWeight.Bold)
-          .fontColor('#F4FBFF')
+          .fontColor($r('app.color.text_title'))
           .width('100%')
 
         Scroll() {
@@ -43,7 +46,7 @@ export struct DeleteModelDialog {
             Text(this.description())
               .fontSize(14)
               .lineHeight(21)
-              .fontColor('#B7CDE1')
+              .fontColor($r('app.color.text_secondary'))
               .width('100%')
 
           }
@@ -72,11 +75,13 @@ export struct DeleteModelDialog {
       .width(Math.max(1, Math.min(480, this.availableWidth - 32)))
       .constraintSize({ maxHeight: Math.max(1, this.availableHeight - 32) })
       .padding(18)
-      .backgroundColor('#102235')
-      .border({ width: 1, color: '#23445F' })
+      .backgroundColor($r('app.color.dialog'))
+      .border({ width: 1, color: $r('app.color.border') })
       .borderRadius($r('app.float.dialog_radius'))
+      .transition(dialogScale())
     }
     .width('100%')
     .height('100%')
+    .transition(dialogFade())
   }
 }

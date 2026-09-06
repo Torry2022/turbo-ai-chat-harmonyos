@@ -50,6 +50,12 @@ In the HarmonyOS ecosystem, on-device AI inference today largely depends on Andr
 
 ## Recent Highlights
 
+**Light theme and appearance settings (v1.10.0)**
+
+- Added Light, Dark, and System appearance options with saved preferences, retaining the original logo and launch artwork.
+- Settings is accessible from the sidebar footer in wide windows or the top-left logo menu on phones. Updated page, dialog, model-tag, and metric colors, along with header and bottom-navigation spacing.
+- Added transitions when switching tabs and opening or closing dialogs, including Settings. The wide-window monitor displays the model name and status on separate rows to reduce empty space below the card.
+
 **Interface styling (v1.9.1)**
 
 - Retained the existing page layouts while aligning button colors, text, sizes, and corner radii, with consistent input fields and parameter sliders.
@@ -136,6 +142,7 @@ With a physical keyboard, Enter sends from the chat input and Shift+Enter insert
 
 ## Features
 
+- Appearance: choose Light, Dark, or System in Settings. Open Settings from the bottom of the sidebar in wide windows, or from the top-left logo menu in narrow windows. The selection is saved; both themes share the same layouts, logo, and launch artwork.
 - Adaptive navigation: bottom tabs in narrow windows and a sidebar in wider windows. Resizing retains page instances; monitoring pauses when hidden and preserves its scroll position.
 - The chat runtime strip spans only the page content area and does not shift the sidebar. Wide-screen chat uses the same maximum page width as other tabs, with separate message-width limits for readability.
 - Wide model pages place the model list beside its settings. Long-press a handle to reorder by touch, or drag it directly with a mouse. Resizing cancels an active drag without applying its tentative order.

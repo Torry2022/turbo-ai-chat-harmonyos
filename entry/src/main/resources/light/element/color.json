@@ -1,47 +1,31 @@
 {
   "color": [
-    { "name": "page_compact", "value": "#06121F" },
-    { "name": "ticker_compact", "value": "#0D2232" },
-    { "name": "header_shadow", "value": "#00000000" },
-    { "name": "tag_import_text", "value": "#45D6A4" },
-    { "name": "tag_amber_text", "value": "#F2B35D" },
-    { "name": "tag_blue_text", "value": "#5AB0F2" },
-    { "name": "dialog_subtitle", "value": "#8DE4C3" },
+    { "name": "page_compact", "value": "#F3F3F3" },
+    { "name": "ticker_compact", "value": "#EBEBEB" },
+    { "name": "header_shadow", "value": "#0C000000" },
+    { "name": "tag_import_text", "value": "#176C50" },
+    { "name": "tag_amber_text", "value": "#825514" },
+    { "name": "tag_blue_text", "value": "#285CB8" },
+    { "name": "dialog_subtitle", "value": "#176C50" },
     {
       "name": "sidebar_background",
-      "value": "#07111D"
+      "value": "#F5F5F5"
     },
     {
       "name": "header_background",
-      "value": "#06121F"
-    },
-    {
-      "name": "nav_selected_background",
-      "value": "#14344A"
-    },
-    {
-      "name": "nav_selected_text",
-      "value": "#F4FBFF"
-    },
-    {
-      "name": "nav_selected_description",
-      "value": "#8DE4C3"
-    },
-    {
-      "name": "launch_text",
-      "value": "#F4FBFF"
+      "value": "#F5F5F5"
     },
     {
       "name": "input_background",
-      "value": "#0A1623"
+      "value": "#F1F1F1"
     },
     {
       "name": "input_text",
-      "value": "#EAF4FF"
+      "value": "#262626"
     },
     {
       "name": "input_placeholder",
-      "value": "#8CA2B8"
+      "value": "#686868"
     },
     {
       "name": "control_accent",
@@ -49,7 +33,7 @@
     },
     {
       "name": "control_track",
-      "value": "#26384D"
+      "value": "#CDCDCD"
     },
     {
       "name": "button_primary_background",
@@ -57,15 +41,15 @@
     },
     {
       "name": "button_primary_text",
-      "value": "#F4FBFF"
+      "value": "#F8FAFC"
     },
     {
       "name": "button_secondary_background",
-      "value": "#26384D"
+      "value": "#E7E7E7"
     },
     {
       "name": "button_secondary_text",
-      "value": "#DCE7F2"
+      "value": "#303030"
     },
     {
       "name": "button_action_background",
@@ -73,23 +57,23 @@
     },
     {
       "name": "button_action_text",
-      "value": "#8DBBEB"
+      "value": "#285CB8"
     },
     {
       "name": "button_danger_background",
-      "value": "#30232B"
+      "value": "#FBEAEA"
     },
     {
       "name": "button_danger_text",
-      "value": "#FF9C9C"
+      "value": "#A32C36"
     },
     {
       "name": "button_destructive_background",
-      "value": "#B43B3B"
+      "value": "#A72F3B"
     },
     {
       "name": "button_destructive_text",
-      "value": "#F4FBFF"
+      "value": "#F8FAFC"
     },
     {
       "name": "start_window_background",
@@ -97,255 +81,267 @@
     },
     {
       "name": "page",
-      "value": "#06121F"
+      "value": "#ECECEC"
     },
     {
       "name": "card",
-      "value": "#0D1A28"
+      "value": "#FDFDFD"
     },
     {
       "name": "inset",
-      "value": "#101D2B"
+      "value": "#FDFDFD"
     },
     {
       "name": "dialog",
-      "value": "#102235"
+      "value": "#FDFDFD"
     },
     {
       "name": "border",
-      "value": "#23445F"
+      "value": "#D2D2D2"
     },
     {
       "name": "text_title",
-      "value": "#F4FBFF"
+      "value": "#202020"
     },
     {
       "name": "text_body",
-      "value": "#EAF4FF"
+      "value": "#292929"
     },
     {
       "name": "text_secondary",
-      "value": "#B7CDE1"
+      "value": "#454545"
     },
     {
       "name": "text_muted",
-      "value": "#8CA2B8"
+      "value": "#666666"
     },
     {
       "name": "status_good",
-      "value": "#45D6A4"
+      "value": "#007A43"
     },
     {
       "name": "status_warning",
-      "value": "#F2B35D"
+      "value": "#B94B00"
     },
     {
       "name": "status_error",
-      "value": "#FF9A9A"
+      "value": "#C92A32"
     },
     {
       "name": "status_error_alt",
-      "value": "#F26D6D"
+      "value": "#C92A32"
     },
     {
       "name": "status_loading",
-      "value": "#5BA4E6"
+      "value": "#355775"
     },
     {
       "name": "link",
-      "value": "#5AB0F2"
+      "value": "#285CB8"
     },
     {
       "name": "link_markdown",
-      "value": "#45A6E7"
+      "value": "#285CB8"
     },
     {
       "name": "tag_green_background",
-      "value": "#12372E"
+      "value": "#E1F1E9"
     },
     {
       "name": "tag_green_text",
-      "value": "#8DE4C3"
+      "value": "#176C50"
     },
     {
       "name": "tag_blue_background",
-      "value": "#0D2A42"
+      "value": "#E1EBFA"
     },
     {
       "name": "tag_amber_background",
-      "value": "#3A2A14"
+      "value": "#FFF0D4"
     },
     {
       "name": "selected_background",
-      "value": "#14344A"
+      "value": "#DFEAF9"
     },
     {
       "name": "list_background",
-      "value": "#091522"
+      "value": "#F2F2F2"
     },
     {
       "name": "nav_background",
-      "value": "#07111D"
+      "value": "#F5F5F5"
     },
     {
       "name": "ticker_background",
-      "value": "#0D2232"
+      "value": "#E1E1E1"
     },
     {
       "name": "chat_assistant",
-      "value": "#111E2C"
+      "value": "#FDFDFD"
     },
     {
       "name": "chat_user",
-      "value": "#1267A8"
+      "value": "#DEEAFA"
     },
     {
       "name": "chat_user_meta",
-      "value": "#DFF7FF"
+      "value": "#415774"
     },
     {
       "name": "chat_user_time",
-      "value": "#B8DAE8"
+      "value": "#56667D"
     },
     {
       "name": "code_background",
-      "value": "#0B1724"
+      "value": "#F0F0F0"
     },
     {
       "name": "code_text",
-      "value": "#D7E8F7"
+      "value": "#303030"
     },
     {
       "name": "quote_background",
-      "value": "#0F1A26"
+      "value": "#F1F1F1"
     },
     {
       "name": "quote_border",
-      "value": "#456888"
+      "value": "#94A6B8"
     },
     {
       "name": "table_header",
-      "value": "#14283E"
+      "value": "#E9E9E9"
     },
     {
       "name": "divider",
-      "value": "#2A4058"
+      "value": "#DDDDDD"
     },
     {
       "name": "thinking_background",
-      "value": "#172331"
+      "value": "#F1F1F1"
     },
     {
       "name": "text_caption",
-      "value": "#64788D"
+      "value": "#626262"
     },
     {
       "name": "text_note",
-      "value": "#9FBDD5"
+      "value": "#626262"
     },
     {
       "name": "text_thinking",
-      "value": "#A9B9C8"
+      "value": "#626262"
     },
     {
       "name": "text_thinking_meta",
-      "value": "#71879B"
+      "value": "#626262"
     },
     {
       "name": "text_thinking_body",
-      "value": "#92A6B8"
+      "value": "#626262"
     },
     {
       "name": "text_assistant_meta",
-      "value": "#8FA9C3"
+      "value": "#626262"
     },
     {
       "name": "text_stats",
-      "value": "#4A6A8A"
+      "value": "#626262"
     },
     {
       "name": "text_nav_hint",
-      "value": "#5F748A"
+      "value": "#626262"
     },
     {
       "name": "text_log_time",
-      "value": "#5F758C"
+      "value": "#626262"
     },
     {
       "name": "text_hint",
-      "value": "#6F86A0"
+      "value": "#626262"
     },
     {
       "name": "text_gallery_hint",
-      "value": "#5F768D"
+      "value": "#626262"
     },
     {
       "name": "text_model_hint",
-      "value": "#5A7A9A"
+      "value": "#626262"
     },
     {
       "name": "text_version",
-      "value": "#5E748A"
+      "value": "#626262"
     },
     {
       "name": "text_stat_label",
-      "value": "#7A92A8"
+      "value": "#626262"
     },
     {
       "name": "endpoint_post",
-      "value": "#69D38A"
+      "value": "#176C50"
     },
     {
       "name": "attachment_background",
-      "value": "#142C40"
+      "value": "#E0E7EE"
     },
     {
       "name": "attachment_border",
-      "value": "#286B9C"
+      "value": "#94A6B8"
     },
     {
       "name": "attachment_icon",
-      "value": "#7FA9C7"
+      "value": "#355775"
     },
     {
       "name": "composer_text",
-      "value": "#F4FAFF"
+      "value": "#292929"
     },
     {
       "name": "scrim",
-      "value": "#00000099"
+      "value": "#66151D2B"
     },
     {
       "name": "scrim_gallery",
-      "value": "#00000088"
+      "value": "#66151D2B"
     },
     {
       "name": "scrim_busy",
-      "value": "#000000B3"
+      "value": "#80151D2B"
     },
     {
       "name": "nav_idle",
-      "value": "#091522"
+      "value": "#EAEAEA"
     },
     {
       "name": "nav_active_text",
-      "value": "#F4FBFF"
+      "value": "#285CB8"
     },
     {
       "name": "nav_active_description",
-      "value": "#8DE4C3"
+      "value": "#4B5865"
     },
     {
       "name": "gallery_entry_background",
-      "value": "#12372E"
+      "value": "#E1F1E9"
     },
     {
       "name": "composer_background",
-      "value": "#101D2B"
+      "value": "#FDFDFD"
+    },
+    {
+      "name": "nav_selected_background",
+      "value": "#D7E6FA"
+    },
+    {
+      "name": "nav_selected_text",
+      "value": "#213E68"
+    },
+    {
+      "name": "nav_selected_description",
+      "value": "#3E5778"
     },
     {
       "name": "chat_user_text",
-      "value": "#FFFFFF"
+      "value": "#202D40"
     }
   ]
 }

@@ -44,7 +44,7 @@ export struct ApiServerTab {
   private Label(text: string) {
     Text(text)
       .fontSize(12)
-      .fontColor('#8CA2B8')
+      .fontColor($r('app.color.text_muted'))
       .width('100%')
   }
 
@@ -54,20 +54,20 @@ export struct ApiServerTab {
       .fontSize(16)
       .lineHeight(22)
       .fontWeight(FontWeight.Bold)
-      .fontColor('#F4FBFF')
+      .fontColor($r('app.color.text_title'))
   }
 
-  private logLevelColor(level: string): string {
+  private logLevelColor(level: string): ResourceColor {
     if (level === 'ERROR') {
-      return '#F26D6D'
+      return $r('app.color.status_error_alt')
     }
     if (level === 'RESP') {
-      return '#69D38A'
+      return $r('app.color.endpoint_post')
     }
     if (level === 'REQ') {
-      return '#5AB0F2'
+      return $r('app.color.link')
     }
-    return '#8CA2B8'
+    return $r('app.color.text_muted')
   }
 
   private logItems(): ApiServerLogEntry[] {
@@ -94,7 +94,7 @@ export struct ApiServerTab {
   }
 
   @Builder
-  private Endpoint(method: string, path: string, methodColor: string) {
+  private Endpoint(method: string, path: string, methodColor: ResourceColor) {
     Row({ space: 7 }) {
       Text(method)
         .width(34)
@@ -105,7 +105,7 @@ export struct ApiServerTab {
       Text(path)
         .fontSize(12)
         .lineHeight(20)
-        .fontColor('#B7CDE1')
+        .fontColor($r('app.color.text_secondary'))
     }
     .width('100%')
   }
@@ -119,7 +119,7 @@ export struct ApiServerTab {
             .lineHeight(18)
             .padding({ left: 7 })
             .fontSize(12)
-            .fontColor('#8CA2B8')
+            .fontColor($r('app.color.text_muted'))
         }
         .width('100%')
         .padding({ left: 4, bottom: 4 })
@@ -133,7 +133,7 @@ export struct ApiServerTab {
                 Toggle({ type: ToggleType.Switch, isOn: this.apiServerRunning })
                   .height(22)
                   .enabled(!this.apiServerStarting && (!this.busy || this.apiServerRunning))
-                  .selectedColor('#45D6A4')
+                  .selectedColor($r('app.color.status_good'))
                   .onClick(() => {
                     this.viewModel.setApiServerEnabled(!this.apiServerRunning)
                   })
@@ -144,24 +144,24 @@ export struct ApiServerTab {
               Text(this.apiServerStatus)
                 .fontSize(13)
                 .lineHeight(19)
-                .fontColor(this.apiServerRunning ? '#45D6A4' : '#B7CDE1')
+                .fontColor(this.apiServerRunning ? $r('app.color.status_good') : $r('app.color.text_secondary'))
                 .width('100%')
               Text(`当前模型：${this.currentModelName} · 已处理 ${this.apiServerRequestCount} 个请求`)
                 .fontSize(11)
-                .fontColor('#6F86A0')
+                .fontColor($r('app.color.text_hint'))
                 .width('100%')
               if (!this.loaded) {
                 Text('请先在模型页加载模型，再启动 API 服务。')
                   .fontSize(11)
                   .lineHeight(17)
-                  .fontColor('#F2B35D')
+                  .fontColor($r('app.color.status_warning'))
                   .width('100%')
               }
             }
             .width('100%')
             .alignItems(HorizontalAlign.Start)
             .padding(10)
-            .backgroundColor('#0D1A28')
+            .backgroundColor($r('app.color.card'))
             .borderRadius($r('app.float.card_radius'))
 
             Column({ space: 6 }) {
@@ -172,7 +172,7 @@ export struct ApiServerTab {
                   Row() {
                     Text(this.apiServerAddress)
                       .fontSize(12)
-                      .fontColor('#5AB0F2')
+                      .fontColor($r('app.color.link'))
                       .maxLines(1)
                       .textOverflow({ overflow: TextOverflow.Ellipsis })
                       .copyOption(CopyOptions.LocalDevice)
@@ -180,7 +180,7 @@ export struct ApiServerTab {
                   .height(38)
                   .width('100%')
                   .padding({ left: 10, right: 10 })
-                  .backgroundColor('#101D2B')
+                  .backgroundColor($r('app.color.inset'))
                   .borderRadius(8)
                   .onClick(async () => {
                     await this.copyText(this.apiServerAddress, 'API 地址')
@@ -216,7 +216,7 @@ export struct ApiServerTab {
             .width('100%')
             .alignItems(HorizontalAlign.Start)
             .padding(10)
-            .backgroundColor('#0D1A28')
+            .backgroundColor($r('app.color.card'))
             .borderRadius($r('app.float.card_radius'))
 
             Column({ space: 6 }) {
@@ -226,7 +226,7 @@ export struct ApiServerTab {
                 Toggle({ type: ToggleType.Switch, isOn: this.apiServerRequireKey })
                   .height(22)
                   .enabled(!this.apiServerRunning && !this.apiServerStarting)
-                  .selectedColor('#45D6A4')
+                  .selectedColor($r('app.color.status_good'))
                   .onChange((enabled: boolean) => {
                     this.viewModel.updateApiServerRequireKey(enabled)
                   })
@@ -240,14 +240,14 @@ export struct ApiServerTab {
                 Row() {
                   Text(this.apiKeyVisible ? this.apiServerKey : '••••••••••••••••••••••••')
                     .fontSize(12)
-                    .fontColor('#EAF4FF')
+                    .fontColor($r('app.color.text_body'))
                     .maxLines(1)
                     .textOverflow({ overflow: TextOverflow.Ellipsis })
                 }
                   .height(38)
                   .width('100%')
                   .padding({ left: 12, right: 12 })
-                  .backgroundColor('#101D2B')
+                  .backgroundColor($r('app.color.inset'))
                   .borderRadius(8)
                   .onClick(async () => {
                     await this.copyText(this.apiServerKey, 'API Key')
@@ -274,7 +274,7 @@ export struct ApiServerTab {
             .width('100%')
             .alignItems(HorizontalAlign.Start)
             .padding(10)
-            .backgroundColor('#0D1A28')
+            .backgroundColor($r('app.color.card'))
             .borderRadius($r('app.float.card_radius'))
 
           }
@@ -303,7 +303,7 @@ export struct ApiServerTab {
                 Text('暂无 API 请求日志')
                   .height(this.wideLayout() ? 240 : 120)
                   .fontSize(12)
-                  .fontColor('#5F758C')
+                  .fontColor($r('app.color.text_log_time'))
                   .width('100%')
                   .textAlign(TextAlign.Center)
               } else {
@@ -315,7 +315,7 @@ export struct ApiServerTab {
                           .width(50)
                           .fontSize(10)
                           .lineHeight(16)
-                          .fontColor('#5F758C')
+                          .fontColor($r('app.color.text_log_time'))
                           .textAlign(TextAlign.Start)
                         Text(item.level)
                           .width(42)
@@ -327,7 +327,7 @@ export struct ApiServerTab {
                         Text(item.message)
                           .fontSize(10)
                           .lineHeight(16)
-                          .fontColor('#B7CDE1')
+                          .fontColor($r('app.color.text_secondary'))
                           .layoutWeight(1)
                           .maxLines(2)
                           .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -346,28 +346,28 @@ export struct ApiServerTab {
             .width('100%')
             .alignItems(HorizontalAlign.Start)
             .padding(10)
-            .backgroundColor('#0D1A28')
+            .backgroundColor($r('app.color.card'))
             .borderRadius($r('app.float.card_radius'))
 
             Column({ space: 6 }) {
               this.SectionTitle('支持的端点')
               Column({ space: 0 }) {
-                this.Endpoint('GET', '/v1/models', '#69D38A')
-                this.Endpoint('POST', '/v1/chat/completions', '#5AB0F2')
-                this.Endpoint('POST', '/v1/responses', '#5AB0F2')
+                this.Endpoint('GET', '/v1/models', $r('app.color.endpoint_post'))
+                this.Endpoint('POST', '/v1/chat/completions', $r('app.color.link'))
+                this.Endpoint('POST', '/v1/responses', $r('app.color.link'))
               }
               .width('100%')
               .alignItems(HorizontalAlign.Start)
               Text('当前版本仅支持文本输入和当前已加载模型，同时只处理一个生成请求。App 退出后服务会停止。')
                 .fontSize(11)
                 .lineHeight(17)
-                .fontColor('#6F86A0')
+                .fontColor($r('app.color.text_hint'))
                 .width('100%')
             }
             .width('100%')
             .alignItems(HorizontalAlign.Start)
             .padding(10)
-            .backgroundColor('#0D1A28')
+            .backgroundColor($r('app.color.card'))
             .borderRadius($r('app.float.card_radius'))
           }
           .width(this.columnWidth())

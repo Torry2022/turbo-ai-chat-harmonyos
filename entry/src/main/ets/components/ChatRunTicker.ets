@@ -7,13 +7,23 @@ import { colorForAppCpu, colorForMemoryUsage, colorForTemperature } from '../uti
 export struct ChatRunTicker {
   @ObjectLink viewModel: ChatViewModel
   @Prop topSpacing: number = 6
+  @Prop compact: boolean = false
+  @Prop @Watch('onActiveChanged') active: boolean = true
   @State private stats: RuntimeStats = EMPTY_RUNTIME_STATS
   private statsTimer: number = -1
   private statsService: RuntimeStatsService = new RuntimeStatsService()
 
   aboutToAppear(): void {
-    this.refreshStats()
-    this.startTimer()
+    this.onActiveChanged()
+  }
+
+  private onActiveChanged(): void {
+    if (this.active) {
+      this.refreshStats()
+      this.startTimer()
+    } else {
+      this.stopTimer()
+    }
   }
 
   aboutToDisappear(): void {
@@ -45,7 +55,7 @@ export struct ChatRunTicker {
     Row() {
       Text('应用CPU ')
         .fontSize(11)
-        .fontColor('#8CA2B8')
+        .fontColor($r('app.color.text_muted'))
         .maxLines(1)
       Text(this.stats.appCpu)
         .fontSize(11)
@@ -53,11 +63,11 @@ export struct ChatRunTicker {
         .maxLines(1)
       Text(' · ')
         .fontSize(11)
-        .fontColor('#8CA2B8')
+        .fontColor($r('app.color.text_muted'))
         .maxLines(1)
       Text('应用内存 ')
         .fontSize(11)
-        .fontColor('#8CA2B8')
+        .fontColor($r('app.color.text_muted'))
         .maxLines(1)
       Text(this.stats.appPss)
         .fontSize(11)
@@ -65,11 +75,11 @@ export struct ChatRunTicker {
         .maxLines(1)
       Text(' · ')
         .fontSize(11)
-        .fontColor('#8CA2B8')
+        .fontColor($r('app.color.text_muted'))
         .maxLines(1)
       Text('设备温度 ')
         .fontSize(11)
-        .fontColor('#8CA2B8')
+        .fontColor($r('app.color.text_muted'))
         .maxLines(1)
       Text(this.stats.socTemp)
         .fontSize(11)
@@ -80,7 +90,7 @@ export struct ChatRunTicker {
     .height(20)
     .padding({ left: 8, right: 8 })
     .margin({ top: this.topSpacing })
-    .backgroundColor('#0D2232')
+    .backgroundColor(this.compact ? $r('app.color.ticker_compact') : $r('app.color.ticker_background'))
     .justifyContent(FlexAlign.Center)
   }
 }

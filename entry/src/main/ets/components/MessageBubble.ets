@@ -65,8 +65,8 @@ export struct MessageBubble {
       title: '使用系统浏览器打开？',
       message: url,
       buttons: [
-        { text: '取消', color: '#8CA2B8' },
-        { text: '打开', color: '#45A6E7', primary: true }
+        { text: '取消', color: $r('app.color.text_muted') },
+        { text: '打开', color: $r('app.color.link_markdown'), primary: true }
       ]
     }).then((result) => {
       if (result.index !== 1) {
@@ -81,18 +81,18 @@ export struct MessageBubble {
   }
 
   @Builder
-  private MarkdownLine(text: string, color: ResourceColor = '#EAF4FF') {
+  private MarkdownLine(text: string, color: ResourceColor = $r('app.color.text_body')) {
     Text() {
       ForEach(parseInlineMarkdown(text), (span: MarkdownSpan) => {
         if (span.code) {
           Span(span.text)
-            .fontColor('#D7E8F7')
+            .fontColor($r('app.color.code_text'))
             .fontFamily('monospace')
             .fontSize(13)
             .decoration({ type: TextDecorationType.None })
         } else if (span.link !== undefined && span.link.length > 0) {
           Span(span.text)
-            .fontColor('#45A6E7')
+            .fontColor($r('app.color.link_markdown'))
             .decoration({ type: TextDecorationType.Underline })
             .fontWeight(FontWeight.Normal)
             .onClick(() => this.confirmOpenLink(span.link ?? ''))
@@ -119,14 +119,14 @@ export struct MessageBubble {
           if (span.link !== undefined && span.link.length > 0) {
             Span(span.text)
               .fontWeight(FontWeight.Bold)
-              .fontColor('#45A6E7')
+              .fontColor($r('app.color.link_markdown'))
               .fontStyle(FontStyle.Normal)
               .decoration({ type: TextDecorationType.Underline })
               .onClick(() => this.confirmOpenLink(span.link ?? ''))
           } else {
             Span(span.text)
               .fontWeight(FontWeight.Bold)
-              .fontColor('#F4FBFF')
+              .fontColor($r('app.color.text_title'))
               .fontStyle(FontStyle.Normal)
           }
         }, (_span: MarkdownSpan, index: number) => `${blockIndex}-${index}`)
@@ -141,10 +141,10 @@ export struct MessageBubble {
           .width('100%')
           .fontSize(13)
           .lineHeight(19)
-          .fontColor('#D7E8F7')
+          .fontColor($r('app.color.code_text'))
           .fontFamily('monospace')
           .padding({ top: 44, bottom: 8, left: 8, right: 8 })
-          .backgroundColor('#0B1724')
+          .backgroundColor($r('app.color.code_background'))
           .borderRadius($r('app.float.card_radius'))
         Button('复制')
           .attributeModifier(new CompactActionStyle())
@@ -160,12 +160,12 @@ export struct MessageBubble {
       .width('100%')
     } else if (block.type === 'blockquote') {
       Row() {
-        this.MarkdownLine(block.text, '#B7CDE1')
+        this.MarkdownLine(block.text, $r('app.color.text_secondary'))
       }
       .width('100%')
       .padding({ left: 11, top: 4, bottom: 4 })
-      .border({ width: { left: 3 }, color: '#456888' })
-      .backgroundColor('#0F1A26')
+      .border({ width: { left: 3 }, color: $r('app.color.quote_border') })
+      .backgroundColor($r('app.color.quote_background'))
       .borderRadius(4)
     } else if (block.type === 'table') {
       Column({ space: 0 }) {
@@ -173,28 +173,28 @@ export struct MessageBubble {
           Row() {
             ForEach(block.headers, (h: string) => {
               Column() {
-                this.MarkdownLine(h, '#F4FBFF')
+                this.MarkdownLine(h, $r('app.color.text_title'))
               }
               .padding({ left: 8, right: 8, top: 4, bottom: 4 })
               .layoutWeight(1)
             }, (_h: string, hi: number) => `h-${blockIndex}-${hi}`)
           }
           .width('100%')
-          .backgroundColor('#14283E')
+          .backgroundColor($r('app.color.table_header'))
         }
         if (block.rows !== undefined) {
           ForEach(block.rows, (row: string[], ri: number) => {
             Row() {
               ForEach(row, (cell: string) => {
                 Column() {
-                  this.MarkdownLine(cell, '#D7E8F7')
+                  this.MarkdownLine(cell, $r('app.color.code_text'))
                 }
                 .padding({ left: 8, right: 8, top: 3, bottom: 3 })
                 .layoutWeight(1)
               }, (_cell: string, ci: number) => `c-${blockIndex}-${ri}-${ci}`)
             }
             .width('100%')
-            .backgroundColor(ri % 2 === 0 ? '#0D1A28' : '#111E2C')
+            .backgroundColor(ri % 2 === 0 ? $r('app.color.card') : $r('app.color.chat_assistant'))
           }, (_row: string[], ri: number) => `r-${blockIndex}-${ri}`)
         }
       }
@@ -204,7 +204,7 @@ export struct MessageBubble {
     } else if (block.type === 'horizontal-rule') {
       Divider()
         .strokeWidth(1)
-        .color('#2A4058')
+        .color($r('app.color.divider'))
     } else if (block.type === 'ordered-list' || block.type === 'unordered-list') {
       Column({ space: 4 }) {
         ForEach(block.items, (item: string, itemIndex: number) => {
@@ -213,21 +213,21 @@ export struct MessageBubble {
               .width(20)
               .fontSize(15)
               .lineHeight(22)
-              .fontColor('#9FBDD5')
+              .fontColor($r('app.color.text_note'))
               .textAlign(TextAlign.End)
             Text() {
               ForEach(parseInlineMarkdown(item), (span: MarkdownSpan) => {
                 if (span.link !== undefined && span.link.length > 0) {
                   Span(span.text)
                     .fontWeight(span.bold ? FontWeight.Bold : FontWeight.Normal)
-                    .fontColor('#45A6E7')
+                    .fontColor($r('app.color.link_markdown'))
                     .fontStyle(span.italic ? FontStyle.Italic : FontStyle.Normal)
                     .decoration({ type: TextDecorationType.Underline })
                     .onClick(() => this.confirmOpenLink(span.link ?? ''))
                 } else {
                   Span(span.text)
                     .fontWeight(span.bold ? FontWeight.Bold : FontWeight.Normal)
-                    .fontColor('#EAF4FF')
+                    .fontColor($r('app.color.text_body'))
                     .fontStyle(span.italic ? FontStyle.Italic : FontStyle.Normal)
                 }
               }, (_span: MarkdownSpan, spanIndex: number) => `${blockIndex}-${itemIndex}-${spanIndex}`)
@@ -264,11 +264,11 @@ export struct MessageBubble {
         Text('深度思考')
           .fontSize(12)
           .fontWeight(FontWeight.Medium)
-          .fontColor('#A9B9C8')
+          .fontColor($r('app.color.text_thinking'))
           .layoutWeight(1)
         Text(this.answerText().length > 0 && !this.message.thinkingExpanded ? '已折叠' : (this.thinkingClosed() ? '已完成' : '思考中'))
           .fontSize(11)
-          .fontColor('#71879B')
+          .fontColor($r('app.color.text_thinking_meta'))
       }
       .width('100%')
       .onClick(() => {
@@ -281,13 +281,13 @@ export struct MessageBubble {
         Text(this.thinkingText().length > 0 ? this.thinkingText() : '...')
           .fontSize(13)
           .lineHeight(20)
-          .fontColor('#92A6B8')
+          .fontColor($r('app.color.text_thinking_body'))
           .width('100%')
       }
     }
     .width('100%')
     .padding(8)
-    .backgroundColor('#172331')
+    .backgroundColor($r('app.color.thinking_background'))
     .borderRadius(8)
   }
 
@@ -300,10 +300,10 @@ export struct MessageBubble {
         Row() {
           Text(this.message.role === 'user' ? '你' : '助手')
             .fontSize(11)
-            .fontColor(this.message.role === 'user' ? '#DFF7FF' : '#8FA9C3')
+            .fontColor(this.message.role === 'user' ? $r('app.color.chat_user_meta') : $r('app.color.text_assistant_meta'))
           Text(this.message.time)
             .fontSize(11)
-            .fontColor(this.message.role === 'user' ? '#B8DAE8' : '#64788D')
+            .fontColor(this.message.role === 'user' ? $r('app.color.chat_user_time') : $r('app.color.text_caption'))
             .margin({ left: 8 })
         }
         if (this.message.imageUri.length > 0) {
@@ -325,19 +325,19 @@ export struct MessageBubble {
               .fontSize(15)
               .lineHeight(22)
               .textAlign(TextAlign.Start)
-              .fontColor(Color.White)
+              .fontColor($r('app.color.chat_user_text'))
           }
         }
         if (this.message.role === 'assistant' && this.message.perfMetrics !== undefined) {
           Text(`TTFT ${this.message.perfMetrics.ttft}ms · ${this.message.perfMetrics.tpot}ms/tok · ${this.message.perfMetrics.tokensPerSec} tok/s · ${this.message.perfMetrics.tokens} tokens`)
             .fontSize(10)
-            .fontColor('#4A6A8A')
+            .fontColor($r('app.color.text_stats'))
             .textAlign(TextAlign.Center)
             .width('100%')
         }
       }
       .padding({ left: 12, right: 12, top: 10, bottom: 10 })
-      .backgroundColor(this.message.role === 'user' ? '#1267A8' : '#111E2C')
+      .backgroundColor(this.message.role === 'user' ? $r('app.color.chat_user') : $r('app.color.chat_assistant'))
       .borderRadius(8)
       .width(this.message.role === 'user' ? '84%' : '94%')
       .constraintSize({ maxWidth: this.message.role === 'user' ? 720 : 880 })

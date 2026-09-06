@@ -14,7 +14,7 @@ struct MonitorStatItem {
   @Prop label: string
   @Prop value: string
   @Prop itemWeight: number = 1
-  @Prop valueColor: string = '#EAF4FF'
+  @Prop valueColor: ResourceColor = $r('app.color.text_body')
 
   build() {
     Column({ space: 3 }) {
@@ -26,11 +26,11 @@ struct MonitorStatItem {
         .textOverflow({ overflow: TextOverflow.Ellipsis })
       Text(this.label)
         .fontSize(11)
-        .fontColor('#7A92A8')
+        .fontColor($r('app.color.text_stat_label'))
     }
     .alignItems(HorizontalAlign.Start)
     .padding(10)
-    .backgroundColor('#101D2B')
+    .backgroundColor($r('app.color.inset'))
     .borderRadius($r('app.float.card_radius'))
     .layoutWeight(this.itemWeight)
   }
@@ -116,9 +116,10 @@ export struct MonitorTab {
     Text(title)
       .fontSize(16)
       .fontWeight(FontWeight.Bold)
-      .fontColor('#F4FBFF')
+      .fontColor($r('app.color.text_title'))
       .width('100%')
   }
+
 
   build() {
     Scroll(this.scroller) {
@@ -130,7 +131,7 @@ export struct MonitorTab {
             .lineHeight(18)
             .padding({ left: 7 })
             .fontSize(12)
-            .fontColor('#8CA2B8')
+            .fontColor($r('app.color.text_muted'))
         }
         .width('100%')
         .padding({ left: 4, bottom: 4 })
@@ -139,26 +140,29 @@ export struct MonitorTab {
           // Model state
           Column({ space: 6 }) {
             this.SectionTitle('模型状态')
-            Row({ space: 8 }) {
+            Flex({ direction: this.contentWidth >= 720 ? FlexDirection.Column : FlexDirection.Row,
+              alignItems: ItemAlign.Start }) {
               MonitorStatItem({
                 label: '模型',
                 value: this.viewModel.currentModel().shortName,
-                itemWeight: this.modelNameWeight()
+                itemWeight: this.contentWidth >= 720 ? 0 : this.modelNameWeight()
               })
+              .width(this.contentWidth >= 720 ? '100%' : undefined)
+              .margin(this.contentWidth >= 720 ? { bottom: 6 } : { right: 8 })
               MonitorStatItem({
                 label: '状态',
                 value: this.viewModel.busy ? '生成中...' : (this.viewModel.modelLoading ? '加载中...' : (this.viewModel.loaded ? '就绪' : '未加载')),
-                itemWeight: 1,
-                valueColor: this.viewModel.busy ? '#F2B35D' : (this.viewModel.modelLoading ? '#5BA4E6' : (this.viewModel.loaded ? '#45D6A4' : '#8CA2B8'))
+                itemWeight: this.contentWidth >= 720 ? 0 : 1,
+                valueColor: this.viewModel.busy ? $r('app.color.status_warning') : (this.viewModel.modelLoading ? $r('app.color.status_loading') : (this.viewModel.loaded ? $r('app.color.status_good') : $r('app.color.text_muted')))
               })
+              .width(this.contentWidth >= 720 ? '100%' : undefined)
             }
             .width('100%')
-            .alignItems(VerticalAlign.Top)
           }
           .width(this.cardWidth())
           .margin({ right: this.contentWidth >= 720 ? 16 : 0, bottom: 10 })
           .padding(10)
-          .backgroundColor('#0D1A28')
+          .backgroundColor($r('app.color.card'))
           .borderRadius($r('app.float.card_radius'))
 
           // CPU
@@ -195,7 +199,7 @@ export struct MonitorTab {
           .width(this.cardWidth())
           .margin({ bottom: 10 })
           .padding(10)
-          .backgroundColor('#0D1A28')
+          .backgroundColor($r('app.color.card'))
           .borderRadius($r('app.float.card_radius'))
 
           // App memory
@@ -221,7 +225,7 @@ export struct MonitorTab {
           .width(this.cardWidth())
           .margin({ right: this.contentWidth >= 720 ? 16 : 0, bottom: 10 })
           .padding(10)
-          .backgroundColor('#0D1A28')
+          .backgroundColor($r('app.color.card'))
           .borderRadius($r('app.float.card_radius'))
 
           // System memory
@@ -242,7 +246,7 @@ export struct MonitorTab {
           .width(this.cardWidth())
           .margin({ bottom: 10 })
           .padding(10)
-          .backgroundColor('#0D1A28')
+          .backgroundColor($r('app.color.card'))
           .borderRadius($r('app.float.card_radius'))
 
           // App storage
@@ -258,17 +262,18 @@ export struct MonitorTab {
           .width(this.cardWidth())
           .margin({ right: this.contentWidth >= 720 ? 16 : 0, bottom: 10 })
           .padding(10)
-          .backgroundColor('#0D1A28')
+          .backgroundColor($r('app.color.card'))
           .borderRadius($r('app.float.card_radius'))
 
         }
         .width('100%')
 
+
         Text(this.viewModel.appVersion.length > 0 ? `Turbo AI Chat v${this.viewModel.appVersion}` : 'Turbo AI Chat')
           .width('100%')
           .textAlign(TextAlign.Center)
           .fontSize(11)
-          .fontColor('#5E748A')
+          .fontColor($r('app.color.text_version'))
       }
       .width('100%')
     }

@@ -3,6 +3,8 @@ import { ActionButtonStyle, CompactActionStyle } from './ButtonStyles'
 import { ChatViewModel } from '../state/ChatViewModel'
 import { ModelCatalogItem, formatBytes } from '../models/BuiltinModelDownloadTypes'
 
+import { dialogFade, dialogScale } from './DialogMotion'
+
 @Component
 export struct ModelMarketDialog {
   @ObjectLink viewModel: ChatViewModel
@@ -56,9 +58,9 @@ export struct ModelMarketDialog {
   private CapabilityTag(text: string) {
     Text(text)
       .fontSize(10)
-      .fontColor(text === '图片' ? '#8DE4C3' : '#5AB0F2')
+      .fontColor(text === '图片' ? $r('app.color.tag_green_text') : $r('app.color.tag_blue_text'))
       .padding({ left: 6, right: 6, top: 2, bottom: 2 })
-      .backgroundColor(text === '图片' ? '#12372E' : '#0D2A42')
+      .backgroundColor(text === '图片' ? $r('app.color.tag_green_background') : $r('app.color.tag_blue_background'))
       .borderRadius(4)
   }
 
@@ -66,9 +68,9 @@ export struct ModelMarketDialog {
   private PresetTag() {
     Text('预置')
       .fontSize(10)
-      .fontColor('#8DE4C3')
+      .fontColor($r('app.color.tag_green_text'))
       .padding({ left: 6, right: 6, top: 2, bottom: 2 })
-      .backgroundColor('#12372E')
+      .backgroundColor($r('app.color.tag_green_background'))
       .borderRadius(4)
   }
 
@@ -80,7 +82,7 @@ export struct ModelMarketDialog {
           Text(item.displayName)
             .fontSize(15)
             .fontWeight(FontWeight.Bold)
-            .fontColor('#F4FBFF')
+            .fontColor($r('app.color.text_title'))
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
             .layoutWeight(item.recommended ? 0 : 1)
@@ -92,7 +94,7 @@ export struct ModelMarketDialog {
 
         Text(`${formatBytes(item.totalBytes)} · ${item.provider} · ${item.sourceName}`)
           .fontSize(12)
-          .fontColor('#8CA2B8')
+          .fontColor($r('app.color.text_muted'))
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .width('100%')
@@ -100,7 +102,7 @@ export struct ModelMarketDialog {
         Text(item.description)
           .fontSize(12)
           .lineHeight(17)
-          .fontColor('#6F86A0')
+          .fontColor($r('app.color.text_hint'))
           .maxLines(2)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .width('100%')
@@ -116,7 +118,7 @@ export struct ModelMarketDialog {
       .alignItems(HorizontalAlign.Start)
 
       Button(this.viewModel.isCatalogItemInstalled(item.id) ? '已安装' : '下载')
-        .attributeModifier(new ActionButtonStyle(this.viewModel.isCatalogItemInstalled(item.id) ? '#12372E' : $r('app.color.button_primary_background'), this.viewModel.isCatalogItemInstalled(item.id) ? '#8DE4C3' : $r('app.color.button_primary_text')))
+        .attributeModifier(new ActionButtonStyle(this.viewModel.isCatalogItemInstalled(item.id) ? $r('app.color.tag_green_background') : $r('app.color.button_primary_background'), this.viewModel.isCatalogItemInstalled(item.id) ? $r('app.color.tag_green_text') : $r('app.color.button_primary_text')))
         .width(68)
         .fontSize(this.viewModel.isCatalogItemInstalled(item.id) ? $r('app.float.button_compact_font_size') : $r('app.float.button_font_size'))
         .fontWeight(this.viewModel.isCatalogItemInstalled(item.id) ? FontWeight.Normal : FontWeight.Medium)
@@ -132,7 +134,7 @@ export struct ModelMarketDialog {
     }
     .width('100%')
     .padding(12)
-    .backgroundColor('#0A1623')
+    .backgroundColor($r('app.color.input_background'))
     .borderRadius(8)
   }
 
@@ -142,7 +144,8 @@ export struct ModelMarketDialog {
         .focusable(false)
         .width('100%')
         .height('100%')
-        .backgroundColor('#000000B3')
+        .backgroundColor($r('app.color.scrim_busy'))
+        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
         .onClick(() => {
           this.viewModel.dismissTopDialogIfIdle()
         })
@@ -152,7 +155,7 @@ export struct ModelMarketDialog {
           Text('模型广场')
             .fontSize(20)
             .fontWeight(FontWeight.Bold)
-            .fontColor('#F4FBFF')
+            .fontColor($r('app.color.text_title'))
             .layoutWeight(1)
           Button(this.viewModel.modelCatalogRefreshing ? '更新中' : '刷新')
             .attributeModifier(new CompactActionStyle())
@@ -195,7 +198,7 @@ export struct ModelMarketDialog {
           Text(this.viewModel.modelCatalogStatus)
             .fontSize(12)
             .lineHeight(17)
-            .fontColor(this.viewModel.modelCatalogStatus.indexOf('失败') >= 0 ? '#F2B35D' : '#8CA2B8')
+            .fontColor(this.viewModel.modelCatalogStatus.indexOf('失败') >= 0 ? $r('app.color.status_warning') : $r('app.color.text_muted'))
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
             .width('100%')
@@ -203,7 +206,7 @@ export struct ModelMarketDialog {
           Text(this.catalogMetadata())
             .fontSize(10)
             .lineHeight(15)
-            .fontColor('#5F768D')
+            .fontColor($r('app.color.text_gallery_hint'))
             .maxLines(2)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
             .width('100%')
@@ -253,17 +256,19 @@ export struct ModelMarketDialog {
       .width(Math.max(1, Math.min(840, this.availableWidth - 32)))
       .height(Math.max(1, Math.min(800, this.availableHeight * 0.85)))
       .padding({ top: 14, bottom: 14, left: 12, right: 12 })
-      .backgroundColor('#102235')
-      .border({ width: 1, color: '#23445F' })
+      .backgroundColor($r('app.color.dialog'))
+      .border({ width: 1, color: $r('app.color.border') })
       .borderRadius($r('app.float.dialog_radius'))
+      .transition(dialogScale())
       .shadow({
         radius: 24,
-        color: '#00000088',
+        color: $r('app.color.scrim_gallery'),
         offsetX: 0,
         offsetY: 10
       })
     }
     .width('100%')
     .height('100%')
+    .transition(dialogFade())
   }
 }

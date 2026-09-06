@@ -16,6 +16,7 @@ import { ModelDragFrame, resolveModelDragPreview } from '../utils/modelDrag'
 
 @Component
 export struct ModelTab {
+  @StorageProp('darkAppearance') private darkAppearance: boolean = true
   @ObjectLink viewModel: ChatViewModel
   @Prop @Watch('onRenderVersionChange') renderVersion: number = 0
   onDragStateChange: (dragging: boolean) => void = (_dragging: boolean) => {}
@@ -195,13 +196,13 @@ export struct ModelTab {
       Text(title)
         .fontSize(16)
         .fontWeight(FontWeight.Bold)
-        .fontColor('#F4FBFF')
+        .fontColor($r('app.color.text_title'))
         .width('100%')
       if (subtitle.length > 0) {
         Text(subtitle)
           .fontSize(12)
           .lineHeight(18)
-          .fontColor('#8CA2B8')
+          .fontColor($r('app.color.text_muted'))
           .width('100%')
       }
     }
@@ -210,7 +211,7 @@ export struct ModelTab {
   }
 
   @Builder
-  private CapabilityTag(text: string, color: string, background: string) {
+  private CapabilityTag(text: string, color: ResourceColor, background: ResourceColor) {
     Text(text)
       .fontSize(11)
       .fontColor(color)
@@ -227,15 +228,15 @@ export struct ModelTab {
           Text(profile.name)
             .fontSize(14)
             .fontWeight(FontWeight.Medium)
-            .fontColor(this.viewModel.selectedModelId === profile.id ? '#F4FBFF' : '#B7CDE1')
+            .fontColor(this.viewModel.selectedModelId === profile.id ? $r('app.color.text_title') : $r('app.color.text_secondary'))
             .layoutWeight(1)
           if (profile.source === 'imported') {
-            this.CapabilityTag('导入', '#45D6A4', '#12372E')
+            this.CapabilityTag('导入', $r('app.color.tag_import_text'), $r('app.color.tag_green_background'))
           }
           this.CapabilityTag(
             profile.supportsImage ? '文本 + 图片' : '仅文本',
-            profile.supportsImage ? '#8DE4C3' : '#F2B35D',
-            profile.supportsImage ? '#12372E' : '#3A2A14'
+            profile.supportsImage ? $r('app.color.tag_green_text') : $r('app.color.tag_amber_text'),
+            profile.supportsImage ? $r('app.color.tag_green_background') : $r('app.color.tag_amber_background')
           )
         }
         .width('100%')
@@ -243,7 +244,7 @@ export struct ModelTab {
         Text(profile.description)
           .fontSize(12)
           .lineHeight(18)
-          .fontColor(this.viewModel.selectedModelId === profile.id ? '#9FBDD5' : '#64788D')
+          .fontColor(this.viewModel.selectedModelId === profile.id ? $r('app.color.text_note') : $r('app.color.text_caption'))
           .width('100%')
           .padding({ right: 22 })
       }
@@ -252,6 +253,9 @@ export struct ModelTab {
       Image($r('app.media.model_drag_handle_icon'))
         .width(18)
         .height(18)
+        .colorFilter(this.darkAppearance ?
+          [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0] :
+          [0.35, 0, 0, 0, 0, 0, 0.35, 0, 0, 0, 0, 0, 0.35, 0, 0, 0, 0, 0, 1, 0])
         .opacity(this.draggingModelId === profile.id ? 0.9 : 0.5)
         .gesture(
           GestureGroup(GestureMode.Parallel,
@@ -285,7 +289,7 @@ export struct ModelTab {
     }
     .width('100%')
     .padding(10)
-    .backgroundColor(this.viewModel.selectedModelId === profile.id ? '#14344A' : '#091522')
+    .backgroundColor(this.viewModel.selectedModelId === profile.id ? $r('app.color.selected_background') : $r('app.color.list_background'))
     .borderRadius(8)
     .shadow(this.draggingModelId === profile.id ? {
       radius: 16,
@@ -357,7 +361,7 @@ export struct ModelTab {
     }
     .width('100%')
     .padding(12)
-    .backgroundColor('#0D1A28')
+    .backgroundColor($r('app.color.card'))
     .borderRadius($r('app.float.card_radius'))
     .zIndex(this.draggingModelId.length > 0 ? 10 : 0)
   }
@@ -368,11 +372,11 @@ export struct ModelTab {
       Row() {
         Text('最大输出')
           .fontSize(12)
-          .fontColor('#8CA2B8')
+          .fontColor($r('app.color.text_muted'))
           .layoutWeight(1)
         Text(`${this.sliderMaxNewTokens} tokens`)
           .fontSize(12)
-          .fontColor('#EAF4FF')
+          .fontColor($r('app.color.text_body'))
       }
       .width('100%')
       Slider({ value: this.sliderMaxNewTokens, min: 128, max: this.viewModel.maxGenerationTokens, step: 128 })
@@ -389,11 +393,11 @@ export struct ModelTab {
       Row() {
         Text('温度')
           .fontSize(12)
-          .fontColor('#8CA2B8')
+          .fontColor($r('app.color.text_muted'))
           .layoutWeight(1)
         Text(`${this.sliderTemperature}`)
           .fontSize(12)
-          .fontColor('#EAF4FF')
+          .fontColor($r('app.color.text_body'))
       }
       .width('100%')
       Slider({ value: this.sliderTemperature, min: 0, max: 2, step: 0.05 })
@@ -410,11 +414,11 @@ export struct ModelTab {
       Row() {
         Text('Top-P')
           .fontSize(12)
-          .fontColor('#8CA2B8')
+          .fontColor($r('app.color.text_muted'))
           .layoutWeight(1)
         Text(`${this.sliderTopP}`)
           .fontSize(12)
-          .fontColor('#EAF4FF')
+          .fontColor($r('app.color.text_body'))
       }
       .width('100%')
       Slider({ value: this.sliderTopP, min: 0.05, max: 1, step: 0.05 })
@@ -431,11 +435,11 @@ export struct ModelTab {
       Row() {
         Text('Top K')
           .fontSize(12)
-          .fontColor('#8CA2B8')
+          .fontColor($r('app.color.text_muted'))
           .layoutWeight(1)
         Text(`${this.sliderTopK}`)
           .fontSize(12)
-          .fontColor('#EAF4FF')
+          .fontColor($r('app.color.text_body'))
       }
       .width('100%')
       Slider({ value: this.sliderTopK, min: 1, max: 128, step: 1 })
@@ -452,11 +456,11 @@ export struct ModelTab {
       Row() {
         Text('重复惩罚')
           .fontSize(12)
-          .fontColor('#8CA2B8')
+          .fontColor($r('app.color.text_muted'))
           .layoutWeight(1)
         Text(`${this.sliderRepetitionPenalty}`)
           .fontSize(12)
-          .fontColor('#EAF4FF')
+          .fontColor($r('app.color.text_body'))
       }
       .width('100%')
       Slider({ value: this.sliderRepetitionPenalty, min: 0.8, max: 1.5, step: 0.05 })
@@ -473,11 +477,11 @@ export struct ModelTab {
       Row() {
         Text('频率惩罚')
           .fontSize(12)
-          .fontColor('#8CA2B8')
+          .fontColor($r('app.color.text_muted'))
           .layoutWeight(1)
         Text(`${this.sliderFrequencyPenalty}`)
           .fontSize(12)
-          .fontColor('#EAF4FF')
+          .fontColor($r('app.color.text_body'))
       }
       .width('100%')
       Slider({ value: this.sliderFrequencyPenalty, min: 0, max: 1, step: 0.05 })
@@ -494,11 +498,11 @@ export struct ModelTab {
       Row() {
         Text('存在惩罚')
           .fontSize(12)
-          .fontColor('#8CA2B8')
+          .fontColor($r('app.color.text_muted'))
           .layoutWeight(1)
         Text(`${this.sliderPresencePenalty}`)
           .fontSize(12)
-          .fontColor('#EAF4FF')
+          .fontColor($r('app.color.text_body'))
       }
       .width('100%')
       Slider({ value: this.sliderPresencePenalty, min: 0, max: 1, step: 0.05 })
@@ -515,11 +519,11 @@ export struct ModelTab {
       Row() {
         Text('惩罚窗口')
           .fontSize(12)
-          .fontColor('#8CA2B8')
+          .fontColor($r('app.color.text_muted'))
           .layoutWeight(1)
         Text(`${this.sliderPenaltyWindow} tokens`)
           .fontSize(12)
-          .fontColor('#EAF4FF')
+          .fontColor($r('app.color.text_body'))
       }
       .width('100%')
       Slider({ value: this.sliderPenaltyWindow, min: 0, max: 2048, step: 64 })
@@ -540,7 +544,7 @@ export struct ModelTab {
         Text('生成参数')
           .fontSize(16)
           .fontWeight(FontWeight.Bold)
-          .fontColor('#F4FBFF')
+          .fontColor($r('app.color.text_title'))
           .layoutWeight(1)
         Row({ space: 4 }) {
           Text(this.generationExpanded ? '收起 ▲' : '展开 ▼')
@@ -556,28 +560,28 @@ export struct ModelTab {
         Text() {
           Span('当前参数：Temp ')
             .fontSize(11)
-            .fontColor('#5A7A9A')
+            .fontColor($r('app.color.text_model_hint'))
           Span(`${this.sliderTemperature}`)
             .fontSize(11)
-            .fontColor('#5A7A9A')
+            .fontColor($r('app.color.text_model_hint'))
           Span('  |  Top-P ')
             .fontSize(11)
-            .fontColor('#5A7A9A')
+            .fontColor($r('app.color.text_model_hint'))
           Span(`${this.sliderTopP}`)
             .fontSize(11)
-            .fontColor('#5A7A9A')
+            .fontColor($r('app.color.text_model_hint'))
           Span('  |  Top-K ')
             .fontSize(11)
-            .fontColor('#5A7A9A')
+            .fontColor($r('app.color.text_model_hint'))
           Span(`${this.sliderTopK}`)
             .fontSize(11)
-            .fontColor('#5A7A9A')
+            .fontColor($r('app.color.text_model_hint'))
           Span('  |  RepPen ')
             .fontSize(11)
-            .fontColor('#5A7A9A')
+            .fontColor($r('app.color.text_model_hint'))
           Span(`${this.sliderRepetitionPenalty}`)
             .fontSize(11)
-            .fontColor('#5A7A9A')
+            .fontColor($r('app.color.text_model_hint'))
         }
         .width('100%')
       }
@@ -594,7 +598,7 @@ export struct ModelTab {
     }
     .width('100%')
     .padding(12)
-    .backgroundColor('#101D2B')
+    .backgroundColor($r('app.color.inset'))
     .borderRadius($r('app.float.card_radius'))
   }
 
@@ -605,7 +609,7 @@ export struct ModelTab {
         Text('运行配置')
           .fontSize(16)
           .fontWeight(FontWeight.Bold)
-          .fontColor('#F4FBFF')
+          .fontColor($r('app.color.text_title'))
           .layoutWeight(1)
         Row({ space: 4 }) {
           Text(this.runtimeExpanded ? '收起 ▲' : '展开 ▼')
@@ -619,13 +623,13 @@ export struct ModelTab {
       })
       Text('可修改模型文件路径和 CPU 推理线程数，修改后需重新加载模型')
         .fontSize(11)
-        .fontColor('#5A7A9A')
+        .fontColor($r('app.color.text_model_hint'))
         .width('100%')
       if (this.runtimeExpanded) {
       Column({ space: 4 }) {
         Text('模型配置路径')
           .fontSize(12)
-          .fontColor('#8CA2B8')
+          .fontColor($r('app.color.text_muted'))
           .width('100%')
         TextInput({ text: this.viewModel.modelPath, placeholder: '模型配置路径' })
           .attributeModifier(new InputFieldStyle())
@@ -642,11 +646,11 @@ export struct ModelTab {
         Row() {
           Text('推理线程')
             .fontSize(12)
-            .fontColor('#8CA2B8')
+            .fontColor($r('app.color.text_muted'))
             .layoutWeight(1)
           Text(`${this.viewModel.threadNum}`)
             .fontSize(12)
-            .fontColor('#EAF4FF')
+            .fontColor($r('app.color.text_body'))
         }
         .width('100%')
         Slider({ value: this.viewModel.threadNum, min: 2, max: 8, step: 1 })
@@ -657,7 +661,7 @@ export struct ModelTab {
           })
         Text('更改后需重新加载模型生效')
           .fontSize(11)
-          .fontColor('#5A7A9A')
+          .fontColor($r('app.color.text_model_hint'))
           .width('100%')
       }
       .width('100%')
@@ -672,7 +676,7 @@ export struct ModelTab {
     }
     .width('100%')
     .padding(12)
-    .backgroundColor('#101D2B')
+    .backgroundColor($r('app.color.inset'))
     .borderRadius($r('app.float.card_radius'))
   }
 
@@ -684,7 +688,7 @@ export struct ModelTab {
           Text('导入模型配置')
             .fontSize(16)
             .fontWeight(FontWeight.Bold)
-            .fontColor('#F4FBFF')
+            .fontColor($r('app.color.text_title'))
             .layoutWeight(1)
           Row({ space: 4 }) {
             Text(this.importedConfigExpanded ? '收起 ▲' : '展开 ▼')
@@ -698,13 +702,13 @@ export struct ModelTab {
         })
         Text('可修改已导入模型的名称、描述和系统提示词')
           .fontSize(11)
-          .fontColor('#5A7A9A')
+          .fontColor($r('app.color.text_model_hint'))
           .width('100%')
         if (this.importedConfigExpanded) {
           Column({ space: 4 }) {
             Text('模型名称')
               .fontSize(12)
-              .fontColor('#8CA2B8')
+              .fontColor($r('app.color.text_muted'))
               .width('100%')
             TextInput({ text: this.viewModel.importedModelNameInput, placeholder: '模型名称' })
               .attributeModifier(new InputFieldStyle())
@@ -721,7 +725,7 @@ export struct ModelTab {
           Column({ space: 4 }) {
             Text('短名称')
               .fontSize(12)
-              .fontColor('#8CA2B8')
+              .fontColor($r('app.color.text_muted'))
               .width('100%')
             TextInput({ text: this.viewModel.importedModelShortNameInput, placeholder: '短名称' })
               .attributeModifier(new InputFieldStyle())
@@ -738,7 +742,7 @@ export struct ModelTab {
           Column({ space: 4 }) {
             Text('模型描述')
               .fontSize(12)
-              .fontColor('#8CA2B8')
+              .fontColor($r('app.color.text_muted'))
               .width('100%')
             TextInput({ text: this.viewModel.importedModelDescriptionInput, placeholder: '模型描述' })
               .attributeModifier(new InputFieldStyle())
@@ -755,7 +759,7 @@ export struct ModelTab {
           Column({ space: 4 }) {
             Text('系统提示词')
               .fontSize(12)
-              .fontColor('#8CA2B8')
+              .fontColor($r('app.color.text_muted'))
               .width('100%')
             TextInput({ text: this.viewModel.importedModelSystemPromptInput, placeholder: '系统提示词' })
               .attributeModifier(new InputFieldStyle())
@@ -785,7 +789,7 @@ export struct ModelTab {
       }
       .width('100%')
       .padding(12)
-      .backgroundColor('#101D2B')
+      .backgroundColor($r('app.color.inset'))
       .borderRadius($r('app.float.card_radius'))
     }
   }
@@ -811,18 +815,18 @@ export struct ModelTab {
       Text(this.viewModel.modelImportMessage)
         .fontSize(12)
         .lineHeight(18)
-        .fontColor(this.viewModel.modelImportMessage.indexOf('失败') >= 0 ? '#FF9C9C' : '#8CA2B8')
+        .fontColor(this.viewModel.modelImportMessage.indexOf('失败') >= 0 ? $r('app.color.button_danger_text') : $r('app.color.text_muted'))
         .height(36)
         .width('100%')
       Text('大模型可推送到 model-imports 后扫描。')
         .fontSize(11)
         .lineHeight(16)
-        .fontColor('#5A7A9A')
+        .fontColor($r('app.color.text_model_hint'))
         .width('100%')
     }
     .width('100%')
     .padding(12)
-    .backgroundColor('#101D2B')
+    .backgroundColor($r('app.color.inset'))
     .borderRadius($r('app.float.card_radius'))
   }
 
@@ -834,11 +838,11 @@ export struct ModelTab {
         .width('100%')
         .fontSize(13)
         .lineHeight(20)
-        .fontColor('#8CA2B8')
+        .fontColor($r('app.color.text_muted'))
     }
     .width('100%')
     .padding(12)
-    .backgroundColor('#101D2B')
+    .backgroundColor($r('app.color.inset'))
     .borderRadius($r('app.float.card_radius'))
   }
 

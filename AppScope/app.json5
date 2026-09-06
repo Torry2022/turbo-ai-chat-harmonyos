@@ -2,8 +2,8 @@
   "app": {
     "bundleName": "com.example.gemma4mnn",
     "vendor": "example",
-    "versionCode": 1090100,
-    "versionName": "1.9.1",
+    "versionCode": 1100000,
+    "versionName": "1.10.0",
     "icon": "$media:app_icon",
     "label": "$string:app_name"
   }

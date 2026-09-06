@@ -2,6 +2,8 @@ import { ActionButtonStyle } from './ButtonStyles'
 import { ChatViewModel } from '../state/ChatViewModel'
 import { formatBytes } from '../models/BuiltinModelDownloadTypes'
 
+import { dialogFade, dialogScale } from './DialogMotion'
+
 @Component
 export struct BuiltinModelInstallDialog {
   @ObjectLink viewModel: ChatViewModel
@@ -14,7 +16,8 @@ export struct BuiltinModelInstallDialog {
         .focusable(false)
         .width('100%')
         .height('100%')
-        .backgroundColor('#00000099')
+        .backgroundColor($r('app.color.scrim'))
+        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
         .onClick(() => {
           this.viewModel.dismissTopDialogIfIdle()
         })
@@ -29,10 +32,10 @@ export struct BuiltinModelInstallDialog {
             Text('安装模型')
               .fontSize(20)
               .fontWeight(FontWeight.Bold)
-              .fontColor('#F4FBFF')
+              .fontColor($r('app.color.text_title'))
             Text(`${this.viewModel.builtinModelInstallModelName} · ${this.viewModel.builtinModelInstallSourceName}`)
               .fontSize(12)
-              .fontColor('#8DE4C3')
+              .fontColor($r('app.color.dialog_subtitle'))
           }
           .layoutWeight(1)
           .alignItems(HorizontalAlign.Start)
@@ -44,14 +47,14 @@ export struct BuiltinModelInstallDialog {
             Text(this.viewModel.builtinModelInstallMessage)
               .fontSize(14)
               .lineHeight(21)
-              .fontColor('#B7CDE1')
+              .fontColor($r('app.color.text_secondary'))
               .width('100%')
 
             if (this.viewModel.builtinModelInstallError.length > 0) {
               Text(this.viewModel.builtinModelInstallError)
                 .fontSize(13)
                 .lineHeight(20)
-                .fontColor('#FF9A9A')
+                .fontColor($r('app.color.status_error'))
                 .width('100%')
             }
 
@@ -59,24 +62,24 @@ export struct BuiltinModelInstallDialog {
               Row()
                 .width('100%')
                 .height(8)
-                .backgroundColor('#26384D')
+                .backgroundColor($r('app.color.control_track'))
                 .borderRadius(4)
             } else {
               Progress({ value: this.viewModel.builtinModelInstallProgress, total: 100, type: ProgressType.Linear })
                 .width('100%')
                 .height(8)
-                .color('#45D6A4')
+                .color($r('app.color.status_good'))
                 .style({ strokeWidth: 8, strokeRadius: 4, enableScanEffect: this.viewModel.builtinModelInstalling })
             }
 
             Row() {
               Text(`${Math.round(this.viewModel.builtinModelInstallProgress)}%`)
                 .fontSize(12)
-                .fontColor('#8CA2B8')
+                .fontColor($r('app.color.text_muted'))
                 .layoutWeight(1)
               Text(`${formatBytes(this.viewModel.builtinModelInstallDownloadedBytes)} / ${formatBytes(this.viewModel.builtinModelInstallTotalBytes)}`)
                 .fontSize(12)
-                .fontColor('#8CA2B8')
+                .fontColor($r('app.color.text_muted'))
             }
             .width('100%')
 
@@ -112,11 +115,13 @@ export struct BuiltinModelInstallDialog {
       .width(Math.max(1, Math.min(560, this.availableWidth - 32)))
       .constraintSize({ maxHeight: Math.max(1, this.availableHeight - 32) })
       .padding(18)
-      .backgroundColor('#102235')
-      .border({ width: 1, color: '#23445F' })
+      .backgroundColor($r('app.color.dialog'))
+      .border({ width: 1, color: $r('app.color.border') })
       .borderRadius($r('app.float.dialog_radius'))
+      .transition(dialogScale())
     }
     .width('100%')
     .height('100%')
+    .transition(dialogFade())
   }
 }
