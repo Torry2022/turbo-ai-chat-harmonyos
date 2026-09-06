@@ -1,13 +1,13 @@
 #include "mnn_llm_runner.h"
+#include "generation_stream.h"
 
 #include <algorithm>
 #include <cctype>
-#include <exception>
 #include <fstream>
 #include <functional>
 #include <ostream>
+#include <regex>
 #include <sstream>
-#include <streambuf>
 
 #include <llm/llm.hpp>
 
@@ -18,185 +18,26 @@ using MNN::Transformer::PromptImagePart;
 
 namespace {
 
-class UserStopException : public std::exception {
-public:
-    const char* what() const noexcept override {
-        return "user stopped generation";
-    }
-};
-
-bool IsUtf8Continuation(unsigned char value) {
-    return (value & 0xC0) == 0x80;
-}
-
-bool IsValidUtf8Sequence(const std::string& text, size_t index, size_t length) {
-    if (index + length > text.size()) {
+bool CancelGenerationIfRequested(Llm* llm, const std::atomic_bool& requested) {
+    if (!requested.load()) {
         return false;
     }
-
-    const auto first = static_cast<unsigned char>(text[index]);
-    if (length == 1) {
-        return first <= 0x7F;
+    // MNN 3.6 exposes cancellation through its context but no public setter.
+    // Only mutate it on the inference thread, never from requestStop(). Let
+    // response() return normally: this Runtime is built with -fno-exceptions,
+    // so throwing through it skips ExecutorScope cleanup and retains memory.
+    auto* context = const_cast<MNN::Transformer::LlmContext*>(llm->getContext());
+    if (context != nullptr) {
+        context->status = LlmStatus::USER_CANCEL;
     }
-    if (length == 2) {
-        return IsUtf8Continuation(static_cast<unsigned char>(text[index + 1]));
-    }
-    if (length == 3) {
-        const auto second = static_cast<unsigned char>(text[index + 1]);
-        const auto third = static_cast<unsigned char>(text[index + 2]);
-        if (!IsUtf8Continuation(second) || !IsUtf8Continuation(third)) {
-            return false;
-        }
-        return (first != 0xE0 || second >= 0xA0) && (first != 0xED || second <= 0x9F);
-    }
-    if (length == 4) {
-        const auto second = static_cast<unsigned char>(text[index + 1]);
-        const auto third = static_cast<unsigned char>(text[index + 2]);
-        const auto fourth = static_cast<unsigned char>(text[index + 3]);
-        if (!IsUtf8Continuation(second) || !IsUtf8Continuation(third) || !IsUtf8Continuation(fourth)) {
-            return false;
-        }
-        return (first != 0xF0 || second >= 0x90) && (first != 0xF4 || second <= 0x8F);
-    }
-    return false;
+    return true;
 }
 
-size_t Utf8SequenceLength(unsigned char value) {
-    if (value <= 0x7F) {
-        return 1;
-    }
-    if (value >= 0xC2 && value <= 0xDF) {
-        return 2;
-    }
-    if (value >= 0xE0 && value <= 0xEF) {
-        return 3;
-    }
-    if (value >= 0xF0 && value <= 0xF4) {
-        return 4;
-    }
-    return 0;
+std::string TemplatedOutputPrefix(Llm* llm, const std::string& prompt) {
+    static const std::regex disabled("\"use_template\"\\s*:\\s*false");
+    return AssistantOutputPrefix(std::regex_search(llm->dump_config(), disabled)
+        ? prompt : llm->apply_chat_template(prompt));
 }
-
-size_t ValidUtf8PrefixLength(const std::string& text) {
-    size_t index = 0;
-    while (index < text.size()) {
-        const size_t length = Utf8SequenceLength(static_cast<unsigned char>(text[index]));
-        if (length == 0) {
-            break;
-        }
-        if (index + length > text.size()) {
-            break;
-        }
-        if (!IsValidUtf8Sequence(text, index, length)) {
-            break;
-        }
-        index += length;
-    }
-    return index;
-}
-
-bool StartsWithInvalidUtf8Sequence(const std::string& text) {
-    if (text.empty()) {
-        return false;
-    }
-    const size_t length = Utf8SequenceLength(static_cast<unsigned char>(text[0]));
-    if (length == 0) {
-        return true;
-    }
-    if (text.size() < length) {
-        return false;
-    }
-    return !IsValidUtf8Sequence(text, 0, length);
-}
-
-class ChunkStreamBuffer : public std::streambuf {
-public:
-    explicit ChunkStreamBuffer(
-        const std::function<void(const std::string&)>& onChunk,
-        const std::function<bool()>& shouldStop = nullptr)
-        : onChunk_(onChunk), shouldStop_(shouldStop) {}
-
-    const std::string& output() const {
-        return output_;
-    }
-
-protected:
-    std::streamsize xsputn(const char* s, std::streamsize n) override {
-        if (n <= 0) {
-            return 0;
-        }
-        if (ShouldStop()) {
-            throw UserStopException();
-        }
-        std::string chunk(s, static_cast<size_t>(n));
-        output_ += chunk;
-        pendingChunk_ += chunk;
-        FlushPendingChunk(false);
-        if (ShouldStop()) {
-            throw UserStopException();
-        }
-        return n;
-    }
-
-    int overflow(int c) override {
-        if (c == EOF) {
-            return c;
-        }
-        if (ShouldStop()) {
-            throw UserStopException();
-        }
-        char value = static_cast<char>(c);
-        xsputn(&value, 1);
-        if (ShouldStop()) {
-            throw UserStopException();
-        }
-        return c;
-    }
-
-    int sync() override {
-        // sync() may occur between bytes of one UTF-8 character. Keep an
-        // incomplete suffix until the following write completes it.
-        FlushPendingChunk(false);
-        if (ShouldStop()) {
-            throw UserStopException();
-        }
-        return 0;
-    }
-
-private:
-    bool ShouldStop() const {
-        return shouldStop_ && shouldStop_();
-    }
-
-    void FlushPendingChunk(bool force) {
-        if (!onChunk_) {
-            pendingChunk_.clear();
-            return;
-        }
-
-        while (!pendingChunk_.empty()) {
-            const size_t prefixLength = ValidUtf8PrefixLength(pendingChunk_);
-            if (prefixLength > 0) {
-                onChunk_(pendingChunk_.substr(0, prefixLength));
-                pendingChunk_.erase(0, prefixLength);
-                continue;
-            }
-            if (StartsWithInvalidUtf8Sequence(pendingChunk_)) {
-                pendingChunk_.erase(0, 1);
-                continue;
-            }
-            break;
-        }
-        if (force) {
-            pendingChunk_.clear();
-        }
-    }
-
-    std::function<void(const std::string&)> onChunk_;
-    std::function<bool()> shouldStop_;
-    std::string output_;
-    std::string pendingChunk_;
-};
 
 std::string MapStopReason(LlmStatus status) {
     switch (status) {
@@ -480,14 +321,13 @@ MnnLlmRunner::GenerationResult MnnLlmRunner::generateStreaming(
     stopRequested_.store(false);
     llm_->reset();
     ChunkStreamBuffer buffer(onChunk, [this]() {
-        return stopRequested_.load();
-    });
+        return CancelGenerationIfRequested(llm_.get(), stopRequested_);
+    }, TemplatedOutputPrefix(llm_.get(), prompt));
     std::ostream output(&buffer);
     output.exceptions(std::ios::badbit | std::ios::failbit);
     try {
         llm_->response(prompt, &output, nullptr, sampling.maxNewTokens);
         output.flush();
-    } catch (const UserStopException&) {
     } catch (const std::ios_base::failure& ex) {
         if (!stopRequested_.load()) {
             error = ex.what();
@@ -533,15 +373,14 @@ MnnLlmRunner::GenerationResult MnnLlmRunner::generateRawPromptStreaming(
     }
 
     ChunkStreamBuffer buffer(onChunk, [this]() {
-        return stopRequested_.load();
-    });
+        return CancelGenerationIfRequested(llm_.get(), stopRequested_);
+    }, AssistantOutputPrefix(prompt));
     std::ostream output(&buffer);
     output.exceptions(std::ios::badbit | std::ios::failbit);
     const char* endWithPtr = endWith.empty() ? nullptr : endWith.c_str();
     try {
         llm_->response(inputIds, &output, endWithPtr, sampling.maxNewTokens);
         output.flush();
-    } catch (const UserStopException&) {
     } catch (const std::ios_base::failure& ex) {
         if (!stopRequested_.load()) {
             error = ex.what();
@@ -553,7 +392,7 @@ MnnLlmRunner::GenerationResult MnnLlmRunner::generateRawPromptStreaming(
     const bool stopped = stopRequested_.load();
     ApplyUserStop(result, stopped);
     stopRequested_.store(false);
-    DumpRawPromptDebug(prompt, rawOutput, inputIds, sampling, result, llm_.get());
+    DumpRawPromptDebug(prompt, buffer.rawOutput(), inputIds, sampling, result, llm_.get());
 
     return result;
 }
@@ -598,15 +437,14 @@ MnnLlmRunner::GenerationResult MnnLlmRunner::generateChatStreaming(
 
     stopRequested_.store(false);
     ChunkStreamBuffer buffer(onChunk, [this]() {
-        return stopRequested_.load();
-    });
+        return CancelGenerationIfRequested(llm_.get(), stopRequested_);
+    }, AssistantOutputPrefix(llm_->apply_chat_template(chatMessages)));
     std::ostream output(&buffer);
     output.exceptions(std::ios::badbit | std::ios::failbit);
     llm_->reset();
     try {
         llm_->response(chatMessages, &output, nullptr, sampling.maxNewTokens);
         output.flush();
-    } catch (const UserStopException&) {
     } catch (const std::ios_base::failure& ex) {
         if (!stopRequested_.load()) {
             error = ex.what();
@@ -620,7 +458,7 @@ MnnLlmRunner::GenerationResult MnnLlmRunner::generateChatStreaming(
     stopRequested_.store(false);
     DumpRawPromptDebug(
         debugPrompt.str(),
-        rawOutput,
+        buffer.rawOutput(),
         llm_->tokenizer_encode(debugPrompt.str()),
         sampling,
         result,
@@ -692,8 +530,8 @@ MnnLlmRunner::GenerationResult MnnLlmRunner::generateImageChatStreaming(
 
     stopRequested_.store(false);
     ChunkStreamBuffer buffer(onChunk, [this]() {
-        return stopRequested_.load();
-    });
+        return CancelGenerationIfRequested(llm_.get(), stopRequested_);
+    }, TemplatedOutputPrefix(llm_.get(), prompt.prompt_template));
     std::ostream output(&buffer);
     output.exceptions(std::ios::badbit | std::ios::failbit);
     llm_->reset();
@@ -702,7 +540,6 @@ MnnLlmRunner::GenerationResult MnnLlmRunner::generateImageChatStreaming(
     try {
         llm_->response(prompt, &output, nullptr, sampling.maxNewTokens);
         output.flush();
-    } catch (const UserStopException&) {
     } catch (const std::ios_base::failure& ex) {
         if (!stopRequested_.load()) {
             error = ex.what();

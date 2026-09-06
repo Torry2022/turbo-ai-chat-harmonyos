@@ -153,7 +153,7 @@ With a physical keyboard, Enter sends from the chat input and Shift+Enter insert
 - Stop generation: interrupt the current response while it is streaming
 - Voice input: offline Mandarin recognition through Core Speech Kit, with live partial results and manual stop
 - Model switching: switch between preset models, installed market models, and imported models
-- Thinking blocks: MiniCPM5-1B displays reasoning process
+- Thinking blocks: separate reasoning from the final answer, including models whose chat template already supplies the opening `<think>` tag. The model's default thinking setting is preserved. Reasoning consumes the output budget; reaching the limit does not mean the model cannot run.
 - Markdown rendering: code blocks (with copy button), tables, blockquotes, links, etc., with compatibility handling for incomplete inline code, empty table cells, and table column jitter during streaming output
 - Long-conversation scrolling optimization: caches Markdown / thinking-block parsing and pauses auto-follow while the user is scrolling
 - Generation parameter controls: temperature, Top-P/K, penalty terms, etc.

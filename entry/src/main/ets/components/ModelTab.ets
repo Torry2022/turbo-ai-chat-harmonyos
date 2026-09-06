@@ -48,6 +48,7 @@ export struct ModelTab {
   }
 
   private onRenderVersionChange(): void {
+    this.syncGenerationSlidersFromViewModel()
     this.refreshModelProfiles()
   }
 
