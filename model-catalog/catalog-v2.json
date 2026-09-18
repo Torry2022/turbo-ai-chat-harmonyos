@@ -1,0 +1,697 @@
+{
+  "schemaVersion": 1,
+  "catalogVersion": 3,
+  "publishedAt": "2026-09-18T01:59:53Z",
+  "hiddenIds": [],
+  "items": [
+    {
+      "id": "qwen2.5-0.5b-instruct",
+      "minAppVersionCode": 1100000,
+      "directoryName": "Qwen2.5-0.5B-Instruct-MNN",
+      "displayName": "Qwen2.5-0.5B-Instruct",
+      "shortName": "Qwen2.5-0.5B-Instruct",
+      "description": "轻量 Qwen2.5 文本模型，适合快速响应和低存储占用。",
+      "provider": "MNN",
+      "supportsImage": false,
+      "capabilities": [
+        "文本"
+      ],
+      "source": {
+        "type": "modelscope",
+        "repo": "MNN/Qwen2.5-0.5B-Instruct-MNN",
+        "revision": "7614c167880091bd16716ed63bd4de944ddd2da4"
+      },
+      "files": [
+        {
+          "relativePath": "config.json",
+          "sizeBytes": 159
+        },
+        {
+          "relativePath": "embeddings_bf16.bin",
+          "sizeBytes": 272269312
+        },
+        {
+          "relativePath": "llm.mnn",
+          "sizeBytes": 566264
+        },
+        {
+          "relativePath": "llm.mnn.weight",
+          "sizeBytes": 277967498
+        },
+        {
+          "relativePath": "llm_config.json",
+          "sizeBytes": 272
+        },
+        {
+          "relativePath": "tokenizer.txt",
+          "sizeBytes": 3193477
+        }
+      ],
+      "runtime": {
+        "systemPrompt": "你是运行在本地设备上的 Qwen2.5-0.5B-Instruct。请始终使用简体中文回答，表达简洁清楚。",
+        "contextMessageLimit": 6,
+        "generationDefaults": {
+          "temperature": 0.6,
+          "topP": 0.9,
+          "topK": 40,
+          "repetitionPenalty": 1.05,
+          "frequencyPenalty": 0,
+          "presencePenalty": 0,
+          "penaltyWindow": 256
+        }
+      }
+    },
+    {
+      "id": "qwen2-1.5b-instruct",
+      "minAppVersionCode": 1100000,
+      "directoryName": "Qwen2-1.5B-Instruct-MNN",
+      "displayName": "Qwen2-1.5B-Instruct",
+      "shortName": "Qwen2-1.5B-Instruct",
+      "description": "轻量 Qwen2 文本模型，兼顾响应速度、效果和存储占用。",
+      "provider": "MNN",
+      "supportsImage": false,
+      "capabilities": [
+        "文本"
+      ],
+      "source": {
+        "type": "modelscope",
+        "repo": "MNN/Qwen2-1.5B-Instruct-MNN",
+        "revision": "490cf6502aa9a4fc631cb680f18375df302303b2"
+      },
+      "files": [
+        {
+          "relativePath": "config.json",
+          "sizeBytes": 159
+        },
+        {
+          "relativePath": "embeddings_bf16.bin",
+          "sizeBytes": 466747392
+        },
+        {
+          "relativePath": "llm.mnn",
+          "sizeBytes": 1145128
+        },
+        {
+          "relativePath": "llm.mnn.weight",
+          "sizeBytes": 868491506
+        },
+        {
+          "relativePath": "llm_config.json",
+          "sizeBytes": 274
+        },
+        {
+          "relativePath": "tokenizer.txt",
+          "sizeBytes": 3193065
+        }
+      ],
+      "runtime": {
+        "systemPrompt": "你是运行在本地设备上的 Qwen2-1.5B-Instruct。请始终使用简体中文回答，表达简洁清楚。",
+        "contextMessageLimit": 6,
+        "generationDefaults": {
+          "temperature": 0.6,
+          "topP": 0.9,
+          "topK": 40,
+          "repetitionPenalty": 1.05,
+          "frequencyPenalty": 0,
+          "presencePenalty": 0,
+          "penaltyWindow": 256
+        }
+      }
+    },
+    {
+      "id": "qwen2-0.5b-instruct",
+      "minAppVersionCode": 1100000,
+      "directoryName": "Qwen2-0.5B-Instruct-MNN",
+      "displayName": "Qwen2-0.5B-Instruct",
+      "shortName": "Qwen2-0.5B-Instruct",
+      "description": "超轻量 Qwen2 文本模型，适合快速响应和低存储占用。",
+      "provider": "MNN",
+      "supportsImage": false,
+      "capabilities": [
+        "文本"
+      ],
+      "source": {
+        "type": "modelscope",
+        "repo": "MNN/Qwen2-0.5B-Instruct-MNN",
+        "revision": "78c35d413980cfabc182cdc8d0983aa16f6acdd5"
+      },
+      "files": [
+        {
+          "relativePath": "config.json",
+          "sizeBytes": 159
+        },
+        {
+          "relativePath": "embeddings_bf16.bin",
+          "sizeBytes": 272269312
+        },
+        {
+          "relativePath": "llm.mnn",
+          "sizeBytes": 733288
+        },
+        {
+          "relativePath": "llm.mnn.weight",
+          "sizeBytes": 277967498
+        },
+        {
+          "relativePath": "llm_config.json",
+          "sizeBytes": 272
+        },
+        {
+          "relativePath": "tokenizer.txt",
+          "sizeBytes": 3193065
+        }
+      ],
+      "runtime": {
+        "systemPrompt": "你是运行在本地设备上的 Qwen2-0.5B-Instruct。请始终使用简体中文回答，表达简洁清楚。",
+        "contextMessageLimit": 6,
+        "generationDefaults": {
+          "temperature": 0.6,
+          "topP": 0.9,
+          "topK": 40,
+          "repetitionPenalty": 1.05,
+          "frequencyPenalty": 0,
+          "presencePenalty": 0,
+          "penaltyWindow": 256
+        }
+      }
+    },
+    {
+      "id": "qwen3-4b",
+      "minAppVersionCode": 1100000,
+      "directoryName": "Qwen3-4B-MNN",
+      "displayName": "Qwen3-4B",
+      "shortName": "Qwen3-4B",
+      "description": "Qwen3 文本模型，默认进行深度思考，响应较慢，适合较复杂的问题。",
+      "provider": "MNN",
+      "supportsImage": false,
+      "capabilities": [
+        "文本"
+      ],
+      "source": {
+        "type": "modelscope",
+        "repo": "MNN/Qwen3-4B-MNN",
+        "revision": "e48441ee"
+      },
+      "files": [
+        {
+          "relativePath": "config.json",
+          "sizeBytes": 403
+        },
+        {
+          "relativePath": "llm.mnn",
+          "sizeBytes": 592352
+        },
+        {
+          "relativePath": "llm.mnn.weight",
+          "sizeBytes": 2709972658
+        },
+        {
+          "relativePath": "llm_config.json",
+          "sizeBytes": 4882
+        },
+        {
+          "relativePath": "tokenizer.txt",
+          "sizeBytes": 3193569
+        }
+      ],
+      "runtime": {
+        "systemPrompt": "你是运行在本地设备上的 Qwen3-4B。请始终使用简体中文回答，表达准确清楚。",
+        "contextMessageLimit": 4,
+        "generationDefaults": {
+          "temperature": 0.6,
+          "topP": 0.95,
+          "topK": 20,
+          "repetitionPenalty": 1.1,
+          "frequencyPenalty": 0,
+          "presencePenalty": 0,
+          "penaltyWindow": 256
+        }
+      }
+    },
+    {
+      "id": "qwen1.5-0.5b-chat",
+      "minAppVersionCode": 1100000,
+      "directoryName": "Qwen1.5-0.5B-Chat-MNN",
+      "displayName": "Qwen1.5-0.5B-Chat",
+      "shortName": "Qwen1.5-0.5B-Chat",
+      "description": "超轻量 Qwen1.5 文本模型，适合快速本地对话和基础任务。",
+      "provider": "MNN",
+      "supportsImage": false,
+      "capabilities": [
+        "文本"
+      ],
+      "source": {
+        "type": "modelscope",
+        "repo": "MNN/Qwen1.5-0.5B-Chat-MNN",
+        "revision": "6ddf07d5798f306db28becbe98871b6105722319"
+      },
+      "files": [
+        {
+          "relativePath": "config.json",
+          "sizeBytes": 159
+        },
+        {
+          "relativePath": "embeddings_bf16.bin",
+          "sizeBytes": 311164928
+        },
+        {
+          "relativePath": "llm.mnn",
+          "sizeBytes": 782720
+        },
+        {
+          "relativePath": "llm.mnn.weight",
+          "sizeBytes": 261222026
+        },
+        {
+          "relativePath": "llm_config.json",
+          "sizeBytes": 276
+        },
+        {
+          "relativePath": "tokenizer.txt",
+          "sizeBytes": 3193065
+        }
+      ],
+      "runtime": {
+        "systemPrompt": "你是运行在本地设备上的 Qwen1.5-0.5B-Chat。请始终使用简体中文回答，表达简洁清楚。",
+        "contextMessageLimit": 6,
+        "generationDefaults": {
+          "temperature": 0.6,
+          "topP": 0.9,
+          "topK": 40,
+          "repetitionPenalty": 1.05,
+          "frequencyPenalty": 0,
+          "presencePenalty": 0,
+          "penaltyWindow": 256
+        }
+      }
+    },
+    {
+      "id": "qwen-1.8b-chat",
+      "minAppVersionCode": 1100000,
+      "directoryName": "Qwen-1_8B-Chat-MNN",
+      "displayName": "Qwen-1.8B-Chat",
+      "shortName": "Qwen-1.8B-Chat",
+      "description": "经典 Qwen 1.8B 文本对话模型，适合基础中文问答。",
+      "provider": "MNN",
+      "supportsImage": false,
+      "capabilities": [
+        "文本"
+      ],
+      "source": {
+        "type": "modelscope",
+        "repo": "MNN/Qwen-1_8B-Chat-MNN",
+        "revision": "e8a46ae1"
+      },
+      "files": [
+        {
+          "relativePath": "config.json",
+          "sizeBytes": 159
+        },
+        {
+          "relativePath": "embeddings_bf16.bin",
+          "sizeBytes": 622329856
+        },
+        {
+          "relativePath": "llm.mnn",
+          "sizeBytes": 1179664
+        },
+        {
+          "relativePath": "llm.mnn.weight",
+          "sizeBytes": 858640010
+        },
+        {
+          "relativePath": "llm_config.json",
+          "sizeBytes": 277
+        },
+        {
+          "relativePath": "tokenizer.txt",
+          "sizeBytes": 1616279
+        }
+      ],
+      "runtime": {
+        "systemPrompt": "你是运行在本地设备上的 Qwen-1.8B-Chat。请始终使用简体中文回答，表达简洁清楚。",
+        "contextMessageLimit": 6,
+        "generationDefaults": {
+          "temperature": 0.6,
+          "topP": 0.9,
+          "topK": 40,
+          "repetitionPenalty": 1.05,
+          "frequencyPenalty": 0,
+          "presencePenalty": 0,
+          "penaltyWindow": 256
+        }
+      }
+    },
+    {
+      "id": "qwen1.5-4b-chat",
+      "minAppVersionCode": 1100000,
+      "directoryName": "Qwen1.5-4B-Chat-MNN",
+      "displayName": "Qwen1.5-4B-Chat",
+      "shortName": "Qwen1.5-4B-Chat",
+      "description": "Qwen1.5 4B 中文文本模型，支持日常问答；已在 HarmonyOS 真机验证。",
+      "provider": "Qwen",
+      "supportsImage": false,
+      "capabilities": [
+        "文本"
+      ],
+      "source": {
+        "type": "modelscope",
+        "repo": "MNN/Qwen1.5-4B-Chat-MNN",
+        "revision": "46f97f91"
+      },
+      "files": [
+        {
+          "relativePath": "config.json",
+          "sizeBytes": 159
+        },
+        {
+          "relativePath": "embeddings_bf16.bin",
+          "sizeBytes": 777912320
+        },
+        {
+          "relativePath": "llm.mnn",
+          "sizeBytes": 2290352
+        },
+        {
+          "relativePath": "llm.mnn.weight",
+          "sizeBytes": 2004240426
+        },
+        {
+          "relativePath": "llm_config.json",
+          "sizeBytes": 277
+        },
+        {
+          "relativePath": "tokenizer.txt",
+          "sizeBytes": 3193065
+        }
+      ],
+      "runtime": {
+        "systemPrompt": "你是本地 AI 助手。请始终使用简体中文回答，表达简洁清楚；只回答用户最新问题；不要编造具体年份、型号、版本或来源；遇到不确定的事实请直接说明不确定；不要把专有名词按字面拆解翻译；不要重复同一句话。",
+        "contextMessageLimit": 0,
+        "generationDefaults": {
+          "temperature": 0.6,
+          "topP": 0.9,
+          "topK": 40,
+          "repetitionPenalty": 1.05,
+          "frequencyPenalty": 0,
+          "presencePenalty": 0,
+          "penaltyWindow": 256
+        }
+      }
+    },
+    {
+      "id": "qwen3-vl-8b-instruct",
+      "minAppVersionCode": 1100000,
+      "directoryName": "Qwen3-VL-8B-Instruct-MNN",
+      "displayName": "Qwen3-VL-8B-Instruct",
+      "shortName": "Qwen3-VL-8B-Instruct",
+      "description": "Qwen3-VL 8B 图文模型，支持图片理解与中文问答；已在 HarmonyOS 真机验证。",
+      "provider": "Qwen",
+      "supportsImage": true,
+      "capabilities": [
+        "文本",
+        "图片"
+      ],
+      "source": {
+        "type": "modelscope",
+        "repo": "MNN/Qwen3-VL-8B-Instruct-MNN",
+        "revision": "81725455079704d88864ab02dd7a2e2315d64c90"
+      },
+      "files": [
+        {
+          "relativePath": "config.json",
+          "sizeBytes": 605
+        },
+        {
+          "relativePath": "embeddings_int4.bin",
+          "sizeBytes": 388956160
+        },
+        {
+          "relativePath": "llm.mnn",
+          "sizeBytes": 591728
+        },
+        {
+          "relativePath": "llm.mnn.weight",
+          "sizeBytes": 4732532162
+        },
+        {
+          "relativePath": "llm_config.json",
+          "sizeBytes": 6436
+        },
+        {
+          "relativePath": "tokenizer.txt",
+          "sizeBytes": 3193555
+        },
+        {
+          "relativePath": "visual.mnn",
+          "sizeBytes": 562048
+        },
+        {
+          "relativePath": "visual.mnn.weight",
+          "sizeBytes": 326728744
+        }
+      ],
+      "runtime": {
+        "systemPrompt": "你是本地 AI 助手。请始终使用简体中文回答，表达简洁清楚；只回答用户最新问题；不要编造具体年份、型号、版本或来源；遇到不确定的事实请直接说明不确定；不要把专有名词按字面拆解翻译；不要重复同一句话。",
+        "contextMessageLimit": 0,
+        "generationDefaults": {
+          "temperature": 0.6,
+          "topP": 0.9,
+          "topK": 40,
+          "repetitionPenalty": 1.05,
+          "frequencyPenalty": 0,
+          "presencePenalty": 0,
+          "penaltyWindow": 256
+        }
+      }
+    },
+    {
+      "id": "qwen2.5-7b-instruct",
+      "minAppVersionCode": 1100100,
+      "directoryName": "Qwen2.5-7B-Instruct-MNN",
+      "displayName": "Qwen2.5-7B-Instruct",
+      "shortName": "Qwen2.5-7B-Instruct",
+      "description": "Qwen2.5 7B 文本模型，适合中文问答与翻译。",
+      "provider": "Qwen",
+      "supportsImage": false,
+      "capabilities": [
+        "文本"
+      ],
+      "source": {
+        "type": "modelscope",
+        "repo": "MNN/Qwen2.5-7B-Instruct-MNN",
+        "revision": "87f2c6617d1939fd63848f197c532908aca2efdc"
+      },
+      "files": [
+        {
+          "relativePath": "config.json",
+          "sizeBytes": 159
+        },
+        {
+          "relativePath": "embeddings_bf16.bin",
+          "sizeBytes": 1089994752
+        },
+        {
+          "relativePath": "llm.mnn",
+          "sizeBytes": 1271768
+        },
+        {
+          "relativePath": "llm.mnn.weight",
+          "sizeBytes": 3977556210
+        },
+        {
+          "relativePath": "llm_config.json",
+          "sizeBytes": 274
+        },
+        {
+          "relativePath": "tokenizer.txt",
+          "sizeBytes": 3193477
+        }
+      ],
+      "runtime": {
+        "systemPrompt": "你是本地 AI 助手。请始终使用简体中文回答，表达简洁清楚；只回答用户最新问题；不要编造具体年份、型号、版本或来源；遇到不确定的事实请直接说明不确定；不要把专有名词按字面拆解翻译；不要重复同一句话。",
+        "contextMessageLimit": 0,
+        "generationDefaults": {
+          "temperature": 0.6,
+          "topP": 0.9,
+          "topK": 40,
+          "repetitionPenalty": 1.05,
+          "frequencyPenalty": 0,
+          "presencePenalty": 0,
+          "penaltyWindow": 256
+        }
+      }
+    },
+    {
+      "id": "qwen2-7b-instruct",
+      "minAppVersionCode": 1100100,
+      "directoryName": "Qwen2-7B-Instruct-MNN",
+      "displayName": "Qwen2-7B-Instruct",
+      "shortName": "Qwen2-7B-Instruct",
+      "description": "Qwen2 7B 文本模型，支持中文问答与翻译。",
+      "provider": "Qwen",
+      "supportsImage": false,
+      "capabilities": [
+        "文本"
+      ],
+      "source": {
+        "type": "modelscope",
+        "repo": "MNN/Qwen2-7B-Instruct-MNN",
+        "revision": "59754efc086a024f768ee62d9e7410078fd93291"
+      },
+      "files": [
+        {
+          "relativePath": "config.json",
+          "sizeBytes": 159
+        },
+        {
+          "relativePath": "embeddings_bf16.bin",
+          "sizeBytes": 1089994752
+        },
+        {
+          "relativePath": "llm.mnn",
+          "sizeBytes": 2079152
+        },
+        {
+          "relativePath": "llm.mnn.weight",
+          "sizeBytes": 3977556210
+        },
+        {
+          "relativePath": "llm_config.json",
+          "sizeBytes": 274
+        },
+        {
+          "relativePath": "tokenizer.txt",
+          "sizeBytes": 3193065
+        }
+      ],
+      "runtime": {
+        "systemPrompt": "你是本地 AI 助手。请始终使用简体中文回答，表达简洁清楚；只回答用户最新问题；不要编造具体年份、型号、版本或来源；遇到不确定的事实请直接说明不确定；不要把专有名词按字面拆解翻译；不要重复同一句话。",
+        "contextMessageLimit": 0,
+        "generationDefaults": {
+          "temperature": 0.6,
+          "topP": 0.9,
+          "topK": 40,
+          "repetitionPenalty": 1.05,
+          "frequencyPenalty": 0,
+          "presencePenalty": 0,
+          "penaltyWindow": 256
+        }
+      }
+    },
+    {
+      "id": "minicpm4-8b",
+      "minAppVersionCode": 1100100,
+      "directoryName": "MiniCPM4-8B-MNN",
+      "displayName": "MiniCPM4-8B",
+      "shortName": "MiniCPM4-8B",
+      "description": "MiniCPM4 8B 文本模型，支持中文问答与翻译。",
+      "provider": "MiniCPM",
+      "supportsImage": false,
+      "capabilities": [
+        "文本"
+      ],
+      "source": {
+        "type": "modelscope",
+        "repo": "MNN/MiniCPM4-8B-MNN",
+        "revision": "e80d26c6"
+      },
+      "files": [
+        {
+          "relativePath": "config.json",
+          "sizeBytes": 338
+        },
+        {
+          "relativePath": "embeddings_bf16.bin",
+          "sizeBytes": 601686016
+        },
+        {
+          "relativePath": "llm.mnn",
+          "sizeBytes": 561904
+        },
+        {
+          "relativePath": "llm.mnn.weight",
+          "sizeBytes": 4929725274
+        },
+        {
+          "relativePath": "llm_config.json",
+          "sizeBytes": 646
+        },
+        {
+          "relativePath": "tokenizer.txt",
+          "sizeBytes": 1485381
+        }
+      ],
+      "runtime": {
+        "systemPrompt": "你是本地 AI 助手。请始终使用简体中文回答，表达简洁清楚；只回答用户最新问题；不要编造具体年份、型号、版本或来源；遇到不确定的事实请直接说明不确定；不要把专有名词按字面拆解翻译；不要重复同一句话。",
+        "contextMessageLimit": 0,
+        "generationDefaults": {
+          "temperature": 0.6,
+          "topP": 0.9,
+          "topK": 40,
+          "repetitionPenalty": 1.05,
+          "frequencyPenalty": 0,
+          "presencePenalty": 0,
+          "penaltyWindow": 256
+        }
+      }
+    },
+    {
+      "id": "minicpm5-2b",
+      "minAppVersionCode": 1100100,
+      "directoryName": "MiniCPM5-2B-MNN",
+      "displayName": "MiniCPM5-2B",
+      "shortName": "MiniCPM5-2B",
+      "description": "MiniCPM5 2B 中英文文本模型，支持本地对话与推理。",
+      "provider": "MiniCPM",
+      "supportsImage": false,
+      "capabilities": [
+        "文本"
+      ],
+      "source": {
+        "type": "modelscope",
+        "repo": "MNN/MiniCPM5-2B-MNN",
+        "revision": "1b69328ba97ad73477f8214edb8646b26eb7b614"
+      },
+      "files": [
+        {
+          "relativePath": "config.json",
+          "sizeBytes": 547
+        },
+        {
+          "relativePath": "embeddings_int4.bin",
+          "sizeBytes": 167116800
+        },
+        {
+          "relativePath": "llm.mnn",
+          "sizeBytes": 1412936
+        },
+        {
+          "relativePath": "llm.mnn.weight",
+          "sizeBytes": 1266571614
+        },
+        {
+          "relativePath": "llm_config.json",
+          "sizeBytes": 9864
+        },
+        {
+          "relativePath": "tokenizer.mtok",
+          "sizeBytes": 3536400
+        }
+      ],
+      "runtime": {
+        "systemPrompt": "你是运行在本地设备上的 MiniCPM5-2B。请始终使用简体中文回答，表达简洁清楚。",
+        "contextMessageLimit": 6,
+        "generationDefaults": {
+          "temperature": 1,
+          "topP": 0.95,
+          "topK": 40,
+          "repetitionPenalty": 1,
+          "frequencyPenalty": 0,
+          "presencePenalty": 0,
+          "penaltyWindow": 256
+        }
+      }
+    }
+  ]
+}
