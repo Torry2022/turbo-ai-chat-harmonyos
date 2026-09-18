@@ -10,6 +10,10 @@
 
 **Turbo AI Chat is a HarmonyOS NEXT native on-device LLM chat application** for validating a complete local-inference pipeline on HarmonyOS devices. It is built with ArkTS, C++ N-API, and MNN Runtime, ships profiles for Qwen3-4B-Instruct, MiniCPM5-1B, and Gemma-4-E2B-it, and can add compatible text and multimodal MNN models through the Model Gallery or local import. The app also includes streaming chat, model switching, image understanding, runtime monitoring, and an OpenAI-compatible LAN API.
 
+> This version uses MNN development snapshot `2edeef91b425e98a93707840b6fffdd97980bdbe`, not the 3.6.1 release, to support the `FusedLinear` / `RoPE` operators used by the official MiniCPM5-2B MNN package. Offline HarmonyOS device regression tests have been completed for MiniCPM5-2B and selected existing models. The new catalog is live, with refresh and cached startup verified on a phone. MiniCPM5-2B requires v1.10.1. The legacy catalog is unchanged. Build scripts pin this commit; check it out under `.codex_mnn_source_2edeef91` rather than tracking a moving master branch.
+
+This branch also includes two [local MNN patches](third_party/mnn/patches/README.md): one prevents multimodal generation from using embedding-model attention masks; the other prevents successive text requests from reusing stale PLE embeddings. Build scripts apply them automatically, and `BUILD_INFO.json` records the patch and library hashes. This is not an unmodified upstream build.
+
 ## Table of Contents
 
 - [Project Origin and Evolution](#project-origin-and-evolution)
@@ -50,6 +54,14 @@ In the HarmonyOS ecosystem, on-device AI inference today largely depends on Andr
 
 ## Recent Highlights
 
+**Runtime and model compatibility (v1.10.1)**
+
+- Move to a pinned MNN development snapshot for MiniCPM5-2B operators, with local fixes for Gemma attention masks and stale PLE inputs across text requests.
+- Add minimum App version requirements to the Model Gallery: incompatible entries remain visible but cannot be downloaded. Legacy and current catalogs remain separate.
+- Fix generation retries after cancellation and simplify microphone permission errors, preserving existing models and app data.
+- Improve wide-window bottom layouts: scrolling pages extend to the screen edge, while the chat input and sidebar Settings button stay aligned with bottom spacing and keyboard avoidance.
+- Hide bottom navigation while the phone keyboard is open and restore it when dismissed, keeping the input area clear.
+
 **Light theme and appearance settings (v1.10.0)**
 
 - Added Light, Dark, and System appearance options with saved preferences, retaining the original logo and launch artwork.
@@ -70,7 +82,7 @@ In the HarmonyOS ecosystem, on-device AI inference today largely depends on Andr
 **Models and market**
 
 - Switched the default text model to Qwen3-4B-Instruct, with in-app model-market installation from ModelScope for preset models and additional MNN model entries.
-- The Model Gallery supports online catalog refresh with a local fallback cache. Updating [`model-catalog/catalog.json`](model-catalog/catalog.json) publishes compatible model entries without requiring a new app package.
+- The Model Gallery supports online catalog refresh with a local fallback cache. This build reads [`model-catalog/catalog-v2.json`](model-catalog/catalog-v2.json), while older apps continue to read `catalog.json`. Models requiring the upgraded MNN runtime belong only in the new catalog; compatible catalog updates still require no new app package.
 - Forks and derivative builds still read this repository's online catalog by default. To maintain an independent Model Gallery, change `REMOTE_MODEL_CATALOG_URL` in [`ModelCatalogService.ets`](entry/src/main/ets/services/ModelCatalogService.ets) to your own Raw catalog URL and rebuild the app.
 - Model-market downloads support stop-and-resume behavior. Closing a stopped install dialog clears unfinished temporary download files to avoid sandbox leftovers.
 - In addition to zip import, you can push a complete MNN model directory into the app sandbox and scan it from the Model tab to avoid large zip import failures.

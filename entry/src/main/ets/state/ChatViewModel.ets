@@ -33,6 +33,7 @@ import { ImagePayloadService } from '../services/ImagePayloadService'
 import { BuiltinModelInstallService } from '../services/BuiltinModelInstallService'
 import { ModelImportService } from '../services/ModelImportService'
 import { ModelCatalogService } from '../services/ModelCatalogService'
+import { catalogCompatibilityMessage } from '../utils/modelCatalog'
 import { NativeInferenceService } from '../services/NativeInferenceService'
 import {
   ApiGenerationRequest,
@@ -134,6 +135,7 @@ export class ChatViewModel {
   streamingChars: number = 0
   latestPerfMetrics?: PerfMetrics
   appVersion: string = ''
+  appVersionCode: number = 0
   chatScroller: Scroller = new Scroller()
 
   private filesDir: string = ''
@@ -222,11 +224,14 @@ export class ChatViewModel {
     this.context = context
     this.filesDir = context.filesDir
     try {
-      this.appVersion = bundleManager.getBundleInfoForSelfSync(
+      const bundleInfo = bundleManager.getBundleInfoForSelfSync(
         bundleManager.BundleFlag.GET_BUNDLE_INFO_DEFAULT
-      ).versionName
+      )
+      this.appVersion = bundleInfo.versionName
+      this.appVersionCode = bundleInfo.versionCode
     } catch (_) {
       this.appVersion = ''
+      this.appVersionCode = 0
     }
     this.modelManager.initialize(this.filesDir)
     this.loadModelOrder()
@@ -308,6 +313,22 @@ export class ChatViewModel {
 
   isCatalogItemInstalled(catalogItemId: string): boolean {
     return this.modelMarketInstalledIds.indexOf(catalogItemId) >= 0
+  }
+
+  catalogCompatibilityMessage(item: BuiltinModelDownloadSpec): string {
+    return catalogCompatibilityMessage(item, this.appVersionCode)
+  }
+
+  private rejectIncompatibleCatalogItem(item: BuiltinModelDownloadSpec): boolean {
+    const message = this.catalogCompatibilityMessage(item)
+    if (message.length === 0) {
+      return false
+    }
+    this.apiServerStartAfterModelLoad = false
+    this.status = `${item.displayName}：${message}`
+    this.toastCallback?.(this.status)
+    this.notify()
+    return true
   }
 
   openModelMarketDialog(): void {
@@ -482,6 +503,9 @@ export class ChatViewModel {
       this.notify()
       return
     }
+    if (this.rejectIncompatibleCatalogItem(item)) {
+      return
+    }
     this.pendingInstallCatalogItemId = item.id
     this.autoLoadAfterInstall = item.modelId === this.selectedModelId
     this.showModelMarketDialog = false
@@ -580,7 +604,9 @@ export class ChatViewModel {
       }
     } catch (err) {
       this.resetSpeechRecognitionState()
-      this.status = formatError(err as Object)
+      console.error(`启动语音识别失败：${formatError(err as Object)}`)
+      const message = (err as Error).message
+      this.status = message && message.trim().length > 0 ? message : '无法启动语音输入，请重试'
       this.toastCallback(this.status)
       this.notify()
     }
@@ -1260,6 +1286,11 @@ export class ChatViewModel {
   }
 
   startModelLoad(): void {
+    const catalogItem = this.modelCatalogService.findInstallItem(this.currentModel().catalogItemId ??
+      this.currentModel().downloadId)
+    if (catalogItem !== undefined && this.rejectIncompatibleCatalogItem(catalogItem)) {
+      return
+    }
     if (this.modelLoading) {
       return
     }
@@ -1354,6 +1385,9 @@ export class ChatViewModel {
     context: common.UIAbilityContext,
     spec: BuiltinModelDownloadSpec
   ): Promise<void> {
+    if (this.rejectIncompatibleCatalogItem(spec)) {
+      return
+    }
     this.busy = true
     this.builtinModelInstalling = true
     this.builtinModelInstallCancelRequested = false
@@ -1655,6 +1689,11 @@ export class ChatViewModel {
   }
 
   private ensureCurrentModelInstalled(): Promise<boolean> {
+    const catalogItem = this.modelCatalogService.findInstallItem(this.currentModel().catalogItemId ??
+      this.currentModel().downloadId)
+    if (catalogItem !== undefined && this.rejectIncompatibleCatalogItem(catalogItem)) {
+      return Promise.resolve(false)
+    }
     const model = this.currentModel()
     const spec = this.builtinModelInstallService.getDownloadSpec(model)
     if (spec === undefined) {

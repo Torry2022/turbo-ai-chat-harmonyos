@@ -18,6 +18,17 @@ using MNN::Transformer::PromptImagePart;
 
 namespace {
 
+void ResetForGeneration(Llm* llm) {
+    llm->reset();
+    // reset() clears history, but retains USER_CANCEL. Newer MNN response()
+    // overloads check that status before generate_init() can reset it.
+    // This runs under the runner mutex, after the previous response returned.
+    auto* context = const_cast<MNN::Transformer::LlmContext*>(llm->getContext());
+    if (context != nullptr && context->status == LlmStatus::USER_CANCEL) {
+        context->status = LlmStatus::RUNNING;
+    }
+}
+
 bool CancelGenerationIfRequested(Llm* llm, const std::atomic_bool& requested) {
     if (!requested.load()) {
         return false;
@@ -295,7 +306,7 @@ std::string MnnLlmRunner::generate(const std::string& prompt, const SamplingConf
     }
 
     stopRequested_.store(false);
-    llm_->reset();
+    ResetForGeneration(llm_.get());
     std::ostringstream output;
     llm_->response(prompt, &output, nullptr, sampling.maxNewTokens);
     return output.str();
@@ -319,7 +330,7 @@ MnnLlmRunner::GenerationResult MnnLlmRunner::generateStreaming(
     }
 
     stopRequested_.store(false);
-    llm_->reset();
+    ResetForGeneration(llm_.get());
     ChunkStreamBuffer buffer(onChunk, [this]() {
         return CancelGenerationIfRequested(llm_.get(), stopRequested_);
     }, TemplatedOutputPrefix(llm_.get(), prompt));
@@ -365,7 +376,7 @@ MnnLlmRunner::GenerationResult MnnLlmRunner::generateRawPromptStreaming(
     }
 
     stopRequested_.store(false);
-    llm_->reset();
+    ResetForGeneration(llm_.get());
     const std::vector<int> inputIds = llm_->tokenizer_encode(prompt);
     if (inputIds.empty()) {
         error = "tokenizer returned empty prompt";
@@ -441,7 +452,7 @@ MnnLlmRunner::GenerationResult MnnLlmRunner::generateChatStreaming(
     }, AssistantOutputPrefix(llm_->apply_chat_template(chatMessages)));
     std::ostream output(&buffer);
     output.exceptions(std::ios::badbit | std::ios::failbit);
-    llm_->reset();
+    ResetForGeneration(llm_.get());
     try {
         llm_->response(chatMessages, &output, nullptr, sampling.maxNewTokens);
         output.flush();
@@ -534,7 +545,7 @@ MnnLlmRunner::GenerationResult MnnLlmRunner::generateImageChatStreaming(
     }, TemplatedOutputPrefix(llm_.get(), prompt.prompt_template));
     std::ostream output(&buffer);
     output.exceptions(std::ios::badbit | std::ios::failbit);
-    llm_->reset();
+    ResetForGeneration(llm_.get());
     const auto* contextBefore = llm_->getContext();
     const auto visionUsBefore = contextBefore == nullptr ? 0 : contextBefore->vision_us;
     try {

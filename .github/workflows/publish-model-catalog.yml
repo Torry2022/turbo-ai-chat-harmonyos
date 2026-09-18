@@ -3,6 +3,14 @@ name: Publish model catalog
 on:
   workflow_dispatch:
     inputs:
+      channel:
+        description: Catalog channel (legacy requires MNN 3.6.0 compatibility)
+        required: true
+        default: current
+        type: choice
+        options:
+          - current
+          - legacy
       operation:
         description: Operation
         required: true
@@ -22,6 +30,10 @@ on:
         type: string
       model_id:
         description: Model ID (required for hide; optional for add_or_update)
+        required: false
+        type: string
+      min_app_version_code:
+        description: Minimum App versionCode (required for add_or_update, e.g. 1100100)
         required: false
         type: string
       directory_name:
@@ -79,13 +91,28 @@ jobs:
       - name: Run publisher tests
         run: python -m unittest scripts/test_model_catalog.py
 
+      - name: Select catalog channel
+        id: catalog
+        shell: bash
+        env:
+          CHANNEL: ${{ inputs.channel }}
+        run: |
+          set -euo pipefail
+          case "$CHANNEL" in
+            current) echo 'path=model-catalog/catalog-v2.json' >> "$GITHUB_OUTPUT" ;;
+            legacy) echo 'path=model-catalog/catalog.json' >> "$GITHUB_OUTPUT" ;;
+            *) echo "Unsupported channel: $CHANNEL" >&2; exit 1 ;;
+          esac
+
       - name: Generate and validate catalog
         shell: bash
         env:
+          CATALOG_PATH: ${{ steps.catalog.outputs.path }}
           OPERATION: ${{ inputs.operation }}
           MODELSCOPE_MODEL: ${{ inputs.modelscope_model }}
           REVISION: ${{ inputs.revision }}
           MODEL_ID: ${{ inputs.model_id }}
+          MIN_APP_VERSION_CODE: ${{ inputs.min_app_version_code }}
           DIRECTORY_NAME: ${{ inputs.directory_name }}
           DISPLAY_NAME: ${{ inputs.display_name }}
           DESCRIPTION: ${{ inputs.description }}
@@ -94,14 +121,14 @@ jobs:
           CONTEXT_MESSAGE_LIMIT: ${{ inputs.context_message_limit }}
         run: |
           set -euo pipefail
-          catalog=(--catalog model-catalog/catalog.json)
+          catalog=(--catalog "$CATALOG_PATH")
           case "$OPERATION" in
             add_or_update)
               if [[ -z "$MODELSCOPE_MODEL" ]]; then
                 echo "modelscope_model is required for add_or_update" >&2
                 exit 1
               fi
-              args=(add "$MODELSCOPE_MODEL" --revision "${REVISION:-master}" --supports-image "$SUPPORTS_IMAGE" --context-message-limit "$CONTEXT_MESSAGE_LIMIT")
+              args=(add "$MODELSCOPE_MODEL" --revision "${REVISION:-master}" --supports-image "$SUPPORTS_IMAGE" --context-message-limit "$CONTEXT_MESSAGE_LIMIT" --min-app-version-code "$MIN_APP_VERSION_CODE")
               [[ -n "$MODEL_ID" ]] && args+=(--id "$MODEL_ID")
               [[ -n "$DIRECTORY_NAME" ]] && args+=(--directory-name "$DIRECTORY_NAME")
               [[ -n "$DISPLAY_NAME" ]] && args+=(--display-name "$DISPLAY_NAME")
@@ -128,14 +155,16 @@ jobs:
 
       - name: Commit catalog to main
         shell: bash
+        env:
+          CATALOG_PATH: ${{ steps.catalog.outputs.path }}
         run: |
           set -euo pipefail
-          if git diff --quiet -- model-catalog/catalog.json; then
+          mapfile -t changed_files < <(git status --porcelain=v1 --untracked-files=all)
+          if [[ "${#changed_files[@]}" -eq 0 ]]; then
             echo "Catalog is already up to date."
             exit 0
           fi
-          mapfile -t changed_files < <(git status --porcelain=v1 --untracked-files=all)
-          if [[ "${#changed_files[@]}" -ne 1 || "${changed_files[0]}" != " M model-catalog/catalog.json" ]]; then
+          if [[ "${#changed_files[@]}" -ne 1 || "${changed_files[0]}" != " M $CATALOG_PATH" ]]; then
             echo "Publisher changed unexpected files:" >&2
             printf '%s\n' "${changed_files[@]}" >&2
             exit 1
@@ -147,6 +176,6 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- model-catalog/catalog.json
+          git add -- "$CATALOG_PATH"
           git commit -m "Update online model catalog"
           git push origin HEAD:main

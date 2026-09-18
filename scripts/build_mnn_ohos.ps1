@@ -1,12 +1,12 @@
 param(
-  [string]$MnnRoot = "$PSScriptRoot\..\.codex_mnn_source_3.6.0",
-  [string]$BuildDir = "$PSScriptRoot\..\.codex_mnn_build_3.6.0",
+  [string]$MnnRoot = "$PSScriptRoot\..\.codex_mnn_source_2edeef91",
+  [string]$BuildDir = "$PSScriptRoot\..\.codex_mnn_build_2edeef91",
   [string]$HarmonyNativeHome = $env:HARMONY_NATIVE_HOME,
   [int]$Jobs = [Environment]::ProcessorCount
 )
 
 $ErrorActionPreference = 'Stop'
-$expectedCommit = 'cc20f672af9e177e2fa338c332dc097de2fc9264'
+$expectedCommit = '2edeef91b425e98a93707840b6fffdd97980bdbe'
 $MnnRoot = [IO.Path]::GetFullPath($MnnRoot)
 $BuildDir = [IO.Path]::GetFullPath($BuildDir)
 
@@ -29,11 +29,26 @@ if ($LASTEXITCODE -ne 0 -or $actualCommit -ne $expectedCommit) {
 }
 
 $cmake = Join-Path $HarmonyNativeHome 'build-tools\cmake\bin\cmake.exe'
+foreach ($patchName in @('0001-omni-generation-attention-mask.patch', '0002-omni-text-prefill-ple.patch')) {
+  $patch = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\third_party\mnn\patches\$patchName"))
+  $patchApplied = $false
+  try {
+    & git -C $MnnRoot apply --reverse --check $patch 2>$null
+    $patchApplied = $LASTEXITCODE -eq 0
+  } catch { $patchApplied = $false }
+  if (-not $patchApplied) {
+    & git -C $MnnRoot apply --check $patch
+    if ($LASTEXITCODE -ne 0) { throw "MNN patch conflicts with the source checkout: $patchName" }
+    & git -C $MnnRoot apply $patch
+    if ($LASTEXITCODE -ne 0) { throw "Failed to apply MNN patch: $patchName" }
+  }
+}
 $ninja = Join-Path $HarmonyNativeHome 'build-tools\cmake\bin\ninja.exe'
 if (-not (Test-Path $cmake) -or -not (Test-Path $ninja)) {
   throw "Missing CMake or Ninja under $HarmonyNativeHome"
 }
 
+# The SDK Clang 15 cannot compile this snapshot's SME2 FP16-FML intrinsics.
 & $cmake -S $MnnRoot -B $BuildDir -G Ninja `
   "-DCMAKE_MAKE_PROGRAM=$ninja" `
   "-DCMAKE_TOOLCHAIN_FILE=$HarmonyNativeHome\build\cmake\ohos.toolchain.cmake" `
@@ -47,6 +62,7 @@ if (-not (Test-Path $cmake) -or -not (Test-Path $ninja)) {
   '-DMNN_LOW_MEMORY=ON' `
   '-DMNN_SUPPORT_TRANSFORMER_FUSE=ON' `
   '-DMNN_ARM82=ON' `
+  '-DMNN_SME2=OFF' `
   '-DMNN_USE_LOGCAT=ON' `
   '-DMNN_BUILD_TEST=OFF' `
   '-DMNN_BUILD_BENCHMARK=OFF' `

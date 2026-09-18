@@ -19,7 +19,7 @@ from urllib.request import Request, urlopen
 
 SCHEMA_VERSION = 1
 MODELSCOPE_ENDPOINT = "https://modelscope.cn"
-DEFAULT_CATALOG = Path(__file__).resolve().parents[1] / "model-catalog" / "catalog.json"
+DEFAULT_CATALOG = Path(__file__).resolve().parents[1] / "model-catalog" / "catalog-v2.json"
 ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 DIRECTORY_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
 REPO_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
@@ -238,6 +238,7 @@ def build_item(args: argparse.Namespace) -> dict[str, Any]:
         "source": {"type": "modelscope", "repo": repo, "revision": resolved_revision},
         "files": selected_files,
         "runtime": runtime,
+        "minAppVersionCode": args.min_app_version_code,
     }
 
 
@@ -274,6 +275,9 @@ def validate_runtime(model_id: str, runtime: Any) -> None:
 
 
 def validate_item(item: Any) -> None:
+    minimum = item.get("minAppVersionCode") if isinstance(item, dict) else None
+    if isinstance(item, dict) and "minAppVersionCode" in item:
+        require(type(minimum) is int and 0 < minimum <= 2147483647, "minAppVersionCode 必须为正整数")
     require(isinstance(item, dict), "模型条目必须是 JSON 对象")
     model_id = item.get("id")
     require(isinstance(model_id, str) and ID_PATTERN.fullmatch(model_id) is not None and
@@ -416,6 +420,8 @@ def create_parser() -> argparse.ArgumentParser:
     add.add_argument("--supports-image", choices=("auto", "true", "false"), default="auto")
     add.add_argument("--system-prompt", default="", help="系统提示词，默认自动生成")
     add.add_argument("--context-message-limit", type=int, default=6)
+    add.add_argument("--min-app-version-code", type=int, required=True,
+                     help="维护者确认的最低 App versionCode，例如 1100100；不是目录版本号")
     add.add_argument("--dry-run", action="store_true", help="只生成并校验，不写入目录")
 
     hide = subparsers.add_parser("hide", help="下架普通市场模型")
@@ -450,6 +456,10 @@ def run(args: argparse.Namespace) -> int:
             print(f"{args.model_id} 已处于下架状态，目录未变化")
         return 0
     if args.command == "add":
+        require(0 < args.min_app_version_code <= 2147483647, "最低 App versionCode 无效")
+        if args.catalog.name == "catalog.json":
+            require(args.min_app_version_code <= 1100000,
+                    "旧客户端不识别版本限制；要求新版的模型只能发布到 catalog-v2.json")
         require(args.context_message_limit >= 0, "context-message-limit 不能小于 0")
         item = build_item(args)
         changed = upsert_item(catalog, item)

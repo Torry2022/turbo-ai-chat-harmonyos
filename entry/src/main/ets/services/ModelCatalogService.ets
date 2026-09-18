@@ -20,10 +20,11 @@ import {
 } from '../utils/modelCatalog'
 
 export const REMOTE_MODEL_CATALOG_URL: string =
-  'https://raw.githubusercontent.com/Torry2022/turbo-ai-chat-harmonyos/main/model-catalog/catalog.json'
+  'https://raw.githubusercontent.com/Torry2022/turbo-ai-chat-harmonyos/main/model-catalog/catalog-v2.json'
 
-const CATALOG_CACHE_FILE: string = 'model-catalog-cache.json'
-const INSTALLED_CATALOG_FILE: string = 'model-catalog-installs.json'
+const CATALOG_CACHE_FILE: string = 'model-catalog-cache-v2.json'
+const INSTALLED_CATALOG_FILE: string = 'model-catalog-installs-v2.json'
+const LEGACY_INSTALLED_CATALOG_FILE: string = 'model-catalog-installs.json'
 
 export class ModelCatalogService {
   private marketItems: ModelCatalogItem[] = MODEL_CATALOG_ITEMS.slice()
@@ -167,14 +168,26 @@ export class ModelCatalogService {
   private async loadInstalledItems(filesDir: string): Promise<void> {
     const path = `${filesDir}/${INSTALLED_CATALOG_FILE}`
     await this.recoverAtomicFile(path)
+    let readPath = path
     if (!await this.exists(path)) {
+      // Read the old snapshot once, without modifying files used by older apps.
+      readPath = `${filesDir}/${LEGACY_INSTALLED_CATALOG_FILE}`
+      if (!await this.exists(readPath)) {
+        readPath = `${readPath}.bak`
+      }
+      if (!await this.exists(readPath)) {
+        this.installedItems = []
+        return
+      }
+    }
+    try {
+      this.installedItems = parseInstalledCatalog(await fs.readText(readPath))
+    } catch (_) {
       this.installedItems = []
       return
     }
-    try {
-      this.installedItems = parseInstalledCatalog(await fs.readText(path))
-    } catch (_) {
-      this.installedItems = []
+    if (readPath !== path) {
+      await this.writeTextAtomically(path, serializeInstalledCatalog(this.installedItems))
     }
   }
 

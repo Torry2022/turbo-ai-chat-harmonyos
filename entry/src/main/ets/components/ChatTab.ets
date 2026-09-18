@@ -10,6 +10,7 @@ export struct ChatTab {
   @Prop renderVersion: number
   @Prop @Watch('onActiveChange') active: boolean = false
   @Prop dialogVisible: boolean = false
+  @Prop inputBottomOffset: number = 0
   @State private inputFocused: boolean = false
   @State private voiceWaveRaised: boolean = false
   private inputController: TextAreaController = new TextAreaController()
@@ -315,6 +316,7 @@ export struct ChatTab {
         .margin({ right: 10 })
       }
       .width('100%')
+      .translate({ y: this.inputBottomOffset })
     }
     .layoutWeight(1)
     .width('100%')

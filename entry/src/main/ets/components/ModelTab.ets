@@ -16,6 +16,7 @@ import { ModelDragFrame, resolveModelDragPreview } from '../utils/modelDrag'
 
 @Component
 export struct ModelTab {
+  @Prop extendBottom: boolean = false
   @StorageProp('darkAppearance') private darkAppearance: boolean = true
   @ObjectLink viewModel: ChatViewModel
   @Prop @Watch('onRenderVersionChange') renderVersion: number = 0
@@ -869,6 +870,7 @@ export struct ModelTab {
         .flexShrink(0)
       }
       .width('100%')
+      .padding({ bottom: $r('app.float.page_scroll_bottom_padding') })
     }
     .width('100%')
     .height('100%')
@@ -882,5 +884,6 @@ export struct ModelTab {
     .scrollBar(BarState.Off)
     .edgeEffect(EdgeEffect.Spring)
     .enableScrollInteraction(this.draggingModelId.length <= 0)
+    .expandSafeArea([SafeAreaType.SYSTEM], this.extendBottom ? [SafeAreaEdge.BOTTOM] : [])
   }
 }

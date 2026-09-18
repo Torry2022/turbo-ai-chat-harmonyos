@@ -22,6 +22,7 @@ export interface CatalogRuntimeSpec {
 }
 
 export interface BuiltinModelDownloadSpec {
+  minAppVersionCode?: number
   id: string
   modelId: string
   directoryName: string
@@ -112,6 +113,7 @@ function withCatalogMeta(
 ): ModelCatalogItem {
   return {
     id: spec.id,
+    minAppVersionCode: 1070000,
     modelId: spec.modelId,
     directoryName: spec.directoryName,
     displayName: spec.displayName,

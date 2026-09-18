@@ -1,4 +1,5 @@
 import {
+  BuiltinModelDownloadSpec,
   BuiltinModelFileSpec,
   CatalogGenerationDefaults,
   CatalogRuntimeSpec,
@@ -24,6 +25,21 @@ const DIRECTORY_PATTERN: RegExp = /^[A-Za-z0-9._-]+$/
 const FILE_PATH_PATTERN: RegExp = /^[A-Za-z0-9._\/-]+$/
 const REPO_PATTERN: RegExp = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/
 const REVISION_PATTERN: RegExp = /^[A-Za-z0-9._-]+$/
+
+export function catalogCompatibilityMessage(item: BuiltinModelDownloadSpec, appVersionCode: number): string {
+  if (item.minAppVersionCode === undefined) {
+    return ''
+  }
+  if (!Number.isInteger(appVersionCode) || appVersionCode <= 0) {
+    return '无法确认 App 版本'
+  }
+  return appVersionCode < item.minAppVersionCode ? '需升级 App' : ''
+}
+
+function validateMinAppVersionCode(value: number | undefined): void {
+  requireCondition(value === undefined || (Number.isInteger(value) && value > 0 && value <= 2147483647),
+    '模型最低 App 版本无效')
+}
 
 export function parseRemoteModelCatalog(text: string): RemoteModelCatalogManifest {
   const parsed = JSON.parse(text.replace(/^\uFEFF/, '')) as RemoteModelCatalogManifest
@@ -154,6 +170,7 @@ export function mergeCatalogItems(primary: ModelCatalogItem[], fallback: ModelCa
 }
 
 function validateRemoteItem(item: RemoteCatalogItem): void {
+  validateMinAppVersionCode(item.minAppVersionCode)
   requireCondition(isValidId(item.id), '模型广场条目 ID 无效')
   requireCondition(isSafeDirectoryName(item.directoryName), `模型目录名称无效：${item.id}`)
   requireCondition(isNonEmptyString(item.displayName), `模型显示名称无效：${item.id}`)
@@ -216,6 +233,7 @@ function validateOptionalNumber(value: number | undefined, message: string, mini
 }
 
 function validateInstalledItem(item: ModelCatalogItem): void {
+  validateMinAppVersionCode(item.minAppVersionCode)
   requireCondition(isValidId(item.id), '已安装市场模型 ID 无效')
   requireCondition(isSafeDirectoryName(item.directoryName), `已安装模型目录无效：${item.id}`)
   requireCondition(isNonEmptyString(item.displayName), `已安装模型名称无效：${item.id}`)
@@ -245,6 +263,7 @@ function toCatalogItem(remote: RemoteCatalogItem, bundled?: ModelCatalogItem): M
   })
   return {
     id: remote.id,
+    minAppVersionCode: remote.minAppVersionCode ?? bundled?.minAppVersionCode,
     modelId: bundled?.modelId ?? remote.id,
     directoryName: remote.directoryName,
     displayName: remote.displayName,

@@ -7,6 +7,7 @@ export interface AppTabEntry {
 export struct BottomTabs {
   @Prop activeTab: number
   @Prop windowWidth: number = 0
+  @Prop bottomInset: number = 0
   @Prop entries: AppTabEntry[] = [
     { title: '聊天', description: '全屏对话' },
     { title: '模型', description: '加载参数' },
@@ -79,6 +80,7 @@ export struct BottomTabs {
         .backgroundColor($r('app.color.nav_idle'))
         .hoverEffect(HoverEffect.Auto)
         .accessibilityText('设置')
+        .translate({ y: this.bottomInset })
         .onClick(() => this.onSettings())
       }
     }
@@ -86,7 +88,7 @@ export struct BottomTabs {
     .height(this.windowWidth >= 600 ? '100%' : 62)
     .padding({ left: this.windowWidth >= 840 ? 12 : this.windowWidth >= 600 ? 8 : 4,
       right: this.windowWidth >= 840 ? 12 : this.windowWidth >= 600 ? 8 : 4, top: 4,
-      bottom: this.windowWidth >= 600 ? 0 : 4 })
+      bottom: this.windowWidth >= 600 ? $r('app.float.wide_bottom_spacing') : 4 })
     .backgroundColor(this.windowWidth >= 600 ? $r('app.color.sidebar_background') : $r('app.color.page_compact'))
     .borderRadius(this.windowWidth >= 600 ? 0 : 10)
   }

@@ -1,6 +1,14 @@
 {
   "float": [
     {
+      "name": "wide_bottom_spacing",
+      "value": "20vp"
+    },
+    {
+      "name": "page_scroll_bottom_padding",
+      "value": "16vp"
+    },
+    {
       "name": "button_radius",
       "value": "8vp"
     },

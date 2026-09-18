@@ -5,9 +5,9 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-MNN_ROOT="${MNN_ROOT:-$ROOT_DIR/.codex_mnn_source_3.6.0}"
-BUILD_DIR="${BUILD_DIR:-$ROOT_DIR/.codex_mnn_build_3.6.0}"
-EXPECTED_COMMIT="cc20f672af9e177e2fa338c332dc097de2fc9264"
+MNN_ROOT="${MNN_ROOT:-$ROOT_DIR/.codex_mnn_source_2edeef91}"
+BUILD_DIR="${BUILD_DIR:-$ROOT_DIR/.codex_mnn_build_2edeef91}"
+EXPECTED_COMMIT="2edeef91b425e98a93707840b6fffdd97980bdbe"
 JOBS="${JOBS:-4}"
 
 find_native_home() {
@@ -26,7 +26,7 @@ find_native_home() {
 
 if [[ ! -d "$MNN_ROOT/.git" ]]; then
   echo "Missing MNN source checkout: $MNN_ROOT" >&2
-  echo "Clone tag 3.6.0 before building." >&2
+  echo "Clone MNN and check out $EXPECTED_COMMIT before building." >&2
   exit 1
 fi
 
@@ -37,6 +37,14 @@ if [[ "$actual_commit" != "$EXPECTED_COMMIT" ]]; then
 fi
 
 native_home="$(find_native_home)"
+for patch_name in 0001-omni-generation-attention-mask.patch 0002-omni-text-prefill-ple.patch; do
+  patch="$ROOT_DIR/third_party/mnn/patches/$patch_name"
+  if ! git -C "$MNN_ROOT" apply --reverse --check "$patch" 2>/dev/null; then
+    git -C "$MNN_ROOT" apply --check "$patch"
+    git -C "$MNN_ROOT" apply "$patch"
+  fi
+done
+# Keep parity with OHOS Clang 15: disable the snapshot's SME2 FP16-FML path.
 cmake -S "$MNN_ROOT" -B "$BUILD_DIR" -G Ninja \
   -DCMAKE_TOOLCHAIN_FILE="$native_home/build/cmake/ohos.toolchain.cmake" \
   -DCMAKE_BUILD_TYPE=Release \
@@ -49,6 +57,7 @@ cmake -S "$MNN_ROOT" -B "$BUILD_DIR" -G Ninja \
   -DMNN_LOW_MEMORY=ON \
   -DMNN_SUPPORT_TRANSFORMER_FUSE=ON \
   -DMNN_ARM82=ON \
+  -DMNN_SME2=OFF \
   -DMNN_USE_LOGCAT=ON \
   -DMNN_BUILD_TEST=OFF \
   -DMNN_BUILD_BENCHMARK=OFF \

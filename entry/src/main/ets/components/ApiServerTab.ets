@@ -5,6 +5,7 @@ import { pasteboard } from '@kit.BasicServicesKit'
 
 @Component
 export struct ApiServerTab {
+  @Prop extendBottom: boolean = false
   @ObjectLink viewModel: ChatViewModel
   @Prop renderVersion: number = 0
   @Prop loaded: boolean = false
@@ -376,7 +377,7 @@ export struct ApiServerTab {
         .width('100%')
       }
       .width('100%')
-      .padding({ bottom: 8 })
+      .padding({ bottom: $r('app.float.page_scroll_bottom_padding') })
       .onClick(() => {
         this.portInputController.stopEditing()
       })
@@ -390,5 +391,6 @@ export struct ApiServerTab {
     .align(Alignment.Top)
     .scrollBar(BarState.Off)
     .edgeEffect(EdgeEffect.Spring)
+    .expandSafeArea([SafeAreaType.SYSTEM], this.extendBottom ? [SafeAreaEdge.BOTTOM] : [])
   }
 }

@@ -10,6 +10,10 @@
 
 **Turbo AI Chat 是一个 HarmonyOS NEXT 原生端侧大模型聊天应用**，用于验证在鸿蒙设备上直接运行本地 LLM 的完整链路。项目基于 ArkTS、C++ N-API 和 MNN Runtime 构建，预置 Qwen3-4B-Instruct、MiniCPM5-1B 和 Gemma-4-E2B-it，并可通过模型广场或本地导入扩展兼容的文本与多模态 MNN 模型；同时提供流式对话、模型切换、图片理解、运行监控和局域网 OpenAI 兼容 API。
 
+> 当前版本使用 MNN 开发快照 `2edeef91b425e98a93707840b6fffdd97980bdbe`，不是 3.6.1 正式版，支持 MiniCPM5-2B 官方 MNN 包使用的 `FusedLinear` / `RoPE` 算子。已完成 MiniCPM5-2B 与部分既有模型的鸿蒙真机离线回归。新版目录已上线，并通过手机刷新与重启缓存验证；MiniCPM5-2B 要求 v1.10.1。旧版目录不变。构建脚本固定该提交，源码需检出到 `.codex_mnn_source_2edeef91`，不能直接使用持续变化的 master。
+
+本分支还包含两项 [MNN 本地补丁](third_party/mnn/patches/README.md)：修复多模态生成误用嵌入模型注意力掩码，以及连续文本请求复用过期 PLE 辅助嵌入的问题。构建脚本自动应用补丁，`BUILD_INFO.json` 记录补丁与动态库哈希；这不是未经修改的上游构建。
+
 ## 目录
 
 - [项目来源与演进](#项目来源与演进)
@@ -52,6 +56,14 @@
 
 ## 近期重要改进
 
+**运行时与模型兼容性（v1.10.1）**
+
+- 升级至固定的 MNN 开发快照，补齐 MiniCPM5-2B 所需算子，并修复 Gemma 注意力掩码及连续文本请求的 PLE 残留问题。
+- 模型广场加入最低 App 版本要求；不满足条件的模型提示升级并禁止下载，新旧目录隔离维护。
+- 修复停止后重试及麦克风权限错误提示，保留已有模型和应用数据。
+- 优化宽窗口底部布局：滚动页面延伸至屏幕底边，聊天输入框与侧栏设置按钮对齐，并保留底部间距和键盘避让。
+- 手机软键盘弹出时隐藏底部导航，收起后恢复，避免导航栏占用输入区域。
+
 **浅色模式与外观设置（v1.10.0）**
 
 - 新增浅色模式，可在设置中选择深色、浅色或跟随系统，重启后保留选择；继续使用原有 Logo 和启动图。
@@ -72,7 +84,7 @@
 **模型与市场**
 
 - 默认文本模型切换为 Qwen3-4B-Instruct，并支持在 App 内通过模型广场从 ModelScope 安装预置模型和更多 MNN 模型条目。
-- 模型广场支持在线目录刷新和本地缓存回退；维护者更新 [`model-catalog/catalog.json`](model-catalog/catalog.json) 后，用户无需更换安装包即可获取兼容的新模型条目。
+- 模型广场支持在线目录刷新和本地缓存回退；本版读取 [`model-catalog/catalog-v2.json`](model-catalog/catalog-v2.json)，旧版继续读取 `catalog.json`。需要新版 MNN 的模型只加入新目录，避免旧版 App 下载后无法运行；兼容模型的目录更新仍无需更换安装包。
 - Fork 或二次开发版本默认仍读取本仓库的在线目录；如需维护独立模型广场，应修改 [`ModelCatalogService.ets`](entry/src/main/ets/services/ModelCatalogService.ets) 中的 `REMOTE_MODEL_CATALOG_URL`，指向自己的 Raw 目录地址并重新构建 App。
 - 模型广场下载支持停止后断点续传；关闭已停止的安装弹窗会清理未完成的临时下载文件，避免沙箱残留。
 - 除 zip 导入外，支持将完整 MNN 模型目录推送到 App 沙箱后，在模型页一键扫描注册，适合绕过大 zip 导入失败的问题。

@@ -1,0 +1,25 @@
+diff --git a/transformers/llm/engine/src/omni.cpp b/transformers/llm/engine/src/omni.cpp
+--- a/transformers/llm/engine/src/omni.cpp
++++ b/transformers/llm/engine/src/omni.cpp
+@@ -2266,6 +2266,10 @@ VARP Omni::gen_position_ids(int seq_len) {
+     return positionIds;
+ }
+ 
++VARP Omni::gen_attention_mask(int seq_len) {
++    return mIsEmbedding ? Embedding::gen_attention_mask(seq_len) : Llm::gen_attention_mask(seq_len);
++}
++
+ std::vector<Express::VARP> Omni::forwardRaw(Express::VARP hiddenState, Express::VARP mask, Express::VARP inputPos, Express::VARPS extraArgs) {
+     MNN::Express::ExecutorScope s(mExecutor);
+     extraArgs.insert(extraArgs.end(), mExtraArgs.begin(), mExtraArgs.end());
+diff --git a/transformers/llm/engine/src/omni.hpp b/transformers/llm/engine/src/omni.hpp
+--- a/transformers/llm/engine/src/omni.hpp
++++ b/transformers/llm/engine/src/omni.hpp
+@@ -182,6 +182,7 @@ private:
+ 
+ class Omni : public Embedding {
+ public:
++    virtual Express::VARP gen_attention_mask(int seq_len) override;
+     Omni(std::shared_ptr<LlmConfig> config);
+     ~Omni() {
+         mVisionModule.reset();

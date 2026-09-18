@@ -107,6 +107,12 @@ export struct ModelMarketDialog {
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .width('100%')
 
+        if (this.viewModel.catalogCompatibilityMessage(item).length > 0) {
+          Text(this.viewModel.catalogCompatibilityMessage(item))
+            .fontSize(12)
+            .fontColor($r('app.color.text_hint'))
+        }
+
         Row({ space: 6 }) {
           ForEach(item.capabilities, (capability: string) => {
             this.CapabilityTag(capability)
@@ -123,6 +129,7 @@ export struct ModelMarketDialog {
         .fontSize(this.viewModel.isCatalogItemInstalled(item.id) ? $r('app.float.button_compact_font_size') : $r('app.float.button_font_size'))
         .fontWeight(this.viewModel.isCatalogItemInstalled(item.id) ? FontWeight.Normal : FontWeight.Medium)
         .enabled(!this.viewModel.isCatalogItemInstalled(item.id) &&
+          this.viewModel.catalogCompatibilityMessage(item).length === 0 &&
           !this.viewModel.busy &&
           !this.viewModel.modelLoading &&
           !this.viewModel.modelImporting &&

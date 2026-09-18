@@ -1,0 +1,15 @@
+diff --git a/transformers/llm/engine/src/omni.cpp b/transformers/llm/engine/src/omni.cpp
+--- a/transformers/llm/engine/src/omni.cpp
++++ b/transformers/llm/engine/src/omni.cpp
+@@ -2050,6 +2050,11 @@ VARP Omni::embedding(const std::vector<int>& input_ids) {
+     MNN::Express::ExecutorScope s(mExecutor);
+     bool hasMultimodalEmbeds = !mVisionEmbeddings.empty() || !mAudioEmbeddings.empty();
+     if (!hasMultimodalEmbeds) {
++        // A new text prefill must not reuse PLE from the previous decode step.
++        // Multimodal prefill keeps its full-sequence PLE in the branch below.
++        if (mPleEmbedding && input_ids.size() > 1) {
++            mPleInput = nullptr;
++        }
+         if (mConfig->has_deepstack() && mExtraArgs.size() == 1) {
+             mExtraArgs[0] = Express::_Fill(
+                 _var<int>({3, static_cast<int>(input_ids.size()), mConfig->hidden_size()}, {3}), _Scalar<float>(0.0));

@@ -15,6 +15,7 @@ export interface RemoteCatalogFile {
 }
 
 export interface RemoteCatalogItem {
+  minAppVersionCode?: number
   id: string
   directoryName: string
   displayName: string

@@ -3,7 +3,7 @@
 
 import { common } from '@kit.AbilityKit'
 import { KeyCode } from '@kit.InputKit'
-import { KeyboardAvoidMode } from '@kit.ArkUI'
+import { KeyboardAvoidMode, window } from '@kit.ArkUI'
 import { AppHeader } from '../components/AppHeader'
 import { ApiServerTab } from '../components/ApiServerTab'
 import { BottomTabs } from '../components/BottomTabs'
@@ -41,6 +41,17 @@ struct Index {
   private focusScope: string = ''
   private focusTimer: number = -1
   private abilityContext?: common.UIAbilityContext
+  private mainWindow?: window.Window
+  @State private bottomInset: number = 0
+  @State private keyboardVisible: boolean = false
+  private readonly onKeyboardHeightChange = (height: number): void => {
+    this.keyboardVisible = height > 0
+  }
+  private readonly onAvoidAreaChange = (event: window.AvoidAreaOptions): void => {
+    if (event.type === window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR) {
+      this.bottomInset = this.getUIContext().px2vp(event.area.bottomRect.height)
+    }
+  }
 
   onBackPress(): boolean {
     if (this.dialogExitBlocking) return true
@@ -74,6 +85,13 @@ struct Index {
     })
     const context = this.getUIContext().getHostContext() as common.UIAbilityContext
     this.abilityContext = context
+    window.getLastWindow(context).then((mainWindow: window.Window) => {
+      this.mainWindow = mainWindow
+      this.bottomInset = this.getUIContext().px2vp(
+        mainWindow.getWindowAvoidArea(window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR).bottomRect.height)
+      mainWindow.on('avoidAreaChange', this.onAvoidAreaChange)
+      mainWindow.on('keyboardHeightChange', this.onKeyboardHeightChange)
+    }).catch(() => {})
     this.viewModel.initialize(context)
     setTimeout(() => {
       this.showLaunch = false
@@ -85,6 +103,8 @@ struct Index {
   }
 
   aboutToDisappear(): void {
+    this.mainWindow?.off('avoidAreaChange', this.onAvoidAreaChange)
+    this.mainWindow?.off('keyboardHeightChange', this.onKeyboardHeightChange)
     clearTimeout(this.focusTimer)
     this.viewModel.dispose()
   }
@@ -257,6 +277,7 @@ struct Index {
                 topSpacing: this.windowWidth >= 600 ? 4 : 0
               })
               ChatTab({
+                inputBottomOffset: this.windowWidth >= 600 && !this.keyboardVisible ? this.bottomInset : 0,
                 viewModel: this.viewModel,
                 renderVersion: this.stateVersion,
                 active: this.activeTab === 0,
@@ -270,12 +291,14 @@ struct Index {
             }
             .width('100%')
             .height('100%')
+            .padding({ bottom: this.windowWidth >= 600 ? $r('app.float.wide_bottom_spacing') : 0 })
             .opacity(this.transitionTab === 0 ? 1 : 0)
             .visibility((this.visibleTabs & 1) !== 0 ? Visibility.Visible : Visibility.Hidden)
             .hitTestBehavior(this.activeTab === 0 ? HitTestMode.Default : HitTestMode.None)
             .accessibilityLevel(this.activeTab === 0 ? 'auto' : 'no-hide-descendants')
 
               ModelTab({
+                extendBottom: this.windowWidth >= 600,
                 viewModel: this.viewModel,
                 renderVersion: this.stateVersion,
                 onDragStateChange: (dragging: boolean) => {
@@ -292,6 +315,7 @@ struct Index {
               .accessibilityLevel(this.activeTab === 1 ? 'auto' : 'no-hide-descendants')
 
               ApiServerTab({
+                extendBottom: this.windowWidth >= 600,
                 viewModel: this.viewModel,
                 renderVersion: this.stateVersion,
                 loaded: this.viewModel.loaded,
@@ -317,6 +341,7 @@ struct Index {
               .accessibilityLevel(this.activeTab === 2 ? 'auto' : 'no-hide-descendants')
 
               MonitorTab({
+                extendBottom: this.windowWidth >= 600,
                 viewModel: this.viewModel,
                 active: this.activeTab === 3
               })
@@ -334,6 +359,7 @@ struct Index {
           .height(this.windowWidth >= 600 ? '100%' : 0)
           .zIndex(this.modelCardDragging ? 10 : 0)
           BottomTabs({
+            bottomInset: this.keyboardVisible ? 0 : this.bottomInset,
             onSettings: () => { this.showSettings = true },
             activeTab: this.activeTab,
             windowWidth: this.windowWidth,
@@ -345,6 +371,7 @@ struct Index {
           .height(this.windowWidth >= 600 ? '100%' : 62)
           .margin({ top: this.windowWidth < 600 ? 8 : 0 })
           .flexShrink(0)
+          .visibility(this.windowWidth < 600 && this.keyboardVisible ? Visibility.None : Visibility.Visible)
         }
         .width('100%')
         .layoutWeight(1)
@@ -352,7 +379,7 @@ struct Index {
       .width('100%')
       .height('100%')
       .justifyContent(FlexAlign.Start)
-      .padding({ bottom: 8 })
+      .padding({ bottom: this.windowWidth >= 600 ? 0 : 8 })
       .id('app-content')
       .focusable(!this.dialogExitBlocking && this.modalFocusId() === 'app-content')
 

@@ -1,5 +1,8 @@
 import copy
+import tempfile
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
 from scripts import model_catalog
 
@@ -44,6 +47,54 @@ def valid_catalog() -> dict:
 
 
 class ModelCatalogPublisherTest(unittest.TestCase):
+    def test_legacy_rejects_new_runtime_requirement_before_fetch(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "catalog.json"
+            model_catalog.write_catalog(path, valid_catalog())
+            before = path.read_bytes()
+            args = model_catalog.create_parser().parse_args([
+                "--catalog", str(path), "add", "Test/Model", "--min-app-version-code", "1100100"
+            ])
+            with patch.object(model_catalog, "build_item") as build:
+                with self.assertRaises(model_catalog.CatalogError):
+                    model_catalog.run(args)
+                build.assert_not_called()
+            self.assertEqual(path.read_bytes(), before)
+
+    def test_app_version_validation(self) -> None:
+        for value in (0, -1, True, 1.5, "1100100", None, 2147483648):
+            with self.subTest(value=value):
+                item = valid_item()
+                item["minAppVersionCode"] = value
+                with self.assertRaises(model_catalog.CatalogError):
+                    model_catalog.validate_item(item)
+        item = valid_item()
+        model_catalog.validate_item(item)
+        item["minAppVersionCode"] = 1100100
+        model_catalog.validate_item(item)
+
+    def test_defaults_to_current_catalog(self) -> None:
+        args = model_catalog.create_parser().parse_args(["validate"])
+        self.assertEqual(args.catalog.name, "catalog-v2.json")
+
+    def test_publishing_one_channel_preserves_other_channel(self) -> None:
+        for selected_name in ("catalog-v2.json", "catalog.json"):
+            with self.subTest(channel=selected_name), tempfile.TemporaryDirectory() as directory:
+                current = Path(directory) / "catalog-v2.json"
+                legacy = Path(directory) / "catalog.json"
+                for path in (current, legacy):
+                    model_catalog.write_catalog(path, valid_catalog())
+                selected = Path(directory) / selected_name
+                other = legacy if selected == current else current
+                original = other.read_bytes()
+                args = model_catalog.create_parser().parse_args([
+                    "--catalog", str(selected), "add", "Test/Remote-Model-MNN", "--min-app-version-code", "1100000"
+                ])
+                with patch.object(model_catalog, "build_item", return_value=valid_item()):
+                    self.assertEqual(model_catalog.run(args), 0)
+                self.assertEqual(other.read_bytes(), original)
+                self.assertEqual(model_catalog.load_catalog(selected)["catalogVersion"], 2)
+
     def test_normalize_modelscope_url(self) -> None:
         self.assertEqual(
             model_catalog.normalize_repo("https://modelscope.cn/models/Test/Remote-Model-MNN"),

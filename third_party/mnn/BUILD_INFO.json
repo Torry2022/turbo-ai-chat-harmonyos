@@ -1,6 +1,16 @@
 ﻿{
-    "version":  "3.6.0",
-    "commit":  "cc20f672af9e177e2fa338c332dc097de2fc9264",
+    "patches":  [
+                    {
+                        "file":  "patches/0001-omni-generation-attention-mask.patch",
+                        "sha256":  "6893e872cb923c0ad8a1183fac8bf1f278bb8f2884bd9ef26737496f8e349544"
+                    },
+                    {
+                        "file":  "patches/0002-omni-text-prefill-ple.patch",
+                        "sha256":  "338a4893dd563175484e344761b4ebf8a9cee74e8d97e98ecce90e09406ade64"
+                    }
+                ],
+    "version":  "3.6.1-dev+2edeef91",
+    "commit":  "2edeef91b425e98a93707840b6fffdd97980bdbe",
     "architecture":  "arm64-v8a",
     "stl":  "c++_shared",
     "ohosPlatformLevel":  9,
@@ -13,9 +23,10 @@
                      "lowMemory":  true,
                      "transformerFuse":  true,
                      "arm82":  true,
+                     "sme2":  false,
                      "opencv":  true,
                      "imageCodecs":  true,
                      "opencl":  false
                  },
-    "libMnnSha256":  "fd4cfc3953ded24312052adb9662661b4ee1bcf759c3ea643c97a51c87f1e631"
+    "libMnnSha256":  "45d6a8a33056179fe61d20a2c4430310fdc9fb230d55ab8672729ada9b76d24f"
 }

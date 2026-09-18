@@ -38,6 +38,7 @@ struct MonitorStatItem {
 
 @Component
 export struct MonitorTab {
+  @Prop extendBottom: boolean = false
   @ObjectLink viewModel: ChatViewModel
   @Prop @Watch('onActiveChanged') active: boolean = false
   @State stats: RuntimeStats = EMPTY_RUNTIME_STATS
@@ -276,6 +277,7 @@ export struct MonitorTab {
           .fontColor($r('app.color.text_version'))
       }
       .width('100%')
+      .padding({ bottom: $r('app.float.page_scroll_bottom_padding') })
     }
     .width('100%')
     .height('100%')
@@ -285,5 +287,6 @@ export struct MonitorTab {
     .align(Alignment.Top)
     .scrollBar(BarState.Off)
     .edgeEffect(EdgeEffect.Spring)
+    .expandSafeArea([SafeAreaType.SYSTEM], this.extendBottom ? [SafeAreaEdge.BOTTOM] : [])
   }
 }

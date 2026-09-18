@@ -1,11 +1,11 @@
 param(
-  [string]$MnnRoot = "$PSScriptRoot\..\.codex_mnn_source_3.6.0",
-  [string]$BuildDir = "$PSScriptRoot\..\.codex_mnn_build_3.6.0",
+  [string]$MnnRoot = "$PSScriptRoot\..\.codex_mnn_source_2edeef91",
+  [string]$BuildDir = "$PSScriptRoot\..\.codex_mnn_build_2edeef91",
   [string]$HarmonyNativeHome = $env:HARMONY_NATIVE_HOME
 )
 
 $ErrorActionPreference = 'Stop'
-$expectedCommit = 'cc20f672af9e177e2fa338c332dc097de2fc9264'
+$expectedCommit = '2edeef91b425e98a93707840b6fffdd97980bdbe'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $MnnRoot = [IO.Path]::GetFullPath($MnnRoot)
 $BuildDir = [IO.Path]::GetFullPath($BuildDir)
@@ -18,6 +18,11 @@ if ($LASTEXITCODE -ne 0 -or $actualCommit -ne $expectedCommit) {
   throw "Expected MNN $expectedCommit, found $actualCommit"
 }
 if (-not (Test-Path $library)) { throw "Missing $library" }
+$patchNames = @('0001-omni-generation-attention-mask.patch', '0002-omni-text-prefill-ple.patch')
+foreach ($patchName in $patchNames) {
+  & git -C $MnnRoot apply --reverse --check (Join-Path $root "third_party\mnn\patches\$patchName")
+  if ($LASTEXITCODE -ne 0) { throw "Required MNN patch is missing: $patchName" }
+}
 
 New-Item -ItemType Directory -Force -Path (Split-Path $libraryOutput), $includeOutput | Out-Null
 Copy-Item -LiteralPath $library -Destination $libraryOutput -Force
@@ -40,7 +45,13 @@ if ($HarmonyNativeHome) {
   }
 }
 $manifest = [ordered]@{
-  version = '3.6.0'
+  patches = @($patchNames | ForEach-Object {
+    [ordered]@{
+      file = "patches/$_"
+      sha256 = (Get-FileHash (Join-Path $root "third_party\mnn\patches\$_") -Algorithm SHA256).Hash.ToLowerInvariant()
+    }
+  })
+  version = '3.6.1-dev+2edeef91'
   commit = $expectedCommit
   architecture = 'arm64-v8a'
   stl = 'c++_shared'
@@ -54,6 +65,7 @@ $manifest = [ordered]@{
     lowMemory = $true
     transformerFuse = $true
     arm82 = $true
+    sme2 = $false
     opencv = $true
     imageCodecs = $true
     opencl = $false
@@ -61,4 +73,4 @@ $manifest = [ordered]@{
   libMnnSha256 = (Get-FileHash $libraryOutput -Algorithm SHA256).Hash.ToLowerInvariant()
 }
 $manifest | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $root 'third_party\mnn\BUILD_INFO.json')
-Write-Output 'Staged MNN 3.6.0 runtime and headers.'
+Write-Output 'Staged MNN development snapshot 2edeef91 runtime and headers.'
