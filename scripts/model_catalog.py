@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+import math
 import os
 import re
 import sys
@@ -173,10 +174,6 @@ def select_model_files(files: list[dict[str, Any]], references: set[str]) -> lis
     return selected
 
 
-def number(value: Any, fallback: float | int) -> float | int:
-    return value if isinstance(value, (int, float)) and not isinstance(value, bool) else fallback
-
-
 def infer_supports_image(mode: str, llm_config: dict[str, Any], files: list[dict[str, Any]]) -> bool:
     if mode == "true":
         return True
@@ -188,7 +185,22 @@ def infer_supports_image(mode: str, llm_config: dict[str, Any], files: list[dict
 
 
 def build_runtime(display_name: str, supports_image: bool, system_prompt: str, context_limit: int,
-                  config: dict[str, Any]) -> dict[str, Any]:
+                  config: dict[str, Any], generation_config: dict[str, Any] | None = None) -> dict[str, Any]:
+    def sampling_value(keys: tuple[str, ...], fallback: float | int) -> float | int:
+        # Prefer the MNN runtime config; snake_case wins over legacy aliases, as in MNN.
+        for source in (config, generation_config or {}):
+            for key in keys:
+                if key in source:
+                    value = source[key]
+                    if value is None:
+                        continue
+                    require(isinstance(value, (int, float)) and not isinstance(value, bool)
+                            and math.isfinite(value), f"生成参数 {key} 必须是有限数值")
+                    return value
+        return fallback
+
+    if generation_config and generation_config.get("do_sample") is False:
+        raise CatalogError("generation_config.json 要求贪心解码，不能自动映射为 App 的混合采样；请人工确认运行配置")
     prompt = system_prompt.strip()
     if not prompt:
         prompt = f"你是运行在本地设备上的 {display_name}。请始终使用简体中文回答，表达简洁清楚。"
@@ -198,13 +210,13 @@ def build_runtime(display_name: str, supports_image: bool, system_prompt: str, c
         "systemPrompt": prompt,
         "contextMessageLimit": context_limit,
         "generationDefaults": {
-            "temperature": number(config.get("temperature"), 0.6),
-            "topP": number(config.get("topP"), 0.9),
-            "topK": number(config.get("topK"), 40),
-            "repetitionPenalty": number(config.get("penalty"), 1.05),
-            "frequencyPenalty": 0,
-            "presencePenalty": 0,
-            "penaltyWindow": 256,
+            "temperature": sampling_value(("temperature",), 0.6),
+            "topP": sampling_value(("top_p", "topP"), 0.9),
+            "topK": sampling_value(("top_k", "topK"), 40),
+            "repetitionPenalty": sampling_value(("repetition_penalty", "penalty"), 1.05),
+            "frequencyPenalty": sampling_value(("frequency_penalty",), 0),
+            "presencePenalty": sampling_value(("presence_penalty",), 0),
+            "penaltyWindow": sampling_value(("penalty_window",), 256),
         },
     }
 
@@ -214,6 +226,8 @@ def build_item(args: argparse.Namespace) -> dict[str, Any]:
     files, resolved_revision = fetch_modelscope_files(repo, args.revision)
     config = fetch_repo_json(repo, resolved_revision, "config.json")
     llm_config = fetch_repo_json(repo, resolved_revision, "llm_config.json")
+    generation_config = (fetch_repo_json(repo, resolved_revision, "generation_config.json")
+                         if any(file.get("Path") == "generation_config.json" for file in files) else None)
     selected_files = select_model_files(files, referenced_paths(config) | referenced_paths(llm_config))
 
     repo_name = repo.split("/", 1)[1]
@@ -224,7 +238,8 @@ def build_item(args: argparse.Namespace) -> dict[str, Any]:
     supports_image = infer_supports_image(args.supports_image, llm_config, selected_files)
     description = args.description.strip() or "来自 ModelScope 的兼容 MNN 端侧模型。"
     capabilities = ["文本", "图片"] if supports_image else ["文本"]
-    runtime = build_runtime(display_name, supports_image, args.system_prompt, args.context_message_limit, config)
+    runtime = build_runtime(display_name, supports_image, args.system_prompt, args.context_message_limit,
+                            config, generation_config)
 
     return {
         "id": model_id,

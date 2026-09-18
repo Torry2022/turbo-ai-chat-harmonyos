@@ -47,6 +47,58 @@ def valid_catalog() -> dict:
 
 
 class ModelCatalogPublisherTest(unittest.TestCase):
+    def defaults(self, config, generation_config=None):
+        return model_catalog.build_runtime("Test", False, "", 6, config, generation_config)["generationDefaults"]
+
+    def test_sampling_aliases_and_mnn_precedence(self):
+        defaults = self.defaults({"top_k": 32, "topK": 20, "top_p": 0.8, "topP": 0.9,
+                                  "repetition_penalty": 1.2, "penalty": 1.1,
+                                  "frequency_penalty": 0.2, "presence_penalty": 0.3,
+                                  "penalty_window": 0})
+        self.assertEqual(defaults["topK"], 32)
+        self.assertEqual(defaults["topP"], 0.8)
+        self.assertEqual(defaults["repetitionPenalty"], 1.2)
+        self.assertEqual(defaults["frequencyPenalty"], 0.2)
+        self.assertEqual(defaults["presencePenalty"], 0.3)
+        self.assertEqual(defaults["penaltyWindow"], 0)
+
+    def test_legacy_and_missing_defaults(self):
+        self.assertEqual(self.defaults({})["topK"], 40)
+        self.assertEqual(self.defaults({"topK": 20, "penalty": 1.1})["repetitionPenalty"], 1.1)
+
+    def test_generation_config_is_secondary_and_output_limit_stays_app_owned(self):
+        result = self.defaults({"topK": 20}, {"top_k": 50, "temperature": 0.8,
+                                                "max_new_tokens": 32768})
+        self.assertEqual(result["topK"], 20)
+        self.assertEqual(result["temperature"], 0.8)
+        self.assertNotIn("maxNewTokens", result)
+
+    def test_invalid_sampling_values_and_greedy_are_not_silently_converted(self):
+        for value in (True, "0.7", float("nan"), float("inf")):
+            with self.subTest(value=value), self.assertRaises(model_catalog.CatalogError):
+                self.defaults({"temperature": value})
+        with self.assertRaises(model_catalog.CatalogError):
+            self.defaults({}, {"do_sample": False})
+        self.assertEqual(self.defaults({"temperature": None}, {"temperature": 0.8})["temperature"], 0.8)
+
+    def test_build_reads_optional_generation_config_at_resolved_revision(self):
+        revision = "a" * 40
+        files = [{"Path": name, "Size": 100} for name in
+                 ("config.json", "llm_config.json", "llm.mnn", "generation_config.json")]
+        args = model_catalog.create_parser().parse_args([
+            "add", "Test/Model-MNN", "--min-app-version-code", "1100100"])
+        configs = {"config.json": {}, "llm_config.json": {},
+                   "generation_config.json": {"temperature": 0.8}}
+        with patch.object(model_catalog, "fetch_modelscope_files", return_value=(files, revision)), \
+                patch.object(model_catalog, "fetch_repo_json", side_effect=lambda r, v, p: configs[p]) as fetch:
+            item = model_catalog.build_item(args)
+            fetch.assert_any_call("Test/Model-MNN", revision, "generation_config.json")
+            self.assertEqual(item["runtime"]["generationDefaults"]["temperature"], 0.8)
+        with patch.object(model_catalog, "fetch_modelscope_files", return_value=(files[:-1], revision)), \
+                patch.object(model_catalog, "fetch_repo_json", return_value={}) as fetch:
+            model_catalog.build_item(args)
+            self.assertEqual(fetch.call_count, 2)
+
     def test_legacy_rejects_new_runtime_requirement_before_fetch(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "catalog.json"

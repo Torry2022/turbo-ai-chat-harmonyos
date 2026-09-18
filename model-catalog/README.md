@@ -37,6 +37,8 @@
 
 工作流只允许修改这一份目录文件；如果 `main` 在运行期间发生变化或生成器触碰其他文件，发布会失败并要求重新运行。工作流由手动表单触发，自己的提交不会递归触发下一次发布。
 
+注意：`add_or_update` 会重新生成运行配置，不自动保留人工调整过的参数。已有条目应先在本地使用 `--dry-run` 比较差异；有意保留的实测配置须人工维护，不要直接用 Actions 覆盖。当前已确认的条目见[生成参数说明](generation-defaults.md#历史依据复核与处理结论)。
+
 ## Fork 与二次开发
 
 发布器只负责更新当前仓库中选中的目录，不会自动改变 App 请求在线目录的地址。当前 App 在 [`ModelCatalogService.ets`](../entry/src/main/ets/services/ModelCatalogService.ets) 中固定读取：
@@ -78,6 +80,8 @@ python scripts/model_catalog.py --catalog model-catalog/catalog.json validate
 ```
 
 新增模型时，发布器会自动读取仓库文件名和精确大小、排除 README 等非运行文件、解析文本/图片能力和常用生成参数、生成运行配置、递增 `catalogVersion` 并更新 `publishedAt`。使用 `master`、分支或标签作为输入时，最终写入目录的是 ModelScope 返回的具体提交哈希。
+
+生成参数兼容新旧字段名，并以同一提交的 `config.json` 优先、`generation_config.json` 次之，缺项使用 App 兜底值。内置预设和已安装快照不会随目录刷新自动覆盖，详见[生成参数来源、更新边界与审计结果](generation-defaults.md)。
 
 自动推断不合适时可使用 `--id`、`--directory-name`、`--display-name`、`--description`、`--supports-image`、`--system-prompt` 和 `--context-message-limit` 覆盖。运行 `python scripts/model_catalog.py add --help` 可查看完整参数。
 
