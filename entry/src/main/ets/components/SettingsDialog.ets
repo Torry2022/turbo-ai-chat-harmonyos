@@ -26,7 +26,7 @@ export struct SettingsDialog {
       .justifyContent(FlexAlign.Center)
     }
       .attributeModifier(new ActionButtonStyle(
-        this.themeMode === mode ? $r('app.color.selected_background') : Color.Transparent,
+        this.themeMode === mode ? $r('app.color.selected_background') : $r('app.color.nav_idle'),
         this.themeMode === mode ? $r('app.color.nav_active_text') : $r('app.color.text_secondary')))
       .padding({ left: 4, right: 4 })
       .accessibilityText(label)

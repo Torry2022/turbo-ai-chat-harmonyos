@@ -2,9 +2,12 @@
 // See README.md and Git history for provenance and change details.
 
 import { common } from '@kit.AbilityKit'
+import { deviceInfo } from '@kit.BasicServicesKit'
 import { KeyCode } from '@kit.InputKit'
 import { KeyboardAvoidMode, window } from '@kit.ArkUI'
 import { AppHeader } from '../components/AppHeader'
+import { DesktopTitleBar } from '../components/DesktopTitleBar'
+import { DesktopHelpDialog } from '../components/DesktopHelpDialog'
 import { ApiServerTab } from '../components/ApiServerTab'
 import { BottomTabs } from '../components/BottomTabs'
 import { BuiltinModelInstallDialog } from '../components/BuiltinModelInstallDialog'
@@ -31,6 +34,7 @@ struct Index {
   @State private visibleTabs: number = 1
   private tabTransitionSerial: number = 0
   @State @Watch('onSettingsChanged') private showSettings: boolean = false
+  @State @Watch('onSettingsChanged') private helpDialog: string = ''
   @State private dialogExitBlocking: boolean = false
   @State private stateVersion: number = 0
   @State private modelCardDragging: boolean = false
@@ -42,6 +46,12 @@ struct Index {
   private focusTimer: number = -1
   private abilityContext?: common.UIAbilityContext
   private mainWindow?: window.Window
+  @State private desktopTitleVisible: boolean = false
+  @State private desktopTitleHeight: number = 37
+  @State private desktopControlsWidth: number = 148
+  private readonly onTitleButtonRectChange = (rect: window.TitleButtonRect): void => {
+    this.desktopControlsWidth = rect.width + rect.right
+  }
   @State private bottomInset: number = 0
   @State private keyboardVisible: boolean = false
   private readonly onKeyboardHeightChange = (height: number): void => {
@@ -55,6 +65,10 @@ struct Index {
 
   onBackPress(): boolean {
     if (this.dialogExitBlocking) return true
+    if (this.helpDialog.length > 0) {
+      this.helpDialog = ''
+      return true
+    }
     if (this.showSettings) {
       this.showSettings = false
       return true
@@ -87,6 +101,13 @@ struct Index {
     this.abilityContext = context
     window.getLastWindow(context).then((mainWindow: window.Window) => {
       this.mainWindow = mainWindow
+      if (deviceInfo.deviceType === '2in1') {
+        this.desktopTitleHeight = mainWindow.getWindowDecorHeight()
+        this.onTitleButtonRectChange(mainWindow.getTitleButtonRect())
+        mainWindow.on('windowTitleButtonRectChange', this.onTitleButtonRectChange)
+        mainWindow.setWindowDecorVisible(false)
+        this.desktopTitleVisible = true
+      }
       this.bottomInset = this.getUIContext().px2vp(
         mainWindow.getWindowAvoidArea(window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR).bottomRect.height)
       mainWindow.on('avoidAreaChange', this.onAvoidAreaChange)
@@ -103,6 +124,9 @@ struct Index {
   }
 
   aboutToDisappear(): void {
+    if (this.desktopTitleVisible) {
+      this.mainWindow?.off('windowTitleButtonRectChange', this.onTitleButtonRectChange)
+    }
     this.mainWindow?.off('avoidAreaChange', this.onAvoidAreaChange)
     this.mainWindow?.off('keyboardHeightChange', this.onKeyboardHeightChange)
     clearTimeout(this.focusTimer)
@@ -110,6 +134,7 @@ struct Index {
   }
 
   private modalFocusId(): string {
+    if (this.helpDialog.length > 0) return 'desktop-help-dialog'
     if (this.showSettings) return 'settings-dialog'
     if (this.viewModel.showDeleteModelDialog) return 'delete-dialog'
     if (this.viewModel.showModelMarketDialog) return 'market-dialog'
@@ -174,9 +199,17 @@ struct Index {
     this.changeTab(0)
   }
 
+  private showMenuInfo(about: boolean): void {
+    this.helpDialog = about ? 'about' : 'shortcuts'
+  }
+
   private handleKey(event: KeyEvent): boolean {
     if (this.dialogExitBlocking) return true
     if (event.keyCode === KeyCode.KEYCODE_ESCAPE && event.type === KeyType.Down) {
+      if (this.helpDialog.length > 0) {
+        this.helpDialog = ''
+        return true
+      }
       if (this.showSettings) {
         this.showSettings = false
         return true
@@ -190,7 +223,7 @@ struct Index {
       this.newChatKeyHeld = false
       return false
     }
-    if (this.showSettings || this.activeTab !== 0 || !event.getModifierKeyState?.(['ctrl']) ||
+    if (this.helpDialog.length > 0 || this.showSettings || this.activeTab !== 0 || !event.getModifierKeyState?.(['ctrl']) ||
       this.viewModel.showModelLoadDialog || this.viewModel.showBuiltinModelInstallDialog ||
       this.viewModel.showModelMarketDialog || this.viewModel.showDeleteModelDialog) {
       return false
@@ -281,7 +314,7 @@ struct Index {
                 viewModel: this.viewModel,
                 renderVersion: this.stateVersion,
                 active: this.activeTab === 0,
-                dialogVisible: this.dialogExitBlocking || this.showSettings || this.viewModel.showModelLoadDialog || this.viewModel.showBuiltinModelInstallDialog ||
+                dialogVisible: this.helpDialog.length > 0 || this.dialogExitBlocking || this.showSettings || this.viewModel.showModelLoadDialog || this.viewModel.showBuiltinModelInstallDialog ||
                   this.viewModel.showModelMarketDialog || this.viewModel.showDeleteModelDialog
               })
               .padding({ left: this.pagePadding(), right: this.pagePadding() })
@@ -433,6 +466,18 @@ struct Index {
         .focusable(true)
         .onAppear(() => this.updateModalFocus(true))
       }
+      if (this.helpDialog.length > 0) {
+        DesktopHelpDialog({
+          about: this.helpDialog === 'about',
+          version: this.viewModel.appVersion,
+          availableWidth: this.windowWidth,
+          availableHeight: this.windowHeight,
+          onClose: () => { this.helpDialog = '' }
+        })
+        .id('desktop-help-dialog')
+        .focusable(true)
+        .onAppear(() => this.updateModalFocus(true))
+      }
       if (this.dialogExitBlocking) {
         Column()
           .width('100%')
@@ -451,23 +496,41 @@ struct Index {
   }
 
   build() {
-    Stack() {
-      Column()
-        .width('100%')
-        .height('100%')
-        .backgroundColor(this.showLaunch ? $r('app.color.start_window_background') :
-          (this.windowWidth < 600 ? $r('app.color.page_compact') : $r('app.color.page')))
-        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
-      if (this.showLaunch) {
-        LaunchScreen()
-      } else {
-        this.MainScreen()
+    Column() {
+      if (this.desktopTitleVisible) {
+        DesktopTitleBar({
+          mainWindow: this.mainWindow,
+          barHeight: this.desktopTitleHeight,
+          controlsWidth: this.desktopControlsWidth,
+          busy: this.viewModel.busy,
+          onNewChat: () => this.newChat(),
+          onSettings: () => { this.showSettings = true },
+          onShortcuts: () => this.showMenuInfo(false),
+          onAbout: () => this.showMenuInfo(true)
+        })
+        .enabled(!this.showLaunch && !this.dialogExitBlocking && this.modalFocusId() === 'app-content')
       }
+      Stack() {
+        Column()
+          .width('100%')
+          .height('100%')
+          .backgroundColor(this.showLaunch ? $r('app.color.start_window_background') :
+            (this.windowWidth < 600 ? $r('app.color.page_compact') : $r('app.color.page')))
+          .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+        if (this.showLaunch) {
+          LaunchScreen()
+        } else {
+          this.MainScreen()
+        }
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor(this.showLaunch ? $r('app.color.start_window_background') :
+        (this.windowWidth < 600 ? $r('app.color.page_compact') : $r('app.color.page')))
+      .layoutWeight(1)
     }
     .width('100%')
     .height('100%')
-    .backgroundColor(this.showLaunch ? $r('app.color.start_window_background') :
-      (this.windowWidth < 600 ? $r('app.color.page_compact') : $r('app.color.page')))
     .onKeyEvent((event: KeyEvent): boolean => this.handleKey(event))
   }
 }
