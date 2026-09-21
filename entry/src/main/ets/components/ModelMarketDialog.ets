@@ -55,6 +55,35 @@ export struct ModelMarketDialog {
   }
 
   @Builder
+  private EmptyResults() {
+    Column({ space: 12 }) {
+      Image($r('app.media.model_search_empty'))
+        .width(48)
+        .height(48)
+        .fillColor($r('app.color.text_muted'))
+        .accessibilityLevel('no')
+      Text('没有匹配的模型')
+        .fontSize(15)
+        .fontWeight(FontWeight.Medium)
+        .fontColor($r('app.color.text_title'))
+      Text('试试其他关键词，或切换分类筛选')
+        .fontSize(13)
+        .fontColor($r('app.color.text_muted'))
+        .textAlign(TextAlign.Center)
+      Button('清空筛选')
+        .attributeModifier(new ActionButtonStyle(
+          $r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
+        .onClick(() => {
+          this.searchController.stopEditing()
+          this.viewModel.updateModelMarketSearchText('')
+          this.viewModel.updateModelMarketCapabilityFilter('全部')
+        })
+    }
+    .width('100%')
+    .padding({ top: 40, bottom: 40, left: 12, right: 12 })
+  }
+
+  @Builder
   private CapabilityTag(text: string) {
     Text(text)
       .fontSize(10)
@@ -245,6 +274,9 @@ export struct ModelMarketDialog {
 
         Scroll() {
           Column({ space: 10 }) {
+            if (this.viewModel.modelCatalogItems().length === 0) {
+              this.EmptyResults()
+            }
             ForEach(this.viewModel.modelCatalogItems(), (item: ModelCatalogItem) => {
               this.CatalogItemCard(item)
             }, (item: ModelCatalogItem) => item.id)

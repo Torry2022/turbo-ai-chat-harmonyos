@@ -3,6 +3,7 @@
 
 import { AbilityConstant, Configuration, UIAbility, Want } from '@kit.AbilityKit'
 import { hilog } from '@kit.PerformanceAnalysisKit'
+import { deviceInfo } from '@kit.BasicServicesKit'
 import { window } from '@kit.ArkUI'
 import { themeService } from '../services/ThemeService'
 
@@ -15,6 +16,9 @@ export default class EntryAbility extends UIAbility {
   private configureWindow(windowStage: window.WindowStage): void {
     try {
       const mainWindow = windowStage.getMainWindowSync()
+      if (deviceInfo.deviceType === '2in1') {
+        mainWindow.setWindowDecorVisible(false)
+      }
       themeService.attachWindow(mainWindow)
       mainWindow.setWindowLayoutFullScreen(false).catch((err: Error) => {
         hilog.warn(0x0000, 'TurboAIChat', 'set window layout failed: %{public}s', JSON.stringify(err))

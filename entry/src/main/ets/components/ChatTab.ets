@@ -11,6 +11,7 @@ export struct ChatTab {
   @Prop @Watch('onActiveChange') active: boolean = false
   @Prop dialogVisible: boolean = false
   @Prop inputBottomOffset: number = 0
+  onRequestModel: () => void = () => {}
   @State private inputFocused: boolean = false
   @State private voiceWaveRaised: boolean = false
   private inputController: TextAreaController = new TextAreaController()
@@ -214,6 +215,7 @@ export struct ChatTab {
 
         Stack({ alignContent: Alignment.End }) {
           TextArea({ text: this.viewModel.inputText, controller: this.inputController })
+            .hitTestBehavior(this.viewModel.loaded ? HitTestMode.Default : HitTestMode.None)
             .enabled(this.viewModel.loaded && !this.viewModel.speechRecognitionStarting &&
               !this.viewModel.speechRecognizing)
             .constraintSize({ minHeight: 44, maxHeight: 120 })
@@ -352,6 +354,11 @@ export struct ChatTab {
         .width('100%')
         .backgroundColor($r('app.color.composer_background'))
         .borderRadius(10)
+        .onClick(() => {
+          if (!this.viewModel.loaded && !this.viewModel.modelLoading) {
+            this.onRequestModel()
+          }
+        })
       }
       .width('100%')
       .translate({ y: this.inputBottomOffset })

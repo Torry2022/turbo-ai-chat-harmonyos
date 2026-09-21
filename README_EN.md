@@ -54,6 +54,13 @@ In the HarmonyOS ecosystem, on-device AI inference today largely depends on Andr
 
 ## Recent Highlights
 
+**PC menus and chat interactions (v1.11.0)**
+
+- Add Chat, Settings, and Help menus to the PC title bar, with hover switching, keyboard shortcut help, and an About dialog.
+- Keep the current model name and status indicator above the chat input. Clicking the input area without a loaded model opens the model page.
+- Support copying selected message text, with PC right-click copying respecting the selection. Refine send/microphone button transitions and startup presentation.
+- Show an illustrated empty state and a filter reset action when no models match in the Model Gallery. See the [parameter sourcing notes (Chinese)](model-catalog/generation-defaults.md) for model defaults.
+
 **Runtime and model compatibility (v1.10.1)**
 
 - Move to a pinned MNN development snapshot for MiniCPM5-2B operators, with local fixes for Gemma attention masks and stale PLE inputs across text requests.
@@ -159,6 +166,8 @@ With a physical keyboard, Enter sends from the chat input and Shift+Enter insert
 - Adaptive navigation: bottom tabs in narrow windows and a sidebar in wider windows. Resizing retains page instances; monitoring pauses when hidden and preserves its scroll position.
 - The PC window title bar provides Chat, Settings, and Help menus for starting a new chat, opening appearance settings, and viewing keyboard shortcuts or the app version. Once opened, hover over another menu heading to switch menus, or press Esc to close. Phone and tablet entry points remain unchanged.
 - The chat runtime strip spans only the page content area and does not shift the sidebar. Wide-screen chat uses the same maximum page width as other tabs, with separate message-width limits for readability.
+- The composer keeps the model name and loading state visible. Clicking it before a model is loaded opens the model page. Long-press a message bubble on phones and tablets, or right-click it on PC, to open the copy menu.
+- Message text supports partial copying: long-press text and adjust the selection on touchscreens, or drag with a mouse on PC. Selections stay within one text block; continuous selection across Markdown paragraphs, code blocks, or table cells is not yet supported.
 - Wide model pages place the model list beside its settings. Long-press a handle to reorder by touch, or drag it directly with a mouse. Resizing cancels an active drag without applying its tentative order.
 - Monitoring cards switch between one and two columns according to available width, with metrics sharing the space inside each card.
 - Dialogs fit the available window width and allow long body text to scroll. The Model Gallery shrinks when the on-screen keyboard opens, and keyboard focus stays out of the underlying page while a dialog is open.

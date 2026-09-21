@@ -310,6 +310,10 @@ struct Index {
                 topSpacing: this.windowWidth >= 600 ? 4 : 0
               })
               ChatTab({
+                onRequestModel: () => {
+                  this.changeTab(1)
+                  this.showToast('请先加载模型', 1800)
+                },
                 inputBottomOffset: this.windowWidth >= 600 && !this.keyboardVisible ? this.bottomInset : 0,
                 viewModel: this.viewModel,
                 renderVersion: this.stateVersion,
@@ -497,7 +501,7 @@ struct Index {
 
   build() {
     Column() {
-      if (this.desktopTitleVisible) {
+      if (this.desktopTitleVisible && !this.showLaunch) {
         DesktopTitleBar({
           mainWindow: this.mainWindow,
           barHeight: this.desktopTitleHeight,

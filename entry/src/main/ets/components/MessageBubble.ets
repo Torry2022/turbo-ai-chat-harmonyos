@@ -2,7 +2,7 @@ import { CompactActionStyle } from './ButtonStyles'
 import { ChatMessage } from '../models/ChatTypes'
 import { MarkdownBlock, MarkdownSpan, parseInlineMarkdown, parseLightMarkdown } from '../utils/markdown'
 import { parseAssistantText } from '../utils/thinking'
-import { pasteboard } from '@kit.BasicServicesKit'
+import { deviceInfo, pasteboard } from '@kit.BasicServicesKit'
 import { common } from '@kit.AbilityKit'
 
 @Component
@@ -17,9 +17,18 @@ export struct MessageBubble {
     thinkingExpanded: false
   }
   onToggleThinking: (messageId: number) => void = (_messageId: number) => {}
+  private selectedCopyText: string = ''
+
+  private updateSelection(text: string, start: number, end: number): void {
+    this.selectedCopyText = start >= 0 && end > start ? text.substring(start, end) : ''
+  }
+
+  private inlinePlainText(text: string): string {
+    return parseInlineMarkdown(text).map((span: MarkdownSpan) => span.text).join('')
+  }
 
   private async copyToClipboard(): Promise<void> {
-    const text = this.answerText()
+    const text = this.selectedCopyText.length > 0 ? this.selectedCopyText : this.answerText()
     try {
       const pasteData = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, text)
       await pasteboard.getSystemPasteboard().setData(pasteData)
@@ -105,6 +114,11 @@ export struct MessageBubble {
         }
       }, (_span: MarkdownSpan, index: number) => `${index}`)
     }
+    .copyOption(CopyOptions.LocalDevice)
+    .textSelectable(TextSelectableMode.SELECTABLE_FOCUSABLE)
+    .onTextSelectionChange((start: number, end: number) => {
+      this.updateSelection(this.inlinePlainText(text), start, end)
+    })
     .width('100%')
     .fontSize(14)
     .lineHeight(21)
@@ -131,6 +145,11 @@ export struct MessageBubble {
           }
         }, (_span: MarkdownSpan, index: number) => `${blockIndex}-${index}`)
       }
+      .copyOption(CopyOptions.LocalDevice)
+      .textSelectable(TextSelectableMode.SELECTABLE_FOCUSABLE)
+      .onTextSelectionChange((start: number, end: number) => {
+        this.updateSelection(this.inlinePlainText(block.text), start, end)
+      })
       .width('100%')
       .fontSize(15)
       .lineHeight(22)
@@ -138,6 +157,11 @@ export struct MessageBubble {
     } else if (block.type === 'code') {
       Stack({ alignContent: Alignment.TopEnd }) {
         Text(block.text)
+          .copyOption(CopyOptions.LocalDevice)
+          .textSelectable(TextSelectableMode.SELECTABLE_FOCUSABLE)
+          .onTextSelectionChange((start: number, end: number) => {
+            this.updateSelection(block.text, start, end)
+          })
           .width('100%')
           .fontSize(13)
           .lineHeight(19)
@@ -232,6 +256,11 @@ export struct MessageBubble {
                 }
               }, (_span: MarkdownSpan, spanIndex: number) => `${blockIndex}-${itemIndex}-${spanIndex}`)
             }
+            .copyOption(CopyOptions.LocalDevice)
+            .textSelectable(TextSelectableMode.SELECTABLE_FOCUSABLE)
+            .onTextSelectionChange((start: number, end: number) => {
+              this.updateSelection(this.inlinePlainText(item), start, end)
+            })
             .fontSize(15)
             .lineHeight(22)
             .layoutWeight(1)
@@ -279,6 +308,11 @@ export struct MessageBubble {
 
       if (this.message.thinkingExpanded || this.answerText().length === 0) {
         Text(this.thinkingText().length > 0 ? this.thinkingText() : '...')
+          .copyOption(CopyOptions.LocalDevice)
+          .textSelectable(TextSelectableMode.SELECTABLE_FOCUSABLE)
+          .onTextSelectionChange((start: number, end: number) => {
+            this.updateSelection(this.thinkingText(), start, end)
+          })
           .fontSize(13)
           .lineHeight(20)
           .fontColor($r('app.color.text_thinking_body'))
@@ -321,6 +355,11 @@ export struct MessageBubble {
             this.MarkdownContent(this.answerText().length > 0 ? this.answerText() : '...')
           } else {
             Text(this.answerText().length > 0 ? this.answerText() : '...')
+              .copyOption(CopyOptions.LocalDevice)
+              .textSelectable(TextSelectableMode.SELECTABLE_FOCUSABLE)
+              .onTextSelectionChange((start: number, end: number) => {
+                this.updateSelection(this.answerText(), start, end)
+              })
               .width('100%')
               .fontSize(15)
               .lineHeight(22)
@@ -341,7 +380,8 @@ export struct MessageBubble {
       .borderRadius(8)
       .width(this.message.role === 'user' ? '84%' : '94%')
       .constraintSize({ maxWidth: this.message.role === 'user' ? 720 : 880 })
-      .bindContextMenu(this.CopyMenuBuilder, ResponseType.LongPress)
+      .bindContextMenu(this.CopyMenuBuilder,
+        deviceInfo.deviceType === '2in1' ? ResponseType.RightClick : ResponseType.LongPress)
       if (this.message.role !== 'user') {
         Blank()
       }
