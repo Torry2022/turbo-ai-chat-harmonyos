@@ -105,9 +105,10 @@ export class ModelLifecycleService {
 
   importPickedModel(
     context: common.UIAbilityContext,
-    existingProfiles: ModelProfile[]
+    existingProfiles: ModelProfile[],
+    folder: boolean = false
   ): Promise<ModelImportResult | undefined> {
-    return this.importService.pickAndImport(context, existingProfiles)
+    return this.importService.pickAndImport(context, existingProfiles, folder)
   }
 
   scanPushedModels(filesDir: string, existingProfiles: ModelProfile[]): Promise<ModelImportScanResult> {

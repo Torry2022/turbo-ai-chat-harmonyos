@@ -800,13 +800,15 @@ export struct ModelTab {
   private ModelManagementCard() {
     Column({ space: 8 }) {
       this.SectionTitle('模型管理', '', 2)
-      Button('扫描已推送目录')
-        .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
-        .enabled(this.controlsEnabled())
-        .width('100%')
-        .onClick(() => {
-          this.viewModel.scanPushedModelDirectories()
-        })
+      if (canIUse('SystemCapability.FileManagement.UserFileService.FolderSelection')) {
+        Button('选择文件夹导入')
+          .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
+          .enabled(this.controlsEnabled())
+          .width('100%')
+          .onClick(() => {
+            this.viewModel.importModelPackage(true)
+          })
+      }
       Button(this.viewModel.modelImporting ? '正在导入' : '导入模型压缩包')
         .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
         .enabled(this.controlsEnabled())
@@ -814,13 +816,20 @@ export struct ModelTab {
         .onClick(() => {
           this.viewModel.importModelPackage()
         })
+      Button('扫描已推送目录')
+        .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
+        .enabled(this.controlsEnabled())
+        .width('100%')
+        .onClick(() => {
+          this.viewModel.scanPushedModelDirectories()
+        })
       Text(this.viewModel.modelImportMessage)
         .fontSize(12)
         .lineHeight(18)
         .fontColor(this.viewModel.modelImportMessage.indexOf('失败') >= 0 ? $r('app.color.button_danger_text') : $r('app.color.text_muted'))
-        .height(36)
+        .constraintSize({ minHeight: 36 })
         .width('100%')
-      Text('大模型可推送到 model-imports 后扫描。')
+      Text('导入会复制文件到 App，不修改原文件。电脑推送的目录仍可扫描注册。')
         .fontSize(11)
         .lineHeight(16)
         .fontColor($r('app.color.text_model_hint'))

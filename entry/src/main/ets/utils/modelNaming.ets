@@ -10,39 +10,42 @@ export function stripMnnSuffix(name: string): string {
 }
 
 export function importedModelShortName(name: string): string {
-  const normalized = stripMnnSuffix(name)
-  const tokens = normalized.split('-').filter((token: string) => token.length > 0)
-  if (tokens.length <= 1) {
-    return normalized.length > 32 ? normalized.substring(0, 32) : normalized
+  // Normalize decimal underscores before splitting ordinary separators.
+  const normalized = name.trim().replace(/([0-9])_([0-9]+[bmk])/gi, '$1.$2')
+  let tokens = normalized.split(/[-_\s]+/).filter((token: string) => token.length > 0 && token.toLowerCase() !== 'mnn')
+  const hasParameters = tokens.some((token: string) => isExplicitParameterToken(token))
+  if (hasParameters) {
+    while (tokens.length > 1 && /^(it|[0-9]{4,8})$/i.test(tokens[tokens.length - 1])) tokens.pop()
   }
+  if (tokens.join('-').length <= 32) return tokens.join('-')
 
-  let parameterIndex = -1
-  for (let index = 1; index < tokens.length; index++) {
-    if (isParameterToken(tokens[index])) {
-      parameterIndex = index
-      break
-    }
+  // Remove task suffixes before sacrificing identity or quantization information.
+  tokens = tokens.filter((token: string, index: number) => index === 0 || !/^(instruct|chat|it)$/i.test(token))
+  if (tokens.join('-').length <= 32) return tokens.join('-')
+  for (let index = tokens.length - 1; index > 0 && tokens.join('-').length > 32; index--) {
+    if (!isShortNameIdentityToken(tokens[index])) tokens.splice(index, 1)
   }
-  if (parameterIndex < 0) {
-    return normalized.length > 32 ? normalized.substring(0, 32) : normalized
-  }
+  const suffix = tokens.slice(1).join('-')
+  const budget = 32 - suffix.length - (suffix.length > 0 ? 1 : 0)
+  if (budget > 0) return tokens[0].substring(0, budget) + (suffix.length > 0 ? '-' + suffix : '')
+  // Unusually long collections of identity tokens cannot all fit; do not invent a name.
+  return tokens.join('-').substring(0, 32)
+}
 
-  let endIndex = tokens.length
-  while (endIndex > parameterIndex + 1 && isTrailingModelMetadataToken(tokens[endIndex - 1])) {
-    endIndex--
-  }
-  const shortName = tokens.slice(0, endIndex).join('-')
-  if (shortName.length <= 32) {
-    return shortName
-  }
+export function resolveImportedShortName(name: string, savedShortName: string): string {
+  // Old manifests do not record whether the user edited the name. Preserve it.
+  return savedShortName.trim().length > 0 ? savedShortName : importedModelShortName(name)
+}
 
-  const nameWithParameter = tokens.slice(0, parameterIndex + 1).join('-')
-  if (nameWithParameter.length <= 32) {
-    return nameWithParameter
-  }
-  const parameterToken = tokens[parameterIndex]
-  const familyName = tokens.slice(0, parameterIndex).join('-')
-  return `${familyName.substring(0, 31 - parameterToken.length)}-${parameterToken}`
+function isExplicitParameterToken(token: string): boolean {
+  return /^(?:[EA])?[0-9]+(?:\.[0-9]+)?[BMK]$/i.test(token)
+}
+
+function isShortNameIdentityToken(token: string): boolean {
+  return isExplicitParameterToken(token) ||
+    /^[0-9]+(?:\.[0-9]+)*$/.test(token) ||
+    /^v[0-9]+(?:\.[0-9]+)*$/i.test(token) ||
+    /^(VL|V|R[0-9]+|Coder|Thinking|Reasoning|INT[0-9]+|BF[0-9]+|FP[0-9]+|Q[0-9]+|K|S|M)$/i.test(token)
 }
 
 export function isLegacyFamilyOnlyImportedShortName(name: string, shortName: string): boolean {
@@ -107,11 +110,4 @@ export function safeModelId(name: string): string {
 
 function isParameterToken(token: string): boolean {
   return /^[0-9]+([._][0-9]+)?[BMK]?$/i.test(token) || /^E[0-9]+B$/i.test(token)
-}
-
-function isTrailingModelMetadataToken(token: string): boolean {
-  const lowerToken = token.toLowerCase()
-  return lowerToken === 'it' ||
-    /^[0-9]{4,8}$/.test(lowerToken) ||
-    /^v[0-9]+(\.[0-9]+)*$/.test(lowerToken)
 }

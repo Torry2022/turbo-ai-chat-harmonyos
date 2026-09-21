@@ -13,6 +13,7 @@ import {
 } from '../../../main/ets/utils/modelCompatibility'
 import {
   importedModelShortName,
+  resolveImportedShortName,
   isLegacyFamilyOnlyImportedShortName,
   stripMnnSuffix
 } from '../../../main/ets/utils/modelNaming'
@@ -125,13 +126,18 @@ export default function modelRulesTest(): void {
       expect(stripMnnSuffix('Qwen2-0.5B-Instruct-MNN')).assertEqual('Qwen2-0.5B-Instruct')
       expect(importedModelShortName('Qwen2-0.5B-Instruct-MNN')).assertEqual('Qwen2-0.5B-Instruct')
       expect(importedModelShortName('Qwen3-4B-Instruct-2507-MNN')).assertEqual('Qwen3-4B-Instruct')
-      expect(importedModelShortName('Qwen-1_8B-Chat-MNN')).assertEqual('Qwen-1_8B-Chat')
+      expect(importedModelShortName('Qwen-1_8B-Chat-MNN')).assertEqual('Qwen-1.8B-Chat')
       expect(importedModelShortName('Model-Family-Instruct-MNN')).assertEqual('Model-Family-Instruct')
       expect(importedModelShortName('Very-Long-Model-Family-Name-1.5B-Instruct-MNN')).assertEqual(
         'Very-Long-Model-Family-Name-1.5B'
       )
       expect(isLegacyFamilyOnlyImportedShortName('Qwen3-0.6B-MNN', 'Qwen3')).assertTrue()
       expect(isLegacyFamilyOnlyImportedShortName('MiniMind2-MNN', 'MiniMind2')).assertFalse()
+      expect(importedModelShortName('Gemma-4-E2B-it-MNN')).assertEqual('Gemma-4-E2B')
+      expect(importedModelShortName('MiniCPM5-1B-MNN-INT8')).assertEqual('MiniCPM5-1B-INT8')
+      expect(importedModelShortName('Qwen3_VL_8B_Instruct_MNN')).assertEqual('Qwen3-VL-8B-Instruct')
+      expect(resolveImportedShortName('Qwen3-0.6B-MNN', 'Qwen3')).assertEqual('Qwen3')
+      expect(resolveImportedShortName('Qwen3-0.6B-MNN', '')).assertEqual('Qwen3-0.6B')
     })
 
     it('updatesImportedModelDescription', 0, () => {

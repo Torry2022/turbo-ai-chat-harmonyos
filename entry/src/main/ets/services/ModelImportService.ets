@@ -1,6 +1,8 @@
 import { common } from '@kit.AbilityKit'
 import picker from '@ohos.file.picker'
 import fs from '@ohos.file.fs'
+import fileUri from '@ohos.file.fileuri'
+import statvfs from '@ohos.file.statvfs'
 import zlib from '@ohos.zlib'
 import {
   DEFAULT_IMPORTED_MODEL_PROMPT,
@@ -21,8 +23,7 @@ import { formatError } from '../utils/formatters'
 import { inferSupportsImageFromLlmConfig } from '../utils/modelCompatibility'
 import {
   importedModelShortName,
-  isLegacyFamilyOnlyImportedShortName,
-  legacyImportedModelShortName,
+  resolveImportedShortName,
   safeModelId,
   stripMnnSuffix,
   uniqueModelId,
@@ -34,8 +35,8 @@ import { ModelDirectoryPreflightService } from './ModelDirectoryPreflightService
 export class ModelImportService {
   private preflightService: ModelDirectoryPreflightService = new ModelDirectoryPreflightService()
 
-  async pickAndImport(context: common.UIAbilityContext, existingProfiles: ModelProfile[]): Promise<ModelImportResult | undefined> {
-    const zipUri = await this.pickZip(context)
+  async pickAndImport(context: common.UIAbilityContext, existingProfiles: ModelProfile[], folder: boolean = false): Promise<ModelImportResult | undefined> {
+    const zipUri = await this.pickSource(context, folder)
     if (zipUri === undefined || zipUri.length <= 0) {
       return undefined
     }
@@ -49,14 +50,38 @@ export class ModelImportService {
     const modelId = `imported-${timestamp}`
     const targetDir = `${importRoot}/${modelId}`
     const tempZip = `${tempDir}/${modelId}.zip`
+    let stage = '准备导入'
     try {
       await this.ensureDir(targetDir)
-      await this.copyPickedFile(zipUri, tempZip)
-      await zlib.decompressFile(tempZip, targetDir)
+      if (folder) {
+        stage = '读取文件夹'
+        const sourcePath = new fileUri.FileUri(zipUri).path
+        const files = await this.listImportFiles(sourcePath)
+        let total = 0
+        for (const path of files) total += (await fs.stat(path)).size
+        await this.requireFreeSpace(filesDir, total)
+        stage = '复制文件夹'
+        for (const path of files) {
+          const destination = targetDir + path.substring(sourcePath.length)
+          await this.ensureDir(destination.substring(0, destination.lastIndexOf('/')))
+          await this.copyPickedFile(path, destination)
+        }
+      } else {
+        stage = '复制压缩包'
+        const source = await fs.open(zipUri, fs.OpenMode.READ_ONLY)
+        try {
+          // This checks the staging copy only; decompression requires additional space.
+          await this.requireFreeSpace(filesDir, (await fs.stat(source.fd)).size)
+          await fs.copyFile(source.fd, tempZip)
+        } finally { await fs.close(source) }
+        stage = '解压模型包'
+        await zlib.decompressFile(tempZip, targetDir)
+      }
       if (await this.exists(tempZip)) {
         await fs.unlink(tempZip)
       }
 
+      stage = '校验模型目录'
       const configPath = await this.findConfigPath(targetDir)
       if (configPath.length <= 0) {
         throw new Error('模型包中未找到 config.json')
@@ -85,6 +110,7 @@ export class ModelImportService {
         removable: true
       }
 
+      stage = '保存模型清单'
       const imported = await this.loadImportedProfiles(filesDir)
       imported.push(profile)
       await this.saveImportedProfiles(filesDir, imported)
@@ -93,13 +119,13 @@ export class ModelImportService {
         message: `${profile.shortName} 导入完成，请加载模型。`
       }
     } catch (err) {
-      if (await this.exists(tempZip)) {
-        await fs.unlink(tempZip)
-      }
-      if (await this.exists(targetDir)) {
-        await this.deletePathRecursive(targetDir)
-      }
-      throw new Error(formatError(err as Object))
+      try {
+        if (await this.exists(tempZip)) await fs.unlink(tempZip)
+        if (await this.exists(targetDir)) await this.deletePathRecursive(targetDir)
+      } catch (_) { /* Preserve the original import failure. */ }
+      const detail = (err as Error).message || formatError(err as Object)
+      const hint = stage === '解压模型包' ? '，请检查压缩包完整性和可用空间，或改用文件夹导入' : ''
+      throw new Error(`${stage}失败：${detail}${hint}`)
     }
   }
 
@@ -292,13 +318,46 @@ export class ModelImportService {
     }
   }
 
-  private async pickZip(context: common.UIAbilityContext): Promise<string | undefined> {
+  private async pickSource(context: common.UIAbilityContext, folder: boolean): Promise<string | undefined> {
     const documentPicker = new picker.DocumentViewPicker(context)
     const options = new picker.DocumentSelectOptions()
-    options.fileSuffixFilters = ['MNN 模型包|.zip']
+    if (folder) {
+      if (!canIUse('SystemCapability.FileManagement.UserFileService.FolderSelection')) {
+        throw new Error('当前设备不支持选择文件夹，请使用压缩包导入')
+      }
+      options.selectMode = picker.DocumentSelectMode.FOLDER
+    } else {
+      options.fileSuffixFilters = ['MNN 模型包|.zip']
+    }
     options.maxSelectNumber = 1
     const result = await documentPicker.select(options)
     return result.length > 0 ? result[0] : undefined
+  }
+
+  private async requireFreeSpace(path: string, bytes: number): Promise<void> {
+    const free = await statvfs.getFreeSize(path)
+    if (free < bytes + 64 * 1024 * 1024) {
+      throw new Error('可用存储空间不足，请清理空间后重试')
+    }
+  }
+
+  private async listImportFiles(root: string): Promise<string[]> {
+    const files: string[] = []
+    for (const name of await fs.listFile(root)) {
+      if (name === '.' || name === '..' || name.indexOf('/') >= 0 || name.indexOf('\\') >= 0) {
+        throw new Error('模型目录包含无效文件名')
+      }
+      const path = `${root}/${name}`
+      const stat = await fs.lstat(path)
+      if (stat.isDirectory()) {
+        files.push(...await this.listImportFiles(path))
+      } else if (stat.isFile()) {
+        files.push(path)
+      } else {
+        throw new Error('模型目录包含符号链接或不支持的文件类型')
+      }
+    }
+    return files
   }
 
   private importRoot(filesDir: string): string {
@@ -429,12 +488,8 @@ export class ModelImportService {
     const normalizedSystemPrompt = profile.systemPrompt === LEGACY_IMPORTED_MODEL_PROMPT ?
       DEFAULT_IMPORTED_MODEL_PROMPT :
       profile.systemPrompt
-    const shouldRefreshShortName =
-      profile.shortName.length === 12 && profile.name.length > 12 && profile.shortName === profile.name.substring(0, 12) ||
-      profile.shortName === legacyImportedModelShortName(normalizedName) ||
-      isLegacyFamilyOnlyImportedShortName(normalizedName, profile.shortName) ||
-      profile.shortName === normalizedName ||
-      profile.shortName === profile.name
+    const normalizedShortName = resolveImportedShortName(normalizedName, profile.shortName)
+    const shouldRefreshShortName = normalizedShortName !== profile.shortName
     const normalizedChatFormat = CHAT_FORMAT_MNN_AUTO
     const normalizedPromptTemplate = ''
     const normalizedStopSequence = ''
@@ -452,7 +507,7 @@ export class ModelImportService {
       return {
         id: profile.id,
         name: normalizedName,
-        shortName: shouldRefreshShortName ? importedModelShortName(normalizedName) : profile.shortName,
+        shortName: normalizedShortName,
         directoryName: profile.directoryName,
         description: profile.description,
         supportsImage: normalizedSupportsImage,

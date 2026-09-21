@@ -54,6 +54,11 @@ In the HarmonyOS ecosystem, on-device AI inference today largely depends on Andr
 
 ## Recent Highlights
 
+**Local model import improvements (v1.11.1)**
+
+- Import models by selecting a folder on supported devices, alongside ZIP import and pushed-directory scanning.
+- Add storage checks and stage-specific errors, and refine generated short names while preserving existing names.
+
 **PC menus and chat interactions (v1.11.0)**
 
 - Add Chat, Settings, and Help menus to the PC title bar, with hover switching, keyboard shortcut help, and an About dialog.
@@ -182,7 +187,7 @@ With a physical keyboard, Enter sends from the chat input and Shift+Enter insert
 - Generation parameter controls: temperature, Top-P/K, penalty terms, etc.
 - Performance metrics: TTFT, TPOT, tokens/s per assistant message
 - Model management: model-market download, model ordering, and deleting installed model directories
-- Import local MNN models via zip, or by pushing a directory and scanning it in the app; standard MNN export directories use `jinja.chat_template` from `llm_config.json`
+- Import local MNN models by selecting a folder (where supported), importing a zip, or pushing a directory and scanning it in the app; standard MNN export directories use `jinja.chat_template` from `llm_config.json`
 - OpenAI-compatible API: serve the currently loaded model to Cherry Studio and other LAN clients with streaming output and Bearer authentication
 
 ## Screenshots
@@ -227,7 +232,7 @@ You can also sideload the HAP with [Xiaobai Debug Assistant](https://github.com/
 
 ## Model Management
 
-The recommended path is to install models from the in-app Model Gallery. Use zip import or manual directory push for large models, local conversion testing, or debugging.
+The recommended path is to install models from the in-app Model Gallery. Import local conversions by selecting a folder or zip; manual directory push remains a debugging fallback.
 
 - **Model Gallery**: refresh the online catalog and install preset or extended models from ModelScope; if refresh fails, the app keeps the last valid cache or its bundled catalog.
 - **Zip import**: useful for small or medium complete MNN model directories.
@@ -235,7 +240,11 @@ The recommended path is to install models from the in-app Model Gallery. Use zip
 
 ### Fallback: Manual Model Push
 
-Model-market download and in-app zip import are the recommended approaches. Manual `hdc` push is kept as a debugging fallback.
+Model Gallery downloads, folder selection, and zip import are the recommended approaches. Manual `hdc` push is kept as a debugging fallback.
+
+Folder import is shown only on devices supporting the system folder picker. Select one complete MNN model directory; the app copies it into its sandbox, validates it, and registers it without modifying the source. Available space is checked against the total file size.
+
+Zip import checks space for the staging copy, but extraction needs additional space. Errors distinguish copying, extraction, validation, and manifest saving. There is no app-imposed 2GB limit; support on different system versions must be verified separately.
 
 The model directory must be in **MNN format** — exported via MNN `llmexport.py` from HuggingFace weights, containing `config.json`, `llm_config.json`, tokenizer file, `llm.mnn`, `llm.mnn.weight`, etc. Original HuggingFace safetensors, GGUF, and MLX weights cannot be used directly.
 
@@ -277,7 +286,7 @@ To register a pushed model as an imported model:
 6. Tap "Scan pushed directory". The app will find `config.json`, `.mnn` files, and a compatible chat template, then update `model-imports/imported-models.json` automatically.
 7. Select the new imported model from the model list and load it.
 
-For both zip import and directory scanning, the app reads `is_visual` from `llm_config.json` to detect image capability automatically. Generated short names retain parameter sizes such as `0.6B` and `1.8B` whenever possible.
+For folder import, zip import, and directory scanning, the app reads `is_visual` from `llm_config.json` to detect image capability automatically. Generated short names accept hyphens, underscores, and spaces, prioritizing model generations, parameter sizes, variants such as `VL`, and quantization markers. Missing parameter sizes are not guessed. Existing nonempty short names are preserved; clear the short-name field in the imported model settings and save to regenerate it.
 
 The scanner only checks first-level subdirectories under `model-imports/`. Directory names must not contain `/`, `\`, or `..`. On Windows, run `hdc file send` from the parent directory of the model directory to avoid preserving extra parent paths or writing backslashes into the app sandbox. If your model is not under the repository `models/` directory, `cd` to that model directory's parent before pushing.
 

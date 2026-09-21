@@ -113,7 +113,7 @@ export class ChatViewModel {
   modelCatalogVersion: number = 0
   modelCatalogPublishedAt: string = ''
   modelImporting: boolean = false
-  modelImportMessage: string = '可导入 MNN 模型 zip 包'
+  modelImportMessage: string = '可导入完整的 MNN 模型目录或 zip 包'
   editingImportedModelId: string = ''
   importedModelNameInput: string = ''
   importedModelShortNameInput: string = ''
@@ -724,7 +724,7 @@ export class ChatViewModel {
     return this.currentModel().generationDefaults ?? {}
   }
 
-  importModelPackage(): void {
+  importModelPackage(folder: boolean = false): void {
     if (this.busy || this.modelLoading || this.modelImporting || this.builtinModelInstalling ||
       this.apiServerStarting) {
       return
@@ -737,13 +737,13 @@ export class ChatViewModel {
 
     this.busy = true
     this.modelImporting = true
-    this.modelImportMessage = '可导入 MNN 模型 zip 包'
-    this.status = '正在导入模型包...'
+    this.modelImportMessage = folder ? '请选择包含完整 MNN 模型文件的文件夹' : '请选择 MNN 模型 zip 包；解压需要额外空间'
+    this.status = '正在导入模型...'
     this.notify()
 
-    this.modelLifecycleService.importPickedModel(this.context, this.modelProfiles()).then((result) => {
+    this.modelLifecycleService.importPickedModel(this.context, this.modelProfiles(), folder).then((result) => {
       if (result === undefined) {
-        this.modelImportMessage = '已取消导入模型包'
+        this.modelImportMessage = '已取消导入模型'
         this.status = this.loaded ? `${this.currentModel().shortName} 已加载` : '模型未加载'
         this.busy = false
         this.modelImporting = false
@@ -762,7 +762,7 @@ export class ChatViewModel {
       this.modelImporting = false
       this.notify()
     }).catch((err: Error) => {
-      const message = `导入失败：${formatError(err as Object)}`
+      const message = `导入失败：${err.message || formatError(err as Object)}`
       this.modelImportMessage = message
       this.status = message
       this.busy = false
