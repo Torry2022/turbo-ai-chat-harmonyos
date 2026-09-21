@@ -186,134 +186,172 @@ export struct ChatTab {
         })
       }
 
-      Stack({ alignContent: Alignment.End }) {
-        TextArea({ text: this.viewModel.inputText, controller: this.inputController })
-          .enabled(this.viewModel.loaded && !this.viewModel.speechRecognitionStarting &&
-            !this.viewModel.speechRecognizing)
-          .constraintSize({ minHeight: 44, maxHeight: 120 })
-          .fontSize(14)
-          .fontColor($r('app.color.text_body'))
-          .backgroundColor($r('app.color.composer_background'))
-          .borderRadius(10)
-          .padding({ left: 16, right: 94, top: 13, bottom: 10 })
-          .onChange((value: string, previewText?: PreviewText) => {
-            this.composing = (previewText?.value.length ?? 0) > 0
-            this.viewModel.updateInputText(value)
+      Column({ space: 6 }) {
+        Row({ space: 6 }) {
+          Circle()
+            .width(6)
+            .height(6)
+            .fill(this.viewModel.modelLoading ? $r('app.color.status_loading') :
+              (this.viewModel.loaded ? $r('app.color.model_ready_indicator') : $r('app.color.text_muted')))
+          Text(this.viewModel.modelLoading ? '正在加载 ' + this.viewModel.currentModel().shortName + '…' :
+            (this.viewModel.loaded ? this.viewModel.currentModel().shortName : '未加载模型'))
+          .fontSize(12)
+          .fontColor($r('app.color.text_secondary'))
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .layoutWeight(1)
+          .textAlign(TextAlign.Start)
+          .onClick(() => {
+            if (this.viewModel.loaded || this.viewModel.modelLoading) {
+              this.getUIContext().getPromptAction().showToast({
+                message: this.viewModel.currentModel().name, duration: 2500
+              })
+            }
           })
-          .onKeyPreIme((event: KeyEvent): boolean => {
-            if (event.type === KeyType.Down &&
-              (event.keyCode === KeyCode.KEYCODE_ENTER || event.keyCode === KeyCode.KEYCODE_NUMPAD_ENTER)) {
-              this.submitOnNewline = !event.getModifierKeyState?.(['shift']) &&
-                !event.getModifierKeyState?.(['ctrl']) && !event.getModifierKeyState?.(['alt'])
-            }
-            if (event.type === KeyType.Up &&
-              (event.keyCode === KeyCode.KEYCODE_ENTER || event.keyCode === KeyCode.KEYCODE_NUMPAD_ENTER)) {
-              this.enterHeld = false
-              this.suppressEnterNewline = false
-              this.submitOnNewline = false
-            }
-            return false
-          })
-          .onKeyEvent((event: KeyEvent): boolean => this.handleInputKey(event))
-          .onWillInsert((value: InsertValue): boolean => {
-            if (value.insertValue !== '\n') {
-              return true
-            }
-            if (this.suppressEnterNewline) {
-              return false
-            }
-            // Some input methods insert a newline directly instead of redispatching Enter.
-            if (this.submitOnNewline && this.active && this.inputFocused && !this.dialogVisible) {
-              if (!this.enterHeld) {
-                this.enterHeld = true
-                this.enterConsumed = true
-                this.sendKeyboardMessage()
+        }
+        .width('100%')
+        .padding({ left: 16, right: 16 })
+
+        Stack({ alignContent: Alignment.End }) {
+          TextArea({ text: this.viewModel.inputText, controller: this.inputController })
+            .enabled(this.viewModel.loaded && !this.viewModel.speechRecognitionStarting &&
+              !this.viewModel.speechRecognizing)
+            .constraintSize({ minHeight: 44, maxHeight: 120 })
+            .fontSize(14)
+            .fontColor($r('app.color.text_body'))
+            .backgroundColor($r('app.color.composer_background'))
+            .borderRadius(10)
+            .padding({ left: 16, right: 94, top: 13, bottom: 10 })
+            .onChange((value: string, previewText?: PreviewText) => {
+              this.composing = (previewText?.value.length ?? 0) > 0
+              this.viewModel.updateInputText(value)
+            })
+            .onKeyPreIme((event: KeyEvent): boolean => {
+              if (event.type === KeyType.Down &&
+                (event.keyCode === KeyCode.KEYCODE_ENTER || event.keyCode === KeyCode.KEYCODE_NUMPAD_ENTER)) {
+                this.submitOnNewline = !event.getModifierKeyState?.(['shift']) &&
+                  !event.getModifierKeyState?.(['ctrl']) && !event.getModifierKeyState?.(['alt'])
+              }
+              if (event.type === KeyType.Up &&
+                (event.keyCode === KeyCode.KEYCODE_ENTER || event.keyCode === KeyCode.KEYCODE_NUMPAD_ENTER)) {
+                this.enterHeld = false
+                this.suppressEnterNewline = false
+                this.submitOnNewline = false
               }
               return false
-            }
-            return true
-          })
-          .onFocus(() => {
-            this.inputFocused = true
-          })
-          .onBlur(() => {
-            this.inputFocused = false
-            this.composing = false
-            this.enterHeld = false
-            this.enterConsumed = false
-            this.suppressEnterNewline = false
-            this.submitOnNewline = false
-          })
+            })
+            .onKeyEvent((event: KeyEvent): boolean => this.handleInputKey(event))
+            .onWillInsert((value: InsertValue): boolean => {
+              if (value.insertValue !== '\n') {
+                return true
+              }
+              if (this.suppressEnterNewline) {
+                return false
+              }
+              // Some input methods insert a newline directly instead of redispatching Enter.
+              if (this.submitOnNewline && this.active && this.inputFocused && !this.dialogVisible) {
+                if (!this.enterHeld) {
+                  this.enterHeld = true
+                  this.enterConsumed = true
+                  this.sendKeyboardMessage()
+                }
+                return false
+              }
+              return true
+            })
+            .onFocus(() => {
+              this.inputFocused = true
+            })
+            .onBlur(() => {
+              this.inputFocused = false
+              this.composing = false
+              this.enterHeld = false
+              this.enterConsumed = false
+              this.suppressEnterNewline = false
+              this.submitOnNewline = false
+            })
 
-        if (this.viewModel.inputText.length === 0) {
-          Text(this.viewModel.speechRecognizing ? '正在聆听...' :
-            (this.viewModel.loaded ? '输入您的问题...' : '请先加载模型...'))
-            .fontSize(15)
-            .fontColor($r('app.color.text_muted'))
-            .width('100%')
-            .height(38)
-            .textAlign(TextAlign.Start)
-            .padding({ left: 18 })
-            .hitTestBehavior(HitTestMode.None)
-        }
+          if (this.viewModel.inputText.length === 0) {
+            Text(this.viewModel.speechRecognizing ? '正在聆听...' :
+              (this.viewModel.loaded ? '输入您的问题...' : '请先加载模型...'))
+              .fontSize(15)
+              .fontColor($r('app.color.text_muted'))
+              .width('100%')
+              .height(38)
+              .textAlign(TextAlign.Start)
+              .padding({ left: 16, right: 94 })
+              .hitTestBehavior(HitTestMode.None)
+          }
 
-        Row({ space: 4 }) {
-          if (this.viewModel.generating) {
-            Image($r('app.media.icon_stop_generation'))
+          Row({ space: 4 }) {
+            if (this.viewModel.generating) {
+              Image($r('app.media.icon_stop_generation'))
+                .width(40)
+                .height(40)
+                .opacity(this.viewModel.generationStopping ? 0.45 : 1)
+                .onClick(() => {
+                  if (!this.viewModel.generationStopping) {
+                    this.inputController.stopEditing()
+                    this.viewModel.stopGeneration()
+                  }
+                })
+            } else if (this.viewModel.speechRecognizing) {
+              this.VoiceRecordingButton()
+            } else {
+              if (this.viewModel.currentModel().supportsImage && this.viewModel.loaded) {
+                Image($r('app.media.icon_image_add'))
+                  .width(40)
+                  .height(40)
+                  .opacity(this.viewModel.speechRecognitionStarting ? 0.45 : 1)
+                  .onClick(() => {
+                    if (!this.viewModel.speechRecognitionStarting) {
+                      this.inputController.stopEditing()
+                      this.viewModel.chooseImage()
+                    }
+                  })
+              }
+              Stack() {
+                Image($r('app.media.icon_send'))
+                  .width(40)
+                  .height(40)
+                  .syncLoad(true)
+                  .opacity(this.viewModel.inputText.trim().length > 0 || this.inputFocused ?
+                    (this.viewModel.loaded && this.viewModel.inputText.trim().length > 0 &&
+                    (this.viewModel.selectedImageUri.length === 0 ||
+                      this.viewModel.currentModel().supportsImage) ? 1 : 0.45) : 0)
+                  .hitTestBehavior(HitTestMode.None)
+                  .accessibilityLevel('no')
+                Image($r('app.media.icon_microphone'))
+                  .width(40)
+                  .height(40)
+                  .syncLoad(true)
+                  .opacity(this.viewModel.inputText.trim().length > 0 || this.inputFocused ? 0 :
+                    (this.viewModel.loaded && !this.viewModel.speechRecognitionStarting ? 1 : 0.45))
+                  .hitTestBehavior(HitTestMode.None)
+                  .accessibilityLevel('no')
+              }
               .width(40)
               .height(40)
-              .opacity(this.viewModel.generationStopping ? 0.45 : 1)
               .onClick(() => {
-                if (!this.viewModel.generationStopping) {
-                  this.inputController.stopEditing()
-                  this.viewModel.stopGeneration()
-                }
+                  if (this.viewModel.inputText.trim().length > 0 || this.inputFocused) {
+                    if (this.viewModel.loaded && this.viewModel.inputText.trim().length > 0) {
+                      this.inputController.stopEditing()
+                      this.viewModel.sendMessage()
+                    }
+                  } else if (this.viewModel.loaded && !this.viewModel.speechRecognitionStarting) {
+                      this.inputController.stopEditing()
+                      this.viewModel.startSpeechRecognition()
+                  }
               })
-          } else if (this.viewModel.speechRecognizing) {
-            this.VoiceRecordingButton()
-          } else {
-            if (this.viewModel.currentModel().supportsImage && this.viewModel.loaded) {
-              Image($r('app.media.icon_image_add'))
-                .width(40)
-                .height(40)
-                .opacity(this.viewModel.speechRecognitionStarting ? 0.45 : 1)
-                .onClick(() => {
-                  if (!this.viewModel.speechRecognitionStarting) {
-                    this.inputController.stopEditing()
-                    this.viewModel.chooseImage()
-                  }
-                })
-            }
-            if (this.viewModel.inputText.trim().length > 0 || this.inputFocused) {
-              Image($r('app.media.icon_send'))
-                .width(40)
-                .height(40)
-                .opacity(this.viewModel.loaded && this.viewModel.inputText.trim().length > 0 &&
-                  (this.viewModel.selectedImageUri.length === 0 ||
-                    this.viewModel.currentModel().supportsImage) ? 1 : 0.45)
-                .onClick(() => {
-                  if (this.viewModel.loaded && this.viewModel.inputText.trim().length > 0) {
-                    this.inputController.stopEditing()
-                    this.viewModel.sendMessage()
-                  }
-                })
-                .accessibilityText('发送消息')
-            } else {
-              Image($r('app.media.icon_microphone'))
-                .width(40)
-                .height(40)
-                .opacity(this.viewModel.loaded && !this.viewModel.speechRecognitionStarting ? 1 : 0.45)
-                .onClick(() => {
-                  if (this.viewModel.loaded && !this.viewModel.speechRecognitionStarting) {
-                    this.inputController.stopEditing()
-                    this.viewModel.startSpeechRecognition()
-                  }
-                })
-                .accessibilityText('开始语音输入')
+              .accessibilityText(this.viewModel.inputText.trim().length > 0 || this.inputFocused ?
+                '发送消息' : '开始语音输入')
             }
           }
+          .margin({ right: 10 })
         }
-        .margin({ right: 10 })
+        .width('100%')
+        .backgroundColor($r('app.color.composer_background'))
+        .borderRadius(10)
       }
       .width('100%')
       .translate({ y: this.inputBottomOffset })
