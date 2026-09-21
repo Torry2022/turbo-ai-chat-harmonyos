@@ -1,0 +1,45 @@
+name: Scan MNN catalog candidates
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_size_gib:
+        description: Maximum runtime size in GiB
+        required: true
+        default: "12"
+        type: string
+  schedule:
+    - cron: "0 2 1 * *"
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run catalog tooling tests
+        run: python -m unittest scripts/test_model_catalog.py scripts/test_mnn_catalog_sync.py
+
+      - name: Scan MNN organization
+        env:
+          MAX_SIZE_GIB: ${{ inputs.max_size_gib || '12' }}
+        run: >-
+          python scripts/mnn_catalog_sync.py
+          --max-size-gib "$MAX_SIZE_GIB"
+          --output-dir model-catalog/candidates
+
+      - name: Upload candidate report
+        uses: actions/upload-artifact@v4
+        with:
+          name: mnn-catalog-candidates
+          path: model-catalog/candidates/
+          retention-days: 30

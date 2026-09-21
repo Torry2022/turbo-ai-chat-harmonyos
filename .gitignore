@@ -18,6 +18,7 @@ __pycache__/
 /hf-*.log
 /models/*
 !/models/.gitkeep
+/model-catalog/candidates/
 /docs/archive/
 /turbo_ai_chat*.jpeg
 /Crash_*.dmp

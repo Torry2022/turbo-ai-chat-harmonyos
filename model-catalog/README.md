@@ -139,3 +139,33 @@ python scripts/model_catalog.py --catalog model-catalog/catalog.json validate
 ```
 
 远程目录只能分发当前 App 和 MNN Runtime 已支持的文本或图片 MNN 模型。需要新的原生算子、预处理流程、推理模态或更高版本 MNN Runtime 时，仍需升级 App。
+
+## MNN 官方候选自动扫描
+
+候选生成参数与发布器使用相同的读取规则：优先读取 MNN `config.json`，缺失字段从同一固定提交的 `generation_config.json` 回退；两处都未提供的字段使用预设值。贪心解码配置或无效参数会记录为扫描错误，需人工处理，不静默生成默认参数。旧真机失败记录仅作为复核提示保留，不判定当前版本不兼容；这类候选不会自动进入优先测试队列，也不意味着所有旧模型都要重测。真机验证以当前 App 内的 MNN Runtime 为准。
+
+仓库不会把 MNN 官方组织中的全部模型直接发布到正式模型广场。MNN 组织同时包含文本、多模态、音频、Embedding、图像生成等不同用途的模型，其中部分模型超出移动设备的存储和内存范围，或需要当前 App 尚未接入的输入与预处理链路。
+
+候选扫描器会读取 MNN 官方组织的在线模型列表，并依次检查：
+
+- 仓库是否公开、任务和用途是否属于当前文本/图片聊天范围；
+- 实际运行文件是否超过默认 12 GiB 上限（不以整个仓库体积代替）；
+- 是否包含 `config.json`、`llm_config.json`、MNN 模型图、权重及 tokenizer；
+- 配置引用文件是否完整；
+- 是否具有 `jinja.chat_template`，或可由 App 自动兼容的旧 ChatML 模板；未识别到模板时标记人工复核，不直接判定不兼容，也不自动送入真机队列。
+
+本地运行：
+
+```powershell
+python scripts/mnn_catalog_sync.py
+```
+
+报告写入被 Git 忽略的 `model-catalog/candidates/`，包括机器可读的 `mnn-candidates.json` 和便于查看的 `mnn-candidates.md`。报告同时保留全部静态候选和默认 12 个优先真机候选；已在本地目录中的模型以及 Coding、Guard、OCR、翻译、工具调用等专用模型不会进入优先队列。默认开启思考只作提示，测试时须给足输出预算并确认产生最终答案，不能仅因 512 tokens 内未答完就淘汰。
+
+队列按人工维护的主流系列分层：优先 Qwen3/3.5、Gemma 4、MiniCPM4/5 等较新系列，再考虑 Qwen2/2.5 等仍有补充价值的常用系列，同层内才参考魔搭下载量。上传时间不等于模型发布时间，下载量也不直接代表质量。系列范围见脚本中的 `CURRENT_FAMILIES` 和 `ESTABLISHED_FAMILIES`，需随模型发展更新；范围外的模型保留在报告中，不自动安排测试。已有真机结论应先查记录，避免无条件重复测试。
+
+12 GiB 是运行文件的筛选上限，不是内存需求估计，也不保证手机能加载。下载及加载前仍需检查目标设备可用内存，并考虑视觉编码、上下文缓存和输出预算。可用 `--max-size-gib` 调整体积上限，用 `--shortlist-limit` 调整优先队列数量，用 `--workers` 调整并发请求数。
+
+GitHub Actions 中的 **Scan MNN catalog candidates** 会在每月 1 日自动扫描，也可手动运行；结果作为 `mnn-catalog-candidates` Artifact 保留 30 天。该流程只有仓库读取权限，**不会修改或发布 `catalog.json`**。
+
+通过静态筛选只代表目录结构符合当前 App 的基本要求。候选模型仍需在 HarmonyOS 真机上验证下载、加载、生成、停止、内存占用和重复输出后，再通过 `model_catalog.py add` 发布到正式目录。
