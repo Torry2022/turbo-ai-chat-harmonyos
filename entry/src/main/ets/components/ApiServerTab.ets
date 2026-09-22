@@ -6,6 +6,7 @@ import { pasteboard } from '@kit.BasicServicesKit'
 @Component
 export struct ApiServerTab {
   @Prop extendBottom: boolean = false
+  @Prop bottomOverlayInset: number = 0
   @ObjectLink viewModel: ChatViewModel
   @Prop renderVersion: number = 0
   @Prop loaded: boolean = false
@@ -131,10 +132,22 @@ export struct ApiServerTab {
               Row() {
                 this.SectionTitle('服务状态')
                 Blank()
-                Toggle({ type: ToggleType.Switch, isOn: this.apiServerRunning })
+                Button({ type: ButtonType.Normal }) {
+                  Toggle({ type: ToggleType.Switch, isOn: this.apiServerRunning })
+                    .height(22)
+                    .margin(0)
+                    .selectedColor($r('app.color.status_good'))
+                    .focusable(false)
+                    .accessibilityLevel('no')
+                }
                   .height(22)
+                  .padding(0)
+                  .backgroundColor(Color.Transparent)
+                  .stateEffect(false)
+                  .hitTestBehavior(HitTestMode.Block)
+                  .accessibilityText('API 服务')
+                  .accessibilityDescription(this.apiServerRunning ? '已开启' : '已关闭')
                   .enabled(!this.apiServerStarting && (!this.busy || this.apiServerRunning))
-                  .selectedColor($r('app.color.status_good'))
                   .onClick(() => {
                     this.viewModel.setApiServerEnabled(!this.apiServerRunning)
                   })
@@ -378,6 +391,7 @@ export struct ApiServerTab {
       }
       .width('100%')
       .padding({ bottom: $r('app.float.page_scroll_bottom_padding') })
+      .margin({ bottom: this.bottomOverlayInset })
       .onClick(() => {
         this.portInputController.stopEditing()
       })

@@ -1,5 +1,5 @@
 import { ThemeMode, themeService } from '../services/ThemeService'
-import { ActionButtonStyle, CompactActionStyle } from './ButtonStyles'
+import { ActionButtonStyle } from './ButtonStyles'
 
 import { dialogFade, dialogScale } from './DialogMotion'
 
@@ -8,6 +8,7 @@ export struct SettingsDialog {
   @StorageLink('themeMode') private themeMode: ThemeMode = 'dark'
   @Prop availableWidth: number = 360
   @Prop availableHeight: number = 640
+  @State private isClosePressed: boolean = false
   onClose: () => void = () => {}
 
   @Builder
@@ -51,8 +52,25 @@ export struct SettingsDialog {
             .fontWeight(FontWeight.Bold)
             .fontColor($r('app.color.text_title'))
             .layoutWeight(1)
-          Button('关闭')
-            .attributeModifier(new CompactActionStyle())
+          Button({ type: ButtonType.Normal }) {
+            Image(this.isClosePressed ? $r('app.media.model_market_close_icon_pressed') :
+              $r('app.media.model_market_close_icon'))
+              .width(24)
+              .height(24)
+          }
+            .width(40)
+            .height(40)
+            .focusable(true)
+            .accessibilityText('关闭设置')
+            .hoverEffect(HoverEffect.Auto)
+            .backgroundColor(Color.Transparent)
+            .onTouch((event: TouchEvent) => {
+              if (event.type === TouchType.Down) {
+                this.isClosePressed = true
+              } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+                this.isClosePressed = false
+              }
+            })
             .onClick(() => this.onClose())
         }
         .width('100%')

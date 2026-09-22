@@ -1,5 +1,6 @@
 {
   "color": [
+    { "name": "nav_mobile_selected", "value": "#8DE4C3" },
     { "name": "model_ready_indicator", "value": "#32E875" },
     { "name": "page_compact", "value": "#06121F" },
     { "name": "ticker_compact", "value": "#0D2232" },

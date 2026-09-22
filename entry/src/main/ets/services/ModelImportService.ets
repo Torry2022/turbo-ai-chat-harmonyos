@@ -324,16 +324,20 @@ export class ModelImportService {
     const documentPicker = new picker.DocumentViewPicker(context)
     const options = new picker.DocumentSelectOptions()
     if (folder) {
-      if (!canIUse('SystemCapability.FileManagement.UserFileService.FolderSelection')) {
-        throw new Error('当前设备不支持选择文件夹，请使用压缩包导入')
-      }
       options.selectMode = picker.DocumentSelectMode.FOLDER
     } else {
       options.fileSuffixFilters = ['MNN 模型包|.zip']
     }
     options.maxSelectNumber = 1
-    const result = await documentPicker.select(options)
-    return result.length > 0 ? result[0] : undefined
+    try {
+      const result = await documentPicker.select(options)
+      return result.length > 0 ? result[0] : undefined
+    } catch (err) {
+      if (folder) {
+        throw new Error('无法打开文件夹选择器，请重试或使用压缩包导入')
+      }
+      throw err as Error
+    }
   }
 
   private async requireFreeSpace(path: string, bytes: number): Promise<void> {

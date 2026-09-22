@@ -17,6 +17,7 @@ import { ModelDragFrame, resolveModelDragPreview } from '../utils/modelDrag'
 @Component
 export struct ModelTab {
   @Prop extendBottom: boolean = false
+  @Prop bottomOverlayInset: number = 0
   @StorageProp('darkAppearance') private darkAppearance: boolean = true
   @ObjectLink viewModel: ChatViewModel
   @Prop @Watch('onRenderVersionChange') renderVersion: number = 0
@@ -800,16 +801,14 @@ export struct ModelTab {
   private ModelManagementCard() {
     Column({ space: 8 }) {
       this.SectionTitle('模型管理', '', 2)
-      if (canIUse('SystemCapability.FileManagement.UserFileService.FolderSelection')) {
-        Button('选择文件夹导入')
-          .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
-          .enabled(this.controlsEnabled())
-          .width('100%')
-          .onClick(() => {
-            this.viewModel.importModelPackage(true)
-          })
-      }
-      Button(this.viewModel.modelImporting ? '正在导入' : '导入模型压缩包')
+      Button('选择文件夹导入')
+        .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
+        .enabled(this.controlsEnabled())
+        .width('100%')
+        .onClick(() => {
+          this.viewModel.importModelPackage(true)
+        })
+      Button(this.viewModel.modelImporting ? '正在导入' : '选择压缩包导入')
         .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
         .enabled(this.controlsEnabled())
         .width('100%')
@@ -880,6 +879,7 @@ export struct ModelTab {
       }
       .width('100%')
       .padding({ bottom: $r('app.float.page_scroll_bottom_padding') })
+      .margin({ bottom: this.bottomOverlayInset })
     }
     .width('100%')
     .height('100%')

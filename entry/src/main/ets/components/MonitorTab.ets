@@ -39,6 +39,7 @@ struct MonitorStatItem {
 @Component
 export struct MonitorTab {
   @Prop extendBottom: boolean = false
+  @Prop bottomOverlayInset: number = 0
   @ObjectLink viewModel: ChatViewModel
   @Prop @Watch('onActiveChanged') active: boolean = false
   @State stats: RuntimeStats = EMPTY_RUNTIME_STATS
@@ -278,6 +279,7 @@ export struct MonitorTab {
       }
       .width('100%')
       .padding({ bottom: $r('app.float.page_scroll_bottom_padding') })
+      .margin({ bottom: this.bottomOverlayInset })
     }
     .width('100%')
     .height('100%')

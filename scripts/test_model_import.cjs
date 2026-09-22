@@ -21,6 +21,9 @@ async function check(name, run) {
   let unzipError = false;
   let link = false;
   const copied = [];
+  let pickerResult = ['/selected'];
+  let pickerError;
+  let pickerOptions;
   const deleted = [];
   let saved;
   const mockFs = {
@@ -34,6 +37,18 @@ async function check(name, run) {
   };
   const Service = vm.runInNewContext(code + '\nModelImportService', {
     fs: mockFs,
+    canIUse: () => false,
+    picker: {
+      DocumentSelectMode: { FOLDER: 1 },
+      DocumentSelectOptions: class {},
+      DocumentViewPicker: class {
+        async select(options) {
+          pickerOptions = options;
+          if (pickerError) throw pickerError;
+          return pickerResult;
+        }
+      }
+    },
     fileUri: { FileUri: class { constructor(uri) { this.path = uri; } } },
     statvfs: { getFreeSize: async () => available },
     zlib: { decompressFile: async () => { if (unzipError) throw new Error('bad archive'); } },
@@ -56,6 +71,10 @@ async function check(name, run) {
     copyPickedFile: async (from, to) => copied.push([from, to])
   });
   await run({ service, fs: mockFs, copied, deleted, saved: () => saved,
+    useRealPicker: () => { delete service.pickSource; },
+    pickerOptions: () => pickerOptions,
+    cancelPicker: () => { pickerResult = []; },
+    failPicker: () => { pickerError = new Error('unsupported'); },
     lowSpace: () => { available = 10; },
     corruptZip: () => { unzipError = true; },
     symlink: () => { link = true; } });
@@ -63,6 +82,24 @@ async function check(name, run) {
 }
 
 (async () => {
+  await check('folder picker works even when capability reporting is false', async t => {
+    t.useRealPicker();
+    assert.equal(await t.service.pickSource({}, true), '/selected');
+    assert.equal(t.pickerOptions().selectMode, 1);
+    assert.equal(t.pickerOptions().maxSelectNumber, 1);
+    t.cancelPicker();
+    assert.equal(await t.service.pickSource({}, true), undefined);
+    t.failPicker();
+    await assert.rejects(t.service.pickSource({}, true), /无法打开文件夹选择器.*压缩包导入/);
+  });
+  await check('ZIP picker retains its filter and original errors', async t => {
+    t.useRealPicker();
+    await t.service.pickSource({}, false);
+    assert.equal(t.pickerOptions().fileSuffixFilters[0], 'MNN 模型包|.zip');
+    assert.equal(t.pickerOptions().selectMode, undefined);
+    t.failPicker();
+    await assert.rejects(t.service.pickSource({}, false), /unsupported/);
+  });
   for (const folder of [false, true]) {
     await check('duplicate ' + (folder ? 'folder' : 'ZIP') + ' preserves model family', async t => {
       const name = 'ImportRegression-Qwen3-0.6B-20260921';

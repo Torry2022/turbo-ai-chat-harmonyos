@@ -328,7 +328,8 @@ struct Index {
             }
             .width('100%')
             .height('100%')
-            .padding({ bottom: this.windowWidth >= 600 ? $r('app.float.wide_bottom_spacing') : 0 })
+            .padding({ bottom: this.windowWidth >= 600 ? $r('app.float.wide_bottom_spacing') :
+              (this.keyboardVisible ? 0 : 60) })
             .opacity(this.transitionTab === 0 ? 1 : 0)
             .visibility((this.visibleTabs & 1) !== 0 ? Visibility.Visible : Visibility.Hidden)
             .hitTestBehavior(this.activeTab === 0 ? HitTestMode.Default : HitTestMode.None)
@@ -336,6 +337,7 @@ struct Index {
 
               ModelTab({
                 extendBottom: this.windowWidth >= 600,
+                bottomOverlayInset: this.windowWidth < 600 && !this.keyboardVisible ? 52 : 0,
                 viewModel: this.viewModel,
                 renderVersion: this.stateVersion,
                 onDragStateChange: (dragging: boolean) => {
@@ -353,6 +355,7 @@ struct Index {
 
               ApiServerTab({
                 extendBottom: this.windowWidth >= 600,
+                bottomOverlayInset: this.windowWidth < 600 && !this.keyboardVisible ? 52 : 0,
                 viewModel: this.viewModel,
                 renderVersion: this.stateVersion,
                 loaded: this.viewModel.loaded,
@@ -379,6 +382,7 @@ struct Index {
 
               MonitorTab({
                 extendBottom: this.windowWidth >= 600,
+                bottomOverlayInset: this.windowWidth < 600 && !this.keyboardVisible ? 52 : 0,
                 viewModel: this.viewModel,
                 active: this.activeTab === 3
               })
@@ -394,6 +398,7 @@ struct Index {
           .layoutWeight(1)
           .width(this.windowWidth >= 600 ? 0 : '100%')
           .height(this.windowWidth >= 600 ? '100%' : 0)
+          .margin({ bottom: this.windowWidth < 600 && !this.keyboardVisible ? -52 : 0 })
           .zIndex(this.modelCardDragging ? 10 : 0)
           BottomTabs({
             bottomInset: this.keyboardVisible ? 0 : this.bottomInset,
@@ -405,8 +410,8 @@ struct Index {
             }
           })
           .width(this.windowWidth >= 840 ? 160 : this.windowWidth >= 600 ? 88 : '100%')
-          .height(this.windowWidth >= 600 ? '100%' : 62)
-          .margin({ top: this.windowWidth < 600 ? 8 : 0 })
+          .height(this.windowWidth >= 600 ? '100%' : 52)
+          .zIndex(this.windowWidth < 600 ? 11 : 0)
           .flexShrink(0)
           .visibility(this.windowWidth < 600 && this.keyboardVisible ? Visibility.None : Visibility.Visible)
         }
@@ -416,7 +421,7 @@ struct Index {
       .width('100%')
       .height('100%')
       .justifyContent(FlexAlign.Start)
-      .padding({ bottom: this.windowWidth >= 600 ? 0 : 8 })
+      .padding({ bottom: this.windowWidth < 600 && this.keyboardVisible ? 8 : 0 })
       .id('app-content')
       .focusable(!this.dialogExitBlocking && this.modalFocusId() === 'app-content')
 

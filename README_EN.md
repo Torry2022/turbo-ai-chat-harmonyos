@@ -54,6 +54,11 @@ In the HarmonyOS ecosystem, on-device AI inference today largely depends on Andr
 
 ## Recent Highlights
 
+**Navigation and model import improvements (v1.12.0)**
+
+- Add icons to mobile navigation and sidebars, retaining descriptions in wide sidebars. Use a theme-aware blurred mobile navigation background with adjusted bottom content spacing.
+- Preserve key identifiers in short names for duplicate imports. Keep unrelated controls stable during directory scans and retain the current selection and edited parameters when no models are added.
+
 **Local model import improvements (v1.11.1)**
 
 - Import models by selecting a folder on supported devices, alongside ZIP import and pushed-directory scanning.
@@ -214,6 +219,8 @@ When adding an OpenAI-compatible provider in Cherry Studio, enter the displayed 
 - `POST /v1/chat/completions`
 - `POST /v1/responses`
 
+The phone bottom bar and narrow sidebar label this entry “API 服务” (API Service). The wide sidebar uses “服务” (Service) with the “OpenAI API” subtitle.
+
 The Service tab shows operational logs for server lifecycle, request paths, model parameters, response status, latency, and output size. It does not log API keys, prompts, or response text.
 
 Wide windows place service settings beside the API logs. Narrowing the window restores a single column without restarting an active server.
@@ -235,6 +242,7 @@ You can also sideload the HAP with [Xiaobai Debug Assistant](https://github.com/
 The recommended path is to install models from the in-app Model Gallery. Import local conversions by selecting a folder or zip; manual directory push remains a debugging fallback.
 
 - **Model Gallery**: refresh the online catalog and install preset or extended models from ModelScope; if refresh fails, the app keeps the last valid cache or its bundled catalog.
+- **Folder import**: select a complete MNN model directory through the system picker. The app copies and validates the files without changing the source directory. If the picker cannot open, retry or use zip import.
 - **Zip import**: useful for small or medium complete MNN model directories.
 - **Manual directory push**: useful for large models, offline debugging, or when zip import fails; push the directory and scan it from the Model tab.
 
@@ -242,7 +250,7 @@ The recommended path is to install models from the in-app Model Gallery. Import 
 
 Model Gallery downloads, folder selection, and zip import are the recommended approaches. Manual `hdc` push is kept as a debugging fallback.
 
-Folder import is shown only on devices supporting the system folder picker. Select one complete MNN model directory; the app copies it into its sandbox, validates it, and registers it without modifying the source. Available space is checked against the total file size.
+Folder import opens the system folder picker directly. Select one complete MNN model directory; the app copies it into its sandbox, validates it, and registers it without modifying the source. Available space is checked against the total file size. If the picker cannot open, retry or use zip import.
 
 Zip import checks space for the staging copy, but extraction needs additional space. Errors distinguish copying, extraction, validation, and manifest saving. There is no app-imposed 2GB limit; support on different system versions must be verified separately.
 
