@@ -113,6 +113,7 @@ export class ChatViewModel {
   modelCatalogVersion: number = 0
   modelCatalogPublishedAt: string = ''
   modelImporting: boolean = false
+  modelScanning: boolean = false
   modelImportMessage: string = '可导入完整的 MNN 模型目录或 zip 包'
   editingImportedModelId: string = ''
   importedModelNameInput: string = ''
@@ -157,7 +158,7 @@ export class ChatViewModel {
   private speechRecognitionService: SpeechRecognitionService = new SpeechRecognitionService()
   private apiServer: OpenAiApiServer = new OpenAiApiServer({
     isModelLoaded: () => this.loaded,
-    isGenerationReady: () => this.loaded && !this.busy && !this.modelLoading,
+    isGenerationReady: () => this.loaded && !this.modelScanning && !this.busy && !this.modelLoading,
     currentModel: () => this.apiServerModel(),
     currentSettings: () => this.currentGenerationSettings(),
     currentMaxNewTokens: () => this.maxNewTokens,
@@ -389,6 +390,9 @@ export class ChatViewModel {
   }
 
   setApiServerEnabled(enabled: boolean): void {
+    if (enabled && this.rejectWhileModelScanning()) {
+      return
+    }
     if (this.apiServerStarting || enabled === this.apiServerRunning) {
       return
     }
@@ -493,6 +497,9 @@ export class ChatViewModel {
   }
 
   installCatalogItem(catalogItemId: string): void {
+    if (this.rejectWhileModelScanning()) {
+      return
+    }
     if (this.busy || this.modelLoading || this.modelImporting || this.builtinModelInstalling ||
       this.modelCatalogRefreshing || this.context === undefined) {
       return
@@ -514,6 +521,9 @@ export class ChatViewModel {
   }
 
   switchModel(modelId: string): void {
+    if (this.rejectWhileModelScanning()) {
+      return
+    }
     if (this.busy || this.modelLoading || this.apiServerStarting || modelId === this.selectedModelId) {
       return
     }
@@ -550,6 +560,9 @@ export class ChatViewModel {
   }
 
   async startSpeechRecognition(): Promise<void> {
+    if (this.rejectWhileModelScanning()) {
+      return
+    }
     if (
       !this.loaded ||
       this.busy ||
@@ -725,6 +738,9 @@ export class ChatViewModel {
   }
 
   importModelPackage(folder: boolean = false): void {
+    if (this.rejectWhileModelScanning()) {
+      return
+    }
     if (this.busy || this.modelLoading || this.modelImporting || this.builtinModelInstalling ||
       this.apiServerStarting) {
       return
@@ -772,19 +788,21 @@ export class ChatViewModel {
     })
   }
 
-  scanPushedModelDirectories(): void {
-    if (this.busy || this.modelLoading || this.modelImporting || this.builtinModelInstalling ||
+  async scanPushedModelDirectories(): Promise<void> {
+    if (this.modelScanning || this.busy || this.modelLoading || this.modelImporting || this.builtinModelInstalling ||
       this.apiServerStarting) {
       return
     }
 
-    this.busy = true
-    this.modelImporting = true
+    this.modelScanning = true
+    this.modelImportMessage = '正在扫描已推送目录...'
+    this.notify()
 
-    this.modelLifecycleService.scanPushedModels(this.filesDir, this.modelProfiles()).then((result) => {
-      this.modelManager.updateImportedProfiles(result.profiles, this.filesDir)
+    try {
+      const result = await this.modelLifecycleService.scanPushedModels(this.filesDir, this.modelProfiles())
       const addedProfile = result.addedProfiles.length > 0 ? result.addedProfiles[result.addedProfiles.length - 1] : undefined
       if (addedProfile !== undefined) {
+        this.modelManager.updateImportedProfiles(result.profiles, this.filesDir)
         const model = this.modelManager.switchModel(addedProfile.id, this.filesDir)
         this.prepareImportedModelEditor(model.id)
         this.selectedImageUri = ''
@@ -794,26 +812,34 @@ export class ChatViewModel {
         this.syncMessages()
         this.resetLoadedModel(`已添加 ${result.addedProfiles.length} 个模型，请加载 ${model.shortName}。`)
         this.modelImportMessage = `已添加 ${result.addedProfiles.length} 个模型，请加载 ${model.shortName}。`
+        if (result.errors.length > 0) {
+          this.modelImportMessage += ` 部分目录未导入：${result.errors[0]}`
+        }
       } else {
-        this.prepareImportedModelEditor(this.selectedModelId)
         this.modelImportMessage = result.errors.length > 0 ?
           `未导入模型：${result.errors[0]}` :
           (result.skippedCount > 0 ?
             '未发现新的可导入 MNN 目录，请检查目录完整性与对话模板。' :
             '未发现新的已推送模型目录。')
-        this.status = this.loaded ? `${this.currentModel().shortName} 已加载` : this.status
+        if (result.errors.length === 0) {
+          this.toastCallback('未发现新模型，请用电脑 hdc 将完整模型目录推入应用沙箱 files/model-imports 后重试')
+        }
       }
-      this.busy = false
-      this.modelImporting = false
-      this.notify()
-    }).catch((err: Error) => {
+    } catch (err) {
       const message = `扫描失败：${formatError(err as Object)}`
       this.modelImportMessage = message
-      this.status = message
-      this.busy = false
-      this.modelImporting = false
+    } finally {
+      this.modelScanning = false
       this.notify()
-    })
+    }
+  }
+
+  private rejectWhileModelScanning(): boolean {
+    if (!this.modelScanning) {
+      return false
+    }
+    this.toastCallback('正在扫描模型目录，请稍候')
+    return true
   }
 
   prepareImportedModelEditor(modelId: string): void {
@@ -855,6 +881,9 @@ export class ChatViewModel {
   }
 
   saveImportedModelProfile(): Promise<boolean> {
+    if (this.rejectWhileModelScanning()) {
+      return Promise.resolve(false)
+    }
     if (this.busy || this.modelLoading || this.modelImporting || this.editingImportedModelId.length <= 0) {
       return Promise.resolve(false)
     }
@@ -890,6 +919,9 @@ export class ChatViewModel {
   }
 
   requestDeleteModel(modelId: string): void {
+    if (this.rejectWhileModelScanning()) {
+      return
+    }
     if (this.busy || this.modelLoading || this.modelImporting || this.builtinModelInstalling ||
       this.apiServerStarting) {
       return
@@ -910,6 +942,9 @@ export class ChatViewModel {
   }
 
   confirmDeleteModel(): void {
+    if (this.rejectWhileModelScanning()) {
+      return
+    }
     if (this.pendingDeleteModelId.length <= 0 || this.busy || this.modelLoading || this.modelImporting ||
       this.builtinModelInstalling || this.apiServerStarting) {
       return
@@ -974,6 +1009,9 @@ export class ChatViewModel {
   }
 
   moveModelToIndex(modelId: string, targetIndex: number): void {
+    if (this.rejectWhileModelScanning()) {
+      return
+    }
     if (this.busy || this.modelLoading || this.modelImporting || this.builtinModelInstalling) {
       return
     }
@@ -1128,6 +1166,9 @@ export class ChatViewModel {
   }
 
   unloadModel(): void {
+    if (this.rejectWhileModelScanning()) {
+      return
+    }
     if (this.busy || this.modelLoading || this.apiServerStarting) {
       return
     }
@@ -1220,6 +1261,9 @@ export class ChatViewModel {
   }
 
   openModelLoadDialog(autoStart: boolean = false): void {
+    if (this.rejectWhileModelScanning()) {
+      return
+    }
     this.ensureCurrentModelInstalled().then((installed: boolean) => {
       if (!installed) {
         return
@@ -1249,6 +1293,9 @@ export class ChatViewModel {
   }
 
   loadModel(): void {
+    if (this.rejectWhileModelScanning()) {
+      return
+    }
     this.ensureCurrentModelInstalled().then((installed: boolean) => {
       if (!installed) {
         return
@@ -1263,6 +1310,9 @@ export class ChatViewModel {
   }
 
   applyRuntimeConfigAndLoad(): void {
+    if (this.rejectWhileModelScanning()) {
+      return
+    }
     if (this.busy || this.modelLoading || this.modelImporting || this.builtinModelInstalling ||
       this.apiServerStarting) {
       return
@@ -1286,6 +1336,9 @@ export class ChatViewModel {
   }
 
   startModelLoad(): void {
+    if (this.rejectWhileModelScanning()) {
+      return
+    }
     const catalogItem = this.modelCatalogService.findInstallItem(this.currentModel().catalogItemId ??
       this.currentModel().downloadId)
     if (catalogItem !== undefined && this.rejectIncompatibleCatalogItem(catalogItem)) {
@@ -1369,6 +1422,9 @@ export class ChatViewModel {
   }
 
   startBuiltinModelInstall(): void {
+    if (this.rejectWhileModelScanning()) {
+      return
+    }
     if (this.builtinModelInstalling || this.context === undefined) {
       return
     }
@@ -1530,6 +1586,9 @@ export class ChatViewModel {
   }
 
   async sendMessage(): Promise<void> {
+    if (this.rejectWhileModelScanning()) {
+      return
+    }
     const text = this.inputText.trim()
     if (!this.loaded || this.busy || text.length === 0) {
       return
@@ -1766,6 +1825,9 @@ export class ChatViewModel {
     request: ApiGenerationRequest,
     onChunk: (chunk: string) => void
   ): Promise<GenerationResult> {
+    if (this.modelScanning) {
+      return Promise.reject(new Error('正在扫描模型目录，请稍候'))
+    }
     if (!this.loaded || this.busy || this.modelLoading) {
       return Promise.reject(new Error('模型未就绪或当前已有任务。'))
     }

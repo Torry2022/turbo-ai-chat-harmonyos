@@ -816,9 +816,9 @@ export struct ModelTab {
         .onClick(() => {
           this.viewModel.importModelPackage()
         })
-      Button('扫描已推送目录')
+      Button(this.viewModel.modelScanning ? '正在扫描...' : '扫描已推送目录')
         .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
-        .enabled(this.controlsEnabled())
+        .enabled(this.controlsEnabled() && !this.viewModel.modelScanning)
         .width('100%')
         .onClick(() => {
           this.viewModel.scanPushedModelDirectories()

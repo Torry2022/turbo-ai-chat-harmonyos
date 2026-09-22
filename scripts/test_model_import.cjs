@@ -4,6 +4,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const ts = require(process.argv[2] || 'typescript');
+const namingContext = { exports: {} };
+vm.runInNewContext(ts.transpileModule(
+  fs.readFileSync(path.join(__dirname, '../entry/src/main/ets/utils/modelNaming.ets'), 'utf8'),
+  { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }
+).outputText, namingContext);
 const source = fs.readFileSync(path.join(__dirname, '../entry/src/main/ets/services/ModelImportService.ets'), 'utf8');
 const ast = ts.createSourceFile('ModelImportService.ts', source, ts.ScriptTarget.Latest, true);
 const declaration = ast.statements.find(n => ts.isClassDeclaration(n));
@@ -34,8 +39,7 @@ async function check(name, run) {
     zlib: { decompressFile: async () => { if (unzipError) throw new Error('bad archive'); } },
     ModelDirectoryPreflightService: class { async requireCompatible() {} },
     formatError: err => err.message,
-    uniqueModelName: name => name, uniqueModelShortName: name => name,
-    importedModelShortName: name => name,
+    ...namingContext.exports,
     IMPORTED_MODELS_DIR: 'model-imports', IMPORTED_MODEL_SOURCE: 'imported',
     DEFAULT_IMPORTED_MODEL_PROMPT: '', CHAT_FORMAT_MNN_AUTO: 'mnn'
   });
@@ -51,7 +55,7 @@ async function check(name, run) {
     deletePathRecursive: async name => deleted.push(name),
     copyPickedFile: async (from, to) => copied.push([from, to])
   });
-  await run({ service, copied, deleted, saved: () => saved,
+  await run({ service, fs: mockFs, copied, deleted, saved: () => saved,
     lowSpace: () => { available = 10; },
     corruptZip: () => { unzipError = true; },
     symlink: () => { link = true; } });
@@ -59,6 +63,32 @@ async function check(name, run) {
 }
 
 (async () => {
+  for (const folder of [false, true]) {
+    await check('duplicate ' + (folder ? 'folder' : 'ZIP') + ' preserves model family', async t => {
+      const name = 'ImportRegression-Qwen3-0.6B-20260921';
+      const profiles = [1, 2].map(n => ({
+        id: 'existing-' + n,
+        name: name + (n === 1 ? '' : ' ' + n),
+        shortName: 'ImportRegression-Qwen3-0.6B' + (n === 1 ? '' : ' ' + n)
+      }));
+      t.service.inferName = () => name;
+      t.service.loadImportedProfiles = async () => profiles;
+      const result = await t.service.pickAndImport({ filesDir: '/app' }, profiles, folder);
+      assert.equal(result.profile.name, name + ' 3');
+      assert.equal(result.profile.shortName, 'ImportRegression-Qwen3-0.6B 3');
+      assert.equal(t.saved()[0].shortName, profiles[0].shortName);
+    });
+  }
+  await check('scanned duplicate preserves model family', async t => {
+    const name = 'ImportRegression-Qwen3-0.6B-20260921';
+    const profiles = [{ id: 'existing', name, shortName: 'ImportRegression-Qwen3-0.6B' }];
+    t.service.inferNameFromDirectory = () => name;
+    t.service.preflightService.validate = async () => ({ compatible: true });
+    t.fs.stat = async () => ({ isDirectory: () => true });
+    const result = await t.service.scanPushedModelDirectories('/app', profiles);
+    assert.equal(result.addedProfiles[0].name, name + ' 2');
+    assert.equal(result.addedProfiles[0].shortName, 'ImportRegression-Qwen3-0.6B 2');
+  });
   await check('cancel leaves files and manifest untouched', async t => {
     t.service.pickSource = async () => undefined;
     assert.equal(await t.service.pickAndImport({ filesDir: '/app' }, [], true), undefined);

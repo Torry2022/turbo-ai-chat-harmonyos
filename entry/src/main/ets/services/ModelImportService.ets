@@ -90,8 +90,9 @@ export class ModelImportService {
       const supportsImage = await this.detectSupportsImage(configPath)
       await this.preflightService.requireCompatible(configPath, supportsImage)
 
-      const inferredName = uniqueModelName(this.inferName(zipUri, configPath, targetDir), existingProfiles)
-      const inferredShortName = uniqueModelShortName(importedModelShortName(inferredName), existingProfiles)
+      const sourceName = this.inferName(zipUri, configPath, targetDir)
+      const inferredName = uniqueModelName(sourceName, existingProfiles)
+      const inferredShortName = uniqueModelShortName(importedModelShortName(sourceName), existingProfiles)
       const profile: ModelProfile = {
         id: modelId,
         name: inferredName,
@@ -174,8 +175,9 @@ export class ModelImportService {
       }
 
       const profilePool = existingProfiles.concat(nextProfiles)
-      const inferredName = uniqueModelName(this.inferNameFromDirectory(configPath, targetDir, directoryName), profilePool)
-      const inferredShortName = uniqueModelShortName(importedModelShortName(inferredName), profilePool)
+      const sourceName = this.inferNameFromDirectory(configPath, targetDir, directoryName)
+      const inferredName = uniqueModelName(sourceName, profilePool)
+      const inferredShortName = uniqueModelShortName(importedModelShortName(sourceName), profilePool)
       const profile: ModelProfile = {
         id: uniqueModelId(`imported-${safeModelId(directoryName)}`, profilePool),
         name: inferredName,
