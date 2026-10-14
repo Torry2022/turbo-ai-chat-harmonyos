@@ -70,7 +70,7 @@ async function main() {
     const source = fs.readFileSync(path.join(sourceRoot, 'state/ChatViewModel.ets'), 'utf8');
     const ast = ts.createSourceFile('ChatViewModel.ts', source, ts.ScriptTarget.Latest, true);
     const declaration = ast.statements.find((node) => ts.isClassDeclaration(node) && node.name.text === 'ChatViewModel');
-    const names = ['catalogCompatibilityMessage', 'rejectIncompatibleCatalogItem', 'installCatalogItem',
+    const names = ['setStatus', 'rejectWhileModelScanning', 'catalogCompatibilityMessage', 'rejectIncompatibleCatalogItem', 'installCatalogItem',
       'prepareAndStartBuiltinModelInstall', 'ensureCurrentModelInstalled', 'startModelLoad'];
     const methods = declaration.members.filter((node) => node.name && names.includes(node.name.getText(ast)));
     assert.equal(methods.length, names.length);
@@ -82,7 +82,7 @@ async function main() {
     for (const method of ['installCatalogItem', 'prepareAndStartBuiltinModelInstall', 'ensureCurrentModelInstalled', 'startModelLoad']) {
       const subject = new Subject();
       Object.assign(subject, {
-        appVersionCode: 1100000, context: {}, notify: () => {}, toastCallback: () => {},
+        appVersionCode: 1100000, apiServerStartAfterModelLoad: true, context: {}, notify: () => {}, toastCallback: () => {},
         currentModel: () => ({ catalogItemId: item.id }),
         modelCatalogService: { findMarketItem: () => item, findInstallItem: () => item }
       });

@@ -332,13 +332,23 @@ export struct MessageBubble {
       }
       Column({ space: 6 }) {
         Row() {
-          Text(this.message.role === 'user' ? '你' : '助手')
+          Text(this.message.role === 'user' ? '你' : (this.message.modelName ?? '助手'))
             .fontSize(11)
             .fontColor(this.message.role === 'user' ? $r('app.color.chat_user_meta') : $r('app.color.text_assistant_meta'))
+            .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).layoutWeight(1)
           Text(this.message.time)
             .fontSize(11)
             .fontColor(this.message.role === 'user' ? $r('app.color.chat_user_time') : $r('app.color.text_caption'))
-            .margin({ left: 8 })
+            .margin({ left: 8 }).flexShrink(0)
+        }.width('100%')
+        if (this.message.generationState === 'stopped') {
+          Text('已停止生成').fontSize(11).fontColor($r('app.color.text_muted'))
+        }
+        if (this.message.generationState === 'interrupted') {
+          Text('生成已中断').fontSize(11).fontColor($r('app.color.status_warning'))
+        }
+        if (this.message.imageUnavailable) {
+          Text('此图片未能保存').fontSize(11).fontColor($r('app.color.text_muted'))
         }
         if (this.message.imageUri.length > 0) {
           Image(this.message.imageUri)

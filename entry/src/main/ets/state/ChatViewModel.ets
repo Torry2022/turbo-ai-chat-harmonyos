@@ -1,3 +1,5 @@
+import { ChatConversation, ChatConversationSummary, conversationTitle } from '../models/ChatHistoryTypes'
+import { ChatHistoryService } from '../services/ChatHistoryService'
 import { bundleManager, common } from '@kit.AbilityKit'
 import preferences from '@ohos.data.preferences'
 import cryptoFramework from '@ohos.security.cryptoFramework'
@@ -78,6 +80,16 @@ export class ChatViewModel {
   speechDetected: boolean = false
   loaded: boolean = false
   status: string = '模型未加载'
+  private statusTone: 'neutral' | 'success' | 'warning' | 'error' = 'neutral'
+  conversations: ChatConversationSummary[] = []
+  activeConversationId: string = ''
+  historyReady: boolean = false
+  historyBusy: boolean = false
+  historyError: string = ''
+  private activeConversation?: ChatConversation
+  private historyService: ChatHistoryService = new ChatHistoryService()
+  private historyTimer: number = -1
+  private historyCloseHandler: () => boolean = () => false
   maxNewTokens: number = DEFAULT_MAX_NEW_TOKENS
   threadNum: number = DEFAULT_THREAD_NUM
   temperature: number = DEFAULT_TEMPERATURE
@@ -238,6 +250,11 @@ export class ChatViewModel {
     this.loadModelOrder()
     this.loadApiServerSettings()
     this.resetGenerationSettings(false)
+    this.historyService.onAttachmentError = () => {
+      this.historyError = '对话文字已保存，但有图片未能保存。请重试。'
+      this.notify()
+    }
+    this.initializeHistory()
     this.session.initializeWelcome(this.currentModel().shortName)
     this.syncMessages()
     this.refreshStats()
@@ -265,6 +282,7 @@ export class ChatViewModel {
   }
 
   dispose(): void {
+    this.flushHistory().catch((error: Error) => console.error(`保存对话失败：${formatError(error as Object)}`))
     this.stopModelLoadProgress()
     this.speechRecognitionService.shutdown()
     this.resetSpeechRecognitionState()
@@ -326,7 +344,7 @@ export class ChatViewModel {
       return false
     }
     this.apiServerStartAfterModelLoad = false
-    this.status = `${item.displayName}：${message}`
+    this.setStatus(`${item.displayName}：${message}`, 'neutral')
     this.toastCallback?.(this.status)
     this.notify()
     return true
@@ -506,7 +524,7 @@ export class ChatViewModel {
     }
     const item = this.modelCatalogService.findMarketItem(catalogItemId)
     if (item === undefined) {
-      this.status = '安装失败：模型广场条目不存在'
+      this.setStatus('安装失败：模型广场条目不存在', 'error')
       this.notify()
       return
     }
@@ -550,7 +568,7 @@ export class ChatViewModel {
       return
     }
     this.runtimeConfigDirty = true
-    this.status = this.loaded ? '运行配置已修改，应用并重新加载后生效。' : '运行配置已修改，应用并加载后生效。'
+    this.setStatus(this.loaded ? '运行配置已修改，应用并重新加载后生效。' : '运行配置已修改，应用并加载后生效。', 'neutral')
     this.notify()
   }
 
@@ -577,18 +595,18 @@ export class ChatViewModel {
     this.speechRecognitionStarting = true
     this.speechRecognitionStopping = false
     this.speechDetected = false
-    this.status = '正在准备语音识别...'
+    this.setStatus('正在准备语音识别...', 'neutral')
     this.notify()
     const callbacks: SpeechRecognitionCallbacks = {
       onStarted: () => {
         this.speechRecognitionStarting = false
         this.speechRecognizing = true
-        this.status = '正在聆听...'
+        this.setStatus('正在聆听...', 'neutral')
         this.notify()
       },
       onSpeechActivity: (active: boolean) => {
         this.speechDetected = active
-        this.status = active ? '正在识别语音...' : '正在等待继续说话...'
+        this.setStatus(active ? '正在识别语音...' : '正在等待继续说话...', 'neutral')
         this.notify()
       },
       onTranscript: (text: string) => {
@@ -597,12 +615,12 @@ export class ChatViewModel {
       },
       onCompleted: () => {
         this.resetSpeechRecognitionState()
-        this.status = this.inputText.trim().length > 0 ? '语音识别完成，可编辑后发送' : '未识别到语音'
+        this.setStatus(this.inputText.trim().length > 0 ? '语音识别完成，可编辑后发送' : '未识别到语音', 'success')
         this.notify()
       },
       onError: (message: string) => {
         this.resetSpeechRecognitionState()
-        this.status = `语音识别失败：${message}`
+        this.setStatus(`语音识别失败：${message}`, 'error')
         this.toastCallback('语音识别失败，请重试')
         this.notify()
       }
@@ -612,14 +630,14 @@ export class ChatViewModel {
       if (this.speechRecognitionStarting) {
         this.speechRecognitionStarting = false
         this.speechRecognizing = true
-        this.status = '正在聆听...'
+        this.setStatus('正在聆听...', 'neutral')
         this.notify()
       }
     } catch (err) {
       this.resetSpeechRecognitionState()
       console.error(`启动语音识别失败：${formatError(err as Object)}`)
       const message = (err as Error).message
-      this.status = message && message.trim().length > 0 ? message : '无法启动语音输入，请重试'
+      this.setStatus(message && message.trim().length > 0 ? message : '无法启动语音输入，请重试', 'error')
       this.toastCallback(this.status)
       this.notify()
     }
@@ -630,12 +648,12 @@ export class ChatViewModel {
       return
     }
     this.speechRecognitionStopping = true
-    this.status = '正在完成语音识别...'
+    this.setStatus('正在完成语音识别...', 'success')
     try {
       this.speechRecognitionService.finish()
     } catch (err) {
       this.resetSpeechRecognitionState()
-      this.status = `停止语音识别失败：${formatError(err as Object)}`
+      this.setStatus(`停止语音识别失败：${formatError(err as Object)}`, 'error')
     }
     this.notify()
   }
@@ -665,7 +683,7 @@ export class ChatViewModel {
     }
     this.threadNum = nextThreadNum
     this.runtimeConfigDirty = true
-    this.status = this.loaded ? '运行配置已修改，应用并重新加载后生效。' : '运行配置已修改，应用并加载后生效。'
+    this.setStatus(this.loaded ? '运行配置已修改，应用并重新加载后生效。' : '运行配置已修改，应用并加载后生效。', 'neutral')
     this.notify()
   }
 
@@ -754,13 +772,13 @@ export class ChatViewModel {
     this.busy = true
     this.modelImporting = true
     this.modelImportMessage = folder ? '请选择包含完整 MNN 模型文件的文件夹' : '请选择 MNN 模型 zip 包；解压需要额外空间'
-    this.status = '正在导入模型...'
+    this.setStatus('正在导入模型...', 'neutral')
     this.notify()
 
     this.modelLifecycleService.importPickedModel(this.context, this.modelProfiles(), folder).then((result) => {
       if (result === undefined) {
         this.modelImportMessage = '已取消导入模型'
-        this.status = this.loaded ? `${this.currentModel().shortName} 已加载` : '模型未加载'
+        this.setStatus(this.loaded ? `${this.currentModel().shortName} 已加载` : '模型未加载', this.loaded ? 'success' : 'neutral')
         this.busy = false
         this.modelImporting = false
         this.notify()
@@ -780,7 +798,7 @@ export class ChatViewModel {
     }).catch((err: Error) => {
       const message = `导入失败：${err.message || formatError(err as Object)}`
       this.modelImportMessage = message
-      this.status = message
+      this.setStatus(message, 'error')
       this.busy = false
       this.modelImporting = false
       this.refreshStats()
@@ -908,7 +926,7 @@ export class ChatViewModel {
         this.selectedImageUri = ''
       }
       this.modelImportMessage = `${updated.shortName} 配置已保存`
-      this.status = this.loaded ? `${this.currentModel().shortName} 已加载` : this.status
+      this.setStatus(this.loaded ? `${this.currentModel().shortName} 已加载` : this.status, this.loaded ? 'success' : 'neutral')
       this.notify()
       return true
     }).catch((err: Error) => {
@@ -958,7 +976,7 @@ export class ChatViewModel {
 
     this.busy = true
     this.showDeleteModelDialog = false
-    this.status = `正在删除 ${profile.shortName}...`
+    this.setStatus(`正在删除 ${profile.shortName}...`, 'neutral')
     this.notify()
 
     const deletingCurrent = this.selectedModelId === modelId
@@ -977,14 +995,14 @@ export class ChatViewModel {
         }
         this.prepareImportedModelEditor(this.selectedModelId)
         this.pendingDeleteModelId = ''
-        this.status = deletingCurrent ? `${profile.shortName} 已删除，请重新安装或选择其他模型。` : this.status
+        this.setStatus(deletingCurrent ? `${profile.shortName} 已删除，请重新安装或选择其他模型。` : `${profile.shortName} 已删除`, 'success')
         this.busy = false
         this.modelImporting = false
         this.refreshModelMarketInstallStates()
         this.notify()
       }).catch((err: Error) => {
         this.pendingDeleteModelId = ''
-        this.status = `删除失败：${formatError(err as Object)}`
+        this.setStatus(`删除失败：${formatError(err as Object)}`, 'error')
         this.busy = false
         this.modelImporting = false
         this.notify()
@@ -1176,7 +1194,7 @@ export class ChatViewModel {
     this.stopApiServerForModelChange(false)
     this.modelLifecycleService.reset()
     this.loaded = false
-    this.status = '模型已释放'
+    this.setStatus('模型已释放', 'neutral')
     this.modelLoadMessage = '模型已从内存中释放，可重新加载。'
     this.session.appendMessage('assistant',
       `${this.currentModel().shortName} 已从内存中释放。当前不会继续占用推理内存；如需继续对话，请在模型页重新加载该模型，或切换并加载其他模型。`, '', false)
@@ -1186,13 +1204,245 @@ export class ChatViewModel {
   }
 
   newChat(): void {
+    if (!this.canManageConversations()) return
+    this.beginNewConversation()
+  }
+
+  bindHistoryClose(handler: () => boolean): void {
+    this.historyCloseHandler = handler
+  }
+
+  closeHistoryDrawer(): boolean {
+    return this.historyCloseHandler()
+  }
+
+  currentConversationTitle(): string {
+    return this.activeConversation?.title ?? '新对话'
+  }
+
+  canManageConversations(): boolean {
+    return this.historyReady && !this.historyBusy && !this.busy && !this.generating && !this.modelLoading &&
+      !this.modelScanning && !this.apiServerStarting
+  }
+
+  private historyFailure(action: string, error: Object): string {
+    console.error(`${action}：${formatError(error)}`)
+    const message = (error as Error).message ?? ''
+    if (message === '对话文字已保存，但有图片未能保存。请重试。' ||
+      message === '该对话暂时无法读取，记录仍保留在本机。') return message
+    return `${action}，请重试。`
+  }
+
+  private async initializeHistory(): Promise<void> {
+    this.historyBusy = true
+    try {
+      const index = await this.historyService.initialize(this.filesDir)
+      this.conversations = this.historyService.list()
+      this.historyError = this.historyService.warning
+      if (index.activeId.length > 0) {
+        this.activeConversation = await this.historyService.load(index.activeId)
+        this.activeConversationId = this.activeConversation.id
+        this.session.restore(this.activeConversation.messages)
+        this.messages = this.session.messages
+        await this.saveCurrentConversation()
+      }
+    } catch (error) {
+      this.conversations = this.historyService.list()
+      this.historyError = this.historyFailure('读取历史对话失败', error as Object)
+    } finally {
+      this.historyReady = true
+      this.historyBusy = false
+      this.notifyAndMaybeScroll()
+    }
+  }
+
+  async openConversation(id: string): Promise<boolean> {
+    if (!this.canManageConversations()) return false
+    if (id === this.activeConversationId) return true
+    this.historyBusy = true
     this.cancelSpeechRecognition(false)
+    try {
+      await this.flushHistory()
+      const conversation = await this.historyService.load(id)
+      this.activeConversation = conversation
+      this.activeConversationId = id
+      this.session.restore(conversation.messages)
+      this.messages = this.session.messages
+      this.inputText = ''
+      this.selectedImageUri = ''
+      this.historyError = ''
+      await this.saveCurrentConversation()
+      this.resumeChatAutoScroll()
+      this.notifyAndScroll()
+      return true
+    } catch (error) {
+      this.historyError = this.historyFailure('打开对话失败', error as Object)
+      return false
+    } finally {
+      this.historyBusy = false
+      this.notify()
+    }
+  }
+
+  async renameConversation(id: string, title: string): Promise<void> {
+    if (!this.canManageConversations() || title.trim().length === 0) return
+    this.historyBusy = true
+    try {
+      await this.flushHistory()
+      await this.historyService.rename(id, title)
+      if (this.activeConversation?.id === id) this.activeConversation.title = title.trim()
+      this.conversations = this.historyService.list()
+      this.historyError = ''
+    } catch (error) {
+      this.historyError = this.historyFailure('重命名对话失败', error as Object)
+    } finally {
+      this.historyBusy = false
+      this.notify()
+    }
+  }
+
+  async deleteConversation(id?: string): Promise<void> {
+    if (!this.canManageConversations()) return
+    this.historyBusy = true
+    try {
+      await this.flushHistory()
+      if (id === undefined) await this.historyService.clear()
+      else await this.historyService.remove(id)
+      if (id === undefined || id === this.activeConversationId) this.startEmptyConversation()
+      this.conversations = this.historyService.list()
+      this.historyError = ''
+    } catch (error) {
+      this.conversations = this.historyService.list()
+      if (!this.conversations.some((item: ChatConversationSummary) => item.id === this.activeConversationId)) {
+        this.startEmptyConversation()
+      }
+      this.historyError = this.historyFailure('删除对话失败', error as Object)
+    } finally {
+      this.historyBusy = false
+      this.notify()
+    }
+  }
+
+  async retryHistorySave(): Promise<void> {
+    if (this.historyBusy) return
+    if (!this.activeConversation && !this.session.messages.some((message: ChatMessage) => message.role === 'user')) {
+      await this.initializeHistory()
+      return
+    }
+    this.historyBusy = true
+    try {
+      await this.flushHistory()
+      this.historyError = ''
+    } catch (error) {
+      this.historyError = this.historyFailure('保存对话失败', error as Object)
+    } finally {
+      this.historyBusy = false
+      this.notify()
+    }
+  }
+
+  private async beginNewConversation(): Promise<void> {
+    this.historyBusy = true
+    try {
+      await this.flushHistory()
+      await this.historyService.selectEmpty()
+      this.startEmptyConversation()
+      this.historyError = ''
+      this.notifyAndScroll()
+    } catch (error) {
+      this.historyError = this.historyFailure('保存对话失败', error as Object)
+    } finally {
+      this.historyBusy = false
+      this.notify()
+    }
+  }
+
+  private startEmptyConversation(): void {
+    this.cancelSpeechRecognition(false)
+    this.activeConversation = undefined
+    this.activeConversationId = ''
     this.session.newChat(this.loaded, this.currentModel().shortName)
-    this.syncMessages()
+    this.messages = this.session.messages
     this.inputText = ''
     this.selectedImageUri = ''
-    this.status = this.loaded ? `${this.currentModel().shortName} 已加载` : '模型未加载'
-    this.notifyAndScroll()
+    this.setStatus(this.loaded ? `${this.currentModel().shortName} 已加载` : '模型未加载', this.loaded ? 'success' : 'neutral')
+  }
+
+  private async flushHistory(): Promise<void> {
+    clearTimeout(this.historyTimer)
+    this.historyTimer = -1
+    await this.saveCurrentConversation()
+  }
+
+  private async saveCurrentConversation(): Promise<void> {
+    const userMessages = this.session.messages.filter((message: ChatMessage) => message.role === 'user')
+    if (userMessages.length === 0) return
+    if (!this.activeConversation) {
+      const now = Date.now()
+      this.activeConversation = {
+        version: 1, id: `c-${now.toString(36)}-${Math.random().toString(36).substring(2, 10)}`,
+        title: conversationTitle(userMessages[0].content), createdAt: userMessages[0].createdAt ?? now,
+        updatedAt: now, messages: []
+      }
+      this.activeConversationId = this.activeConversation.id
+    }
+    const conversation = this.activeConversation
+    conversation.messages = this.session.messages
+    conversation.updatedAt = this.session.messages.reduce((latest: number, message: ChatMessage) =>
+      Math.max(latest, message.completedAt ?? message.createdAt ?? 0), conversation.updatedAt)
+    try {
+      await this.historyService.save(conversation)
+    } finally {
+      this.conversations = this.historyService.list()
+      this.notify()
+    }
+  }
+
+  private scheduleHistorySave(): void {
+    if (!this.historyReady || this.historyBusy) return
+    if (this.generating && this.session.messages.some((message: ChatMessage) => message.generationState === 'generating')) {
+      if (this.historyTimer >= 0) return
+      this.historyTimer = setTimeout(() => {
+        this.historyTimer = -1
+        this.saveCurrentConversation().catch((error: Error) => {
+          this.historyError = this.historyFailure('保存对话失败', error as Object)
+          this.notify()
+        })
+      }, 1000)
+    } else {
+      clearTimeout(this.historyTimer)
+      this.historyTimer = -1
+      this.saveCurrentConversation().catch((error: Error) => {
+        this.historyError = this.historyFailure('保存对话失败', error as Object)
+        this.notify()
+      })
+    }
+  }
+
+  private setStatus(text: string, tone: 'neutral' | 'success' | 'warning' | 'error' = 'neutral'): void {
+    this.status = text
+    this.statusTone = tone
+  }
+
+  headerStatus(): string {
+    return this.headerText()
+  }
+
+  headerColor(): ResourceColor {
+    if (this.statusTone === 'error') return $r('app.color.status_error_alt')
+    if (this.busy || this.modelLoading || this.speechRecognitionStarting || this.speechRecognizing ||
+      this.speechRecognitionStopping) return $r('app.color.status_warning')
+    if (this.statusTone === 'warning') return $r('app.color.status_warning')
+    return this.loaded || this.statusTone === 'success' ? $r('app.color.status_good') : $r('app.color.text_muted')
+  }
+
+  private headerText(): string {
+    if (this.status === '等待首个输出片段...') return '正在准备回答...'
+    if (this.status === '等待视觉模型...') return '正在处理图片...'
+    if (this.statusTone === 'error' && (this.status.includes('code=') || this.status.includes('name='))) {
+      return `${this.status.split('：')[0]}，请重试。`
+    }
+    return this.status
   }
 
   refreshStats(): void {
@@ -1281,7 +1531,7 @@ export class ChatViewModel {
       }
     }).catch((err: Error) => {
       this.apiServerStartAfterModelLoad = false
-      this.status = `检查模型失败：${formatError(err as Object)}`
+      this.setStatus(`检查模型失败：${formatError(err as Object)}`, 'error')
       this.notify()
     })
   }
@@ -1304,7 +1554,7 @@ export class ChatViewModel {
       this.startModelLoad()
     }).catch((err: Error) => {
       this.apiServerStartAfterModelLoad = false
-      this.status = `检查模型失败：${formatError(err as Object)}`
+      this.setStatus(`检查模型失败：${formatError(err as Object)}`, 'error')
       this.notify()
     })
   }
@@ -1330,7 +1580,7 @@ export class ChatViewModel {
       this.startModelLoad()
     }).catch((err: Error) => {
       this.apiServerStartAfterModelLoad = false
-      this.status = `检查模型失败：${formatError(err as Object)}`
+      this.setStatus(`检查模型失败：${formatError(err as Object)}`, 'error')
       this.notify()
     })
   }
@@ -1353,7 +1603,7 @@ export class ChatViewModel {
     this.busy = true
     this.modelLoading = true
     this.showModelLoadDialog = true
-    this.status = `正在加载 ${this.currentModel().shortName}...`
+    this.setStatus(`正在加载 ${this.currentModel().shortName}...`, 'neutral')
     this.modelLoadMessage = '正在加载模型权重，请保持应用在前台。'
     this.startModelLoadProgress()
     this.notify()
@@ -1371,7 +1621,7 @@ export class ChatViewModel {
       }
       this.loaded = loaded
       this.runtimeConfigDirty = false
-      this.status = `${this.currentModel().shortName} 已加载`
+      this.setStatus(`${this.currentModel().shortName} 已加载`, 'success')
       this.modelLoadMessage = `${this.currentModel().shortName} 加载完成，可以开始聊天。`
       this.stopModelLoadProgress()
       this.modelLoadProgress = 100
@@ -1389,7 +1639,7 @@ export class ChatViewModel {
     }).catch((err: Error) => {
       this.apiServerStartAfterModelLoad = false
       this.loaded = false
-      this.status = `加载失败：${formatError(err as Object)}`
+      this.setStatus(`加载失败：${formatError(err as Object)}`, 'error')
       const loadErrorMessage = `${this.currentModel().shortName} 加载失败，可能是设备可用内存不足。请关闭后台应用、释放其他模型或重启 App 后重试。\n\n${this.status}`
       this.stopModelLoadProgress()
       this.modelLoadProgress = 0
@@ -1464,7 +1714,7 @@ export class ChatViewModel {
     this.builtinModelInstallMessage = existingBytes > 0 ?
       `正在继续下载 ${spec.displayName}。请保持 App 在前台。` :
       `正在从 ${spec.sourceName} 下载 ${spec.displayName}。请保持 App 在前台。`
-    this.status = `正在安装 ${spec.displayName}...`
+    this.setStatus(`正在安装 ${spec.displayName}...`, 'neutral')
     this.notify()
 
     const supportsImage = this.modelCatalogService.findInstallItem(spec.id)?.supportsImage ?? false
@@ -1480,7 +1730,7 @@ export class ChatViewModel {
       this.builtinModelInstallTotalBytes = progress.totalBytes
       this.builtinModelInstallFileName = progress.fileName
       this.builtinModelInstallMessage = `${progress.message}：${progress.fileName}`
-      this.status = `正在安装 ${progress.modelName}...`
+      this.setStatus(`正在安装 ${progress.modelName}...`, 'neutral')
       this.notify()
     }).then(async () => {
       const installedItem = this.modelCatalogService.findMarketItem(spec.id) ??
@@ -1495,7 +1745,7 @@ export class ChatViewModel {
       this.builtinModelInstallMessage = this.autoLoadAfterInstall ?
         `${spec.displayName} 安装完成，正在加载模型。` :
         `${spec.displayName} 安装完成，可在模型列表中选择并加载。`
-      this.status = `${spec.displayName} 安装完成`
+      this.setStatus(`${spec.displayName} 安装完成`, 'success')
       this.refreshModelMarketInstallStates()
       this.notify()
       setTimeout(() => {
@@ -1519,12 +1769,12 @@ export class ChatViewModel {
         this.builtinModelInstallError = ''
         this.builtinModelInstallCanceled = true
         this.builtinModelInstallMessage = `${spec.displayName} 下载已停止；继续下载会断点续传，关闭弹窗会清理未完成文件。`
-        this.status = `${spec.displayName} 下载已停止`
+        this.setStatus(`${spec.displayName} 下载已停止`, 'warning')
       } else {
         this.builtinModelInstallCanceled = false
         this.builtinModelInstallError = `安装失败：${formatDownloadError(err as Object)}`
         this.builtinModelInstallMessage = `${spec.displayName} 未安装完成，可以重试。`
-        this.status = this.builtinModelInstallError
+        this.setStatus(this.builtinModelInstallError, 'neutral')
       }
       this.notify()
     })
@@ -1536,7 +1786,7 @@ export class ChatViewModel {
     }
     this.builtinModelInstallCancelRequested = true
     this.builtinModelInstallMessage = '正在停止下载，请稍候...'
-    this.status = '正在停止模型下载...'
+    this.setStatus('正在停止模型下载...', 'neutral')
     this.builtinModelInstallService.cancelInstall()
     this.notify()
   }
@@ -1564,12 +1814,12 @@ export class ChatViewModel {
 
   chooseImage(): void {
     if (!this.currentModel().supportsImage) {
-      this.status = `${this.currentModel().shortName} 不支持图片输入。`
+      this.setStatus(`${this.currentModel().shortName} 不支持图片输入。`, 'warning')
       this.notify()
       return
     }
     if (!this.context) {
-      this.status = '选择图片失败：上下文不可用'
+      this.setStatus('选择图片失败：上下文不可用', 'error')
       this.notify()
       return
     }
@@ -1580,12 +1830,13 @@ export class ChatViewModel {
         this.notify()
       }
     }).catch((err: Error) => {
-      this.status = `选择图片失败：${formatError(err as Object)}`
+      this.setStatus(`选择图片失败：${formatError(err as Object)}`, 'error')
       this.notify()
     })
   }
 
   async sendMessage(): Promise<void> {
+    if (!this.historyReady || this.historyBusy) return
     if (this.rejectWhileModelScanning()) {
       return
     }
@@ -1597,11 +1848,12 @@ export class ChatViewModel {
     const chatTurns = this.composeChatTurns(text)
     const attachedImage = this.selectedImageUri
     if (attachedImage.length > 0 && !this.currentModel().supportsImage) {
-      this.status = `${this.currentModel().shortName} 不支持图片输入，请清除图片后发送。`
+      this.setStatus(`${this.currentModel().shortName} 不支持图片输入，请清除图片后发送。`, 'warning')
       this.notify()
       return
     }
 
+    this.session.prepareModel(this.currentModel().id, this.currentModel().shortName)
     this.session.appendMessage('user', text, attachedImage)
     const assistantId = this.session.appendMessage('assistant', '', '')
     this.syncMessages()
@@ -1613,7 +1865,7 @@ export class ChatViewModel {
     this.generationStopping = false
     this.streamingChars = 0
     this.latestPerfMetrics = undefined
-    this.status = '等待首个输出片段...'
+    this.setStatus('等待首个输出片段...', 'neutral')
     this.refreshStats()
     this.notifyAndScroll()
 
@@ -1627,7 +1879,7 @@ export class ChatViewModel {
       stripLeadingAssistantSeparator: this.shouldStripLeadingAssistantSeparator()
     }, {
       onStatus: (status: string) => {
-        this.status = status
+        this.setStatus(status, 'neutral')
         this.notify()
       },
       onStream: (update: GenerationStreamUpdate) => {
@@ -1645,8 +1897,10 @@ export class ChatViewModel {
         outcome.includeInContext,
         outcome.result.stopReason === 'user_stop' ? undefined : outcome.perfMetrics
       )
+      this.session.markGeneration(assistantId, outcome.result.stopReason === 'user_stop' ? 'stopped' :
+        (outcome.result.stopReason === 'timeout' || outcome.result.stopReason === 'internal_error' ? 'failed' : 'complete'))
       this.syncMessages()
-      this.status = outcome.status
+      this.setStatus(outcome.status, outcome.includeInContext ? 'success' : 'warning')
       this.busy = false
       this.generating = false
       this.generationStopping = false
@@ -1655,8 +1909,9 @@ export class ChatViewModel {
     }).catch((err: Error) => {
       const message = `生成失败：${formatError(err as Object)}`
       this.session.updateMessage(assistantId, message, false)
+      this.session.markGeneration(assistantId, 'failed')
       this.syncMessages()
-      this.status = message
+      this.setStatus(message, 'error')
       this.latestPerfMetrics = undefined
       this.busy = false
       this.generating = false
@@ -1671,7 +1926,7 @@ export class ChatViewModel {
       return
     }
     this.generationStopping = true
-    this.status = '正在停止生成...'
+    this.setStatus('正在停止生成...', 'neutral')
     this.generationWorkflow.stop()
     this.notify()
   }
@@ -1712,7 +1967,7 @@ export class ChatViewModel {
       this.modelLifecycleService.reset()
     }
     this.loaded = false
-    this.status = status
+    this.setStatus(status, 'neutral')
     this.modelLoadProgress = 0
     this.modelLoadMessage = status
   }
@@ -1790,7 +2045,7 @@ export class ChatViewModel {
     this.builtinModelInstallMessage = autoLoadAfterInstall ?
       `${spec.displayName} 模型目录缺失或不完整，请先下载模型文件。` :
       `准备从 ${spec.sourceName} 安装 ${spec.displayName}。`
-    this.status = `${spec.displayName} 未安装`
+    this.setStatus(`${spec.displayName} 未安装`, 'neutral')
     this.notify()
     this.syncBuiltinModelInstallPartialProgress(spec)
   }
@@ -1836,7 +2091,7 @@ export class ChatViewModel {
     this.generationStopping = false
     this.streamingChars = 0
     this.latestPerfMetrics = undefined
-    this.status = '等待 API 首个输出片段...'
+    this.setStatus('等待 API 首个输出片段...', 'neutral')
     this.refreshStats()
     this.notify()
     return this.nativeService.generateText(
@@ -1845,7 +2100,7 @@ export class ChatViewModel {
       request.settings,
       (chunk: string) => {
         this.streamingChars += chunk.length
-        this.status = `正在处理 API 请求... ${this.streamingChars} 字符`
+        this.setStatus(`正在处理 API 请求... ${this.streamingChars} 字符`, 'neutral')
         onChunk(chunk)
         this.notify()
       }
@@ -1853,7 +2108,7 @@ export class ChatViewModel {
       this.busy = false
       this.generating = false
       this.generationStopping = false
-      this.status = `API 生成完成（${result.generatedTokens} tokens）`
+      this.setStatus(`API 生成完成（${result.generatedTokens} tokens）`, 'success')
       this.refreshStats()
       this.notify()
       return result
@@ -1861,7 +2116,7 @@ export class ChatViewModel {
       this.busy = false
       this.generating = false
       this.generationStopping = false
-      this.status = `API 生成失败：${formatError(err as Object)}`
+      this.setStatus(`API 生成失败：${formatError(err as Object)}`, 'error')
       this.refreshStats()
       this.notify()
       throw err
@@ -1881,6 +2136,7 @@ export class ChatViewModel {
 
   private syncMessages(): void {
     this.messages = this.session.messages
+    this.scheduleHistorySave()
   }
 
   private shouldStripLeadingAssistantSeparator(): boolean {
@@ -2008,7 +2264,7 @@ export class ChatViewModel {
 
   private handleStreamUpdate(assistantId: number, update: GenerationStreamUpdate): void {
     this.streamingChars = update.characterCount
-    this.status = `正在生成... ${update.characterCount} 字符`
+    this.setStatus(`正在生成... ${update.characterCount} 字符`, 'neutral')
     this.session.updateMessage(assistantId, update.text)
     this.syncMessages()
     this.notify()

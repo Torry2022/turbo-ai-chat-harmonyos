@@ -1,4 +1,6 @@
-import { ActionButtonStyle } from './ButtonStyles'
+import { ChatHistoryPanel } from './ChatHistoryPanel'
+import { messageDate } from '../models/ChatHistoryTypes'
+import { ActionButtonStyle, CompactActionStyle } from './ButtonStyles'
 import { ChatMessage } from '../models/ChatTypes'
 import { ChatViewModel } from '../state/ChatViewModel'
 import { MessageBubble } from './MessageBubble'
@@ -7,11 +9,29 @@ import { KeyCode } from '@kit.InputKit'
 @Component
 export struct ChatTab {
   @ObjectLink viewModel: ChatViewModel
-  @Prop renderVersion: number
+  @Prop @Watch('onHistoryReady') renderVersion: number
   @Prop @Watch('onActiveChange') active: boolean = false
   @Prop dialogVisible: boolean = false
+  @Prop leadingInset: number = 0
   @Prop inputBottomOffset: number = 0
   onRequestModel: () => void = () => {}
+  @State private historyWidth: number = 0
+  @State private historyOpen: boolean = false
+  private historyInitialized: boolean = false
+
+  private dateBefore(index: number): string {
+    const message = this.viewModel.messages[index]
+    if (message.kind === 'notice' || !message.createdAt) return ''
+    const day = messageDate(message.createdAt)
+    for (let previous = index - 1; previous >= 0; previous--) {
+      const item = this.viewModel.messages[previous]
+      if (item.kind !== 'notice' && item.createdAt) {
+        return messageDate(item.createdAt) === day ? '' : day
+      }
+    }
+    return day
+  }
+
   @State private inputFocused: boolean = false
   @State private voiceWaveRaised: boolean = false
   private inputController: TextAreaController = new TextAreaController()
@@ -21,14 +41,40 @@ export struct ChatTab {
   private suppressEnterNewline: boolean = false
   private submitOnNewline: boolean = false
 
+  private wideHistory(): boolean {
+    return this.historyWidth >= 872
+  }
+
+  private setHistoryOpen(open: boolean): void {
+    this.getUIContext().animateTo({ duration: 220, curve: Curve.EaseInOut }, () => {
+      this.historyOpen = open
+    })
+  }
+
+  private onHistoryReady(): void {
+    if (!this.historyInitialized && this.viewModel.historyReady && this.historyWidth > 0) {
+      this.historyInitialized = true
+      this.historyOpen = this.wideHistory() && this.viewModel.conversations.length > 0
+    }
+  }
+
+  aboutToAppear(): void {
+    this.viewModel.bindHistoryClose((): boolean => {
+      if (!this.historyOpen || this.wideHistory()) return false
+      this.setHistoryOpen(false)
+      return true
+    })
+  }
+
   private onActiveChange(): void {
     if (!this.active) {
+      if (!this.wideHistory()) this.setHistoryOpen(false)
       this.inputController.stopEditing()
     }
   }
 
   private sendKeyboardMessage(): void {
-    if (this.active && this.inputFocused && !this.dialogVisible && this.viewModel.loaded &&
+    if (this.active && this.inputFocused && (this.wideHistory() || !this.historyOpen) && !this.dialogVisible && this.viewModel.loaded &&
       !this.viewModel.busy && !this.viewModel.generating && !this.viewModel.speechRecognitionStarting &&
       !this.viewModel.speechRecognizing && this.viewModel.inputText.trim().length > 0) {
       this.viewModel.sendMessage()
@@ -126,21 +172,80 @@ export struct ChatTab {
     .accessibilityText('停止语音输入')
   }
 
-  build() {
+  private hasConversation(): boolean {
+    return this.viewModel.messages.some((message: ChatMessage) => message.role === 'user')
+  }
+
+  @Builder
+  private EmptyConversation() {
+    Column({ space: 16 }) {
+      if (!this.viewModel.loaded) {
+        Text('尚未加载模型').fontSize(15).fontColor($r('app.color.text_muted'))
+        Button(this.viewModel.modelLoading ? '正在加载…' : '加载模型')
+          .attributeModifier(new ActionButtonStyle($r('app.color.button_primary_background'), $r('app.color.button_primary_text')))
+          .width(132).height(38)
+          .enabled(!this.viewModel.busy && !this.viewModel.modelLoading)
+          .onClick(() => this.viewModel.openModelLoadDialog())
+      }
+    }.width('100%').padding({ left: 24, right: 24 })
+  }
+
+  @Builder
+  private ChatBody() {
     Column({ space: 8 }) {
+      Row({ space: 8 }) {
+        Button({ type: ButtonType.Normal }) {
+          Image($r('app.media.icon_chat_history')).width(22).height(22)
+            .fillColor($r('app.color.text_secondary'))
+        }.width(34).height(34).padding(0).borderRadius(8)
+          .backgroundColor(this.historyOpen ? $r('app.color.nav_selected_background') : Color.Transparent)
+          .hoverEffect(HoverEffect.Auto)
+          .accessibilityText(this.historyOpen ? '收起历史对话' : '展开历史对话')
+          .onClick(() => {
+            this.inputController.stopEditing()
+            this.setHistoryOpen(!this.historyOpen)
+          })
+        Text(this.viewModel.currentConversationTitle())
+          .fontSize(15).fontWeight(FontWeight.Medium).fontColor($r('app.color.text_title'))
+          .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).layoutWeight(1)
+      }.width('100%').height(40)
+      if (this.viewModel.historyError.length > 0) {
+        Row({ space: 8 }) {
+          Text(this.viewModel.historyError).fontSize(12).lineHeight(18)
+            .fontColor($r('app.color.status_warning')).layoutWeight(1)
+          Button('重试').attributeModifier(new CompactActionStyle())
+            .enabled(!this.viewModel.historyBusy).onClick(() => this.viewModel.retryHistorySave())
+        }.width('100%').padding(8).backgroundColor($r('app.color.inset')).borderRadius(8)
+      }
+      if (!this.hasConversation()) {
+        Column() {
+          this.EmptyConversation()
+        }.width('100%').layoutWeight(1).justifyContent(FlexAlign.Center)
+      } else {
       List({ space: 10, scroller: this.viewModel.chatScroller }) {
-        ForEach(this.viewModel.messages, (message: ChatMessage) => {
+        ForEach(this.viewModel.messages, (message: ChatMessage, index: number) => {
           ListItem() {
+            Column({ space: 8 }) {
+              if (this.dateBefore(index).length > 0) {
+                Text(this.dateBefore(index)).fontSize(11).fontColor($r('app.color.text_muted'))
+                  .width('100%').textAlign(TextAlign.Center).padding({ top: 6, bottom: 2 })
+              }
+              if (message.kind === 'notice') {
+                Text(message.content).fontSize(12).lineHeight(18).fontColor($r('app.color.text_muted'))
+                  .width('100%').textAlign(TextAlign.Center).padding({ left: 12, right: 12, top: 6, bottom: 6 })
+              } else {
             MessageBubble({
               message,
               onToggleThinking: (messageId: number) => {
                 this.viewModel.toggleMessageThinking(messageId)
               }
             })
-          }
+              }
+            }.width('100%')
+          }.visibility(message.kind === 'notice' && message.role === 'assistant' ? Visibility.None : Visibility.Visible)
         }, (message: ChatMessage) => {
           if (message.role === 'assistant') {
-            return `${message.id}-${message.content.length}-${message.thinkingExpanded ? 1 : 0}-${message.perfMetrics !== undefined ? 1 : 0}`
+            return `${message.id}-${message.content.length}-${message.thinkingExpanded ? 1 : 0}-${message.perfMetrics !== undefined ? 1 : 0}-${message.generationState ?? ''}`
           }
           return `${message.id}`
         })
@@ -157,6 +262,8 @@ export struct ChatTab {
       .onClick(() => {
         this.inputController.stopEditing()
       })
+
+      }
 
       if (this.viewModel.selectedImageUri.length > 0) {
         Row({ space: 8 }) {
@@ -365,5 +472,52 @@ export struct ChatTab {
     }
     .layoutWeight(1)
     .width('100%')
+    .constraintSize({ maxWidth: 900 })
+  }
+
+  build() {
+    Stack({ alignContent: Alignment.Start }) {
+      Row() {
+        Column() {
+          ChatHistoryPanel({ viewModel: this.viewModel, renderVersion: this.renderVersion })
+            .width(220).height('100%')
+        }.width(this.wideHistory() && this.historyOpen ? 220 : 0).height('100%')
+          .alignItems(HorizontalAlign.Start).clip(true)
+          .opacity(this.wideHistory() && this.historyOpen ? 1 : 0)
+          .border({ width: { right: 1 }, color: $r('app.color.attachment_border') })
+          .hitTestBehavior(this.wideHistory() && this.historyOpen ? HitTestMode.Default : HitTestMode.None)
+          .accessibilityLevel(this.wideHistory() && this.historyOpen ? 'auto' : 'no-hide-descendants')
+        Column() {
+          this.ChatBody()
+        }.layoutWeight(1).height('100%').alignItems(HorizontalAlign.Center)
+          .padding({ left: this.wideHistory() && this.historyOpen ? 12 : this.leadingInset })
+      }.width('100%').height('100%')
+      if (!this.wideHistory() && this.historyOpen) {
+        Column().width('100%').height('100%').backgroundColor('#66000000')
+          .onClick(() => this.setHistoryOpen(false))
+          .transition(TransitionEffect.OPACITY.animation({ duration: 220, curve: Curve.EaseInOut }))
+        Column() {
+          ChatHistoryPanel({ viewModel: this.viewModel, renderVersion: this.renderVersion,
+            closeOnSelection: true, onClose: () => this.setHistoryOpen(false) })
+        }.width(Math.max(1, Math.min(260, this.historyWidth - 48))).height('100%')
+          .padding({ left: 8, right: 8, top: 4, bottom: 8 })
+          .backgroundColor($r('app.color.page')).hitTestBehavior(HitTestMode.Block).onClick(() => {})
+          .transition(TransitionEffect.move(TransitionEdge.START).combine(TransitionEffect.OPACITY)
+            .animation({ duration: 220, curve: Curve.EaseInOut }))
+      }
+    }.width('100%').layoutWeight(1)
+      .onAreaChange((_oldArea: Area, newArea: Area) => {
+        const wasWide = this.wideHistory()
+        this.historyWidth = Number(newArea.width)
+        if (wasWide !== this.wideHistory() && this.historyInitialized) this.historyOpen = false
+        this.onHistoryReady()
+      })
+      .onKeyEvent((event: KeyEvent): boolean => {
+        if (!this.wideHistory() && this.historyOpen && event.keyCode === KeyCode.KEYCODE_ESCAPE && event.type === KeyType.Down) {
+          this.setHistoryOpen(false)
+          return true
+        }
+        return false
+      })
   }
 }

@@ -54,6 +54,12 @@ In the HarmonyOS ecosystem, on-device AI inference today largely depends on Andr
 
 ## Recent Highlights
 
+**Chat history and service-page improvements (v1.13.0)**
+
+- Save conversations locally with new, open, rename, delete, and clear-all actions; retain message timestamps, reply models, and model-switch records.
+- Use a collapsible history pane in wide windows and a drawer in narrow windows. Store attached images in the app's private directory; opening history keeps the current model.
+- Keep service settings in the left column and give API logs the right column with internal scrolling. Align API authentication guidance, connection fields, and supporting text.
+
 **Navigation and model import improvements (v1.12.0)**
 
 - Add icons to mobile navigation and sidebars, retaining descriptions in wide sidebars. Use a theme-aware blurred mobile navigation background with adjusted bottom content spacing.
@@ -194,6 +200,12 @@ With a physical keyboard, Enter sends from the chat input and Shift+Enter insert
 - Model management: model-market download, model ordering, and deleting installed model directories
 - Import local MNN models by selecting a folder (where supported), importing a zip, or pushing a directory and scanning it in the app; standard MNN export directories use `jinja.chat_template` from `llm_config.json`
 - OpenAI-compatible API: serve the currently loaded model to Cherry Studio and other LAN clients with streaming output and Bearer authentication
+
+### Chat history
+
+Chats are saved locally with images, thinking content, the generating model, timestamps, and existing performance metrics. Wide chat areas have a collapsible history sidebar; narrower windows open the list from the history button. Create, resume, rename, or delete individual chats, or confirm deletion of all chats. Empty chats are not added to history. Deletion also removes the chat's image copies and cannot be undone.
+
+Restarting the app restores the last conversation without automatically loading its model. Opening history keeps the current model. Switching models within a conversation retains messages and continues using the existing context limits; replies show their original model, and a notice marks continuation with another model. Recovered unfinished responses are marked interrupted and excluded from complete context turns. History is stored in the app's private directory and is removed when app data is cleared or the app is uninstalled. API requests and Benchmark records are not saved as chat history.
 
 ## Screenshots
 

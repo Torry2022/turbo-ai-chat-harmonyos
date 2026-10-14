@@ -76,6 +76,7 @@ struct Index {
     if (this.viewModel.dismissTopDialogIfIdle()) {
       return true
     }
+    if (this.viewModel.closeHistoryDrawer()) return true
     const now: number = Date.now()
     if (now - this.lastBackTime < 2000) {
       this.abilityContext?.terminateSelf().catch((_err: Error) => {
@@ -195,6 +196,7 @@ struct Index {
   }
 
   private newChat(): void {
+    this.viewModel.closeHistoryDrawer()
     this.viewModel.newChat()
     this.changeTab(0)
   }
@@ -214,7 +216,8 @@ struct Index {
         this.showSettings = false
         return true
       }
-      return this.viewModel.dismissTopDialogIfIdle()
+      if (this.viewModel.dismissTopDialogIfIdle()) return true
+      return this.viewModel.closeHistoryDrawer()
     }
     if (event.keyCode !== KeyCode.KEYCODE_N) {
       return false
@@ -278,8 +281,9 @@ struct Index {
           AppHeader({
             compact: this.windowWidth < 600,
             onSettings: () => { this.showSettings = true },
-            status: this.viewModel.status,
-            loaded: this.viewModel.loaded,
+            status: this.viewModel.headerStatus(),
+            statusColor: this.viewModel.headerColor(),
+            newChatEnabled: this.viewModel.canManageConversations(),
             busy: this.viewModel.busy,
             renderVersion: this.stateVersion,
             showNewChat: this.activeTab === 0,
@@ -310,6 +314,7 @@ struct Index {
                 topSpacing: this.windowWidth >= 600 ? 4 : 0
               })
               ChatTab({
+                leadingInset: this.windowWidth >= 840 ? this.pagePadding() : 0,
                 onRequestModel: () => {
                   this.changeTab(1)
                   this.showToast('请先加载模型', 1800)
@@ -321,7 +326,7 @@ struct Index {
                 dialogVisible: this.helpDialog.length > 0 || this.dialogExitBlocking || this.showSettings || this.viewModel.showModelLoadDialog || this.viewModel.showBuiltinModelInstallDialog ||
                   this.viewModel.showModelMarketDialog || this.viewModel.showDeleteModelDialog
               })
-              .padding({ left: this.pagePadding(), right: this.pagePadding() })
+              .padding({ left: this.windowWidth >= 840 ? 0 : this.pagePadding(), right: this.pagePadding() })
               .width(Math.max(1, Math.min(1280 + 2 * this.pagePadding(), this.windowWidth -
                 (this.windowWidth >= 840 ? 160 : this.windowWidth >= 600 ? 88 : 0))))
               .layoutWeight(1)

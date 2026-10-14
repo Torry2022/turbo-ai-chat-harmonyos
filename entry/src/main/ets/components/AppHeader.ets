@@ -1,7 +1,8 @@
 @Component
 export struct AppHeader {
   @Prop status: string = ''
-  @Prop loaded: boolean = false
+  @Prop statusColor: ResourceColor = $r('app.color.text_muted')
+  @Prop newChatEnabled: boolean = true
   @Prop busy: boolean = false
   @Prop renderVersion: number = 0
   @Prop showNewChat: boolean = true
@@ -45,7 +46,7 @@ export struct AppHeader {
           src: this.status
         })
           .fontSize(12)
-          .fontColor(this.busy ? $r('app.color.status_warning') : (this.loaded ? $r('app.color.status_good') : $r('app.color.text_muted')))
+          .fontColor(this.statusColor)
           .width('100%')
           .height(18)
       }
@@ -54,7 +55,7 @@ export struct AppHeader {
 
         Button(this.showNewChat ? '新对话' : this.actionLabel)
           .visibility(this.showNewChat || this.actionLabel.length > 0 ? Visibility.Visible : Visibility.Hidden)
-          .enabled(!this.busy)
+          .enabled(this.showNewChat ? this.newChatEnabled : !this.busy)
           .height(40)
           .width(78)
           .fontSize(this.showNewChat ? $r('app.float.button_font_size') : 15)

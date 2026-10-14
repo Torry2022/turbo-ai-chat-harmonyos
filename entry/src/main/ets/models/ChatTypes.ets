@@ -6,6 +6,13 @@ export interface ChatMessage {
   time: string
   includeInContext: boolean
   thinkingExpanded: boolean
+  createdAt?: number
+  completedAt?: number
+  modelId?: string
+  modelName?: string
+  kind?: 'message' | 'notice'
+  generationState?: 'generating' | 'complete' | 'interrupted' | 'stopped' | 'failed'
+  imageUnavailable?: boolean
   perfMetrics?: PerfMetrics
 }
 

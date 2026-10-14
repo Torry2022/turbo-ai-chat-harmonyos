@@ -6,6 +6,28 @@ import { answerTextForContext, isLikelyIncompleteAssistantText } from '../utils/
 export class ChatSession {
   messages: ChatMessage[] = []
   private nextMessageId: number = 1
+  private modelId: string = ''
+  private modelName: string = ''
+
+  restore(messages: ChatMessage[]): void {
+    this.messages = messages.map((message: ChatMessage) => {
+      if (message.generationState === 'generating') {
+        message.generationState = 'interrupted'
+        message.includeInContext = false
+      }
+      return message
+    })
+    this.nextMessageId = this.messages.reduce((id: number, message: ChatMessage) => Math.max(id, message.id + 1), 1)
+  }
+
+  prepareModel(modelId: string, modelName: string): void {
+    const previous = this.messages.filter((message: ChatMessage) => message.kind === 'message' && message.role === 'assistant')
+    this.modelId = modelId
+    this.modelName = modelName
+    if (previous.length > 0 && previous[previous.length - 1].modelId !== modelId) {
+      this.appendMessage('notice', `后续回答使用 ${modelName}`, '', false)
+    }
+  }
 
   initializeWelcome(modelShortName: string): void {
     this.messages = [{
@@ -14,6 +36,8 @@ export class ChatSession {
       content: `请先加载 ${modelShortName}，然后发送一条简短问题。想要更快响应，可以降低最大输出。`,
       imageUri: '',
       time: nowTime(),
+      createdAt: Date.now(),
+      kind: 'notice',
       includeInContext: false,
       thinkingExpanded: false
     }]
@@ -26,21 +50,17 @@ export class ChatSession {
       content: `新对话已开始。${loaded ? `已加载的 ${modelShortName} 会继续保留在内存中。` : '请先加载模型。'}`,
       imageUri: '',
       time: nowTime(),
+      createdAt: Date.now(),
+      kind: 'notice',
       includeInContext: false,
       thinkingExpanded: false
     }]
   }
 
   resetForModelSwitch(modelShortName: string): void {
-    this.messages = [{
-      id: this.nextMessageId++,
-      role: 'assistant',
-      content: `已切换至 ${modelShortName}。请先加载模型，然后开始新的对话。`,
-      imageUri: '',
-      time: nowTime(),
-      includeInContext: false,
-      thinkingExpanded: false
-    }]
+    if (!this.messages.some((message: ChatMessage) => message.role === 'user')) {
+      this.initializeWelcome(modelShortName)
+    }
   }
 
   appendMessage(role: string, content: string, imageUri: string = '', includeInContext: boolean = true): number {
@@ -50,6 +70,11 @@ export class ChatSession {
       content,
       imageUri,
       time: nowTime(),
+      createdAt: Date.now(),
+      kind: includeInContext ? 'message' : 'notice',
+      modelId: this.modelId,
+      modelName: this.modelName,
+      generationState: role === 'assistant' && includeInContext && content.length === 0 ? 'generating' : 'complete',
       includeInContext,
       thinkingExpanded: false
     }
@@ -66,6 +91,13 @@ export class ChatSession {
           content,
           imageUri: message.imageUri,
           time: message.time,
+          createdAt: message.createdAt,
+          completedAt: message.completedAt,
+          modelId: message.modelId,
+          modelName: message.modelName,
+          kind: message.kind,
+          generationState: message.generationState,
+          imageUnavailable: message.imageUnavailable,
           includeInContext: includeInContext === undefined ? message.includeInContext : includeInContext,
           thinkingExpanded: message.thinkingExpanded,
           perfMetrics: perfMetrics ?? message.perfMetrics
@@ -84,6 +116,13 @@ export class ChatSession {
           content: message.content + chunk,
           imageUri: message.imageUri,
           time: message.time,
+          createdAt: message.createdAt,
+          completedAt: message.completedAt,
+          modelId: message.modelId,
+          modelName: message.modelName,
+          kind: message.kind,
+          generationState: message.generationState,
+          imageUnavailable: message.imageUnavailable,
           includeInContext: message.includeInContext,
           thinkingExpanded: message.thinkingExpanded,
           perfMetrics: message.perfMetrics
@@ -102,12 +141,28 @@ export class ChatSession {
           content: message.content,
           imageUri: message.imageUri,
           time: message.time,
+          createdAt: message.createdAt,
+          completedAt: message.completedAt,
+          modelId: message.modelId,
+          modelName: message.modelName,
+          kind: message.kind,
+          generationState: message.generationState,
+          imageUnavailable: message.imageUnavailable,
           includeInContext: message.includeInContext,
           thinkingExpanded: !message.thinkingExpanded,
           perfMetrics: message.perfMetrics
         }
       }
       return message
+    })
+  }
+
+  markGeneration(id: number, state: 'complete' | 'interrupted' | 'stopped' | 'failed'): void {
+    this.messages.forEach((message: ChatMessage) => {
+      if (message.id === id) {
+        message.generationState = state
+        message.completedAt = Date.now()
+      }
     })
   }
 
