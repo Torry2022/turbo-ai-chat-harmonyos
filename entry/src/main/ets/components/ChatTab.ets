@@ -222,9 +222,9 @@ export struct ChatTab {
           }
         }, (message: ChatMessage) => {
           if (message.role === 'assistant') {
-            return `${message.id}-${message.content.length}-${message.thinkingExpanded ? 1 : 0}-${message.perfMetrics !== undefined ? 1 : 0}-${message.generationState ?? ''}`
+            return `${this.viewModel.activeConversationId}:${message.id}-${message.content.length}-${message.thinkingExpanded ? 1 : 0}-${message.perfMetrics !== undefined ? 1 : 0}-${message.generationState ?? ''}`
           }
-          return `${message.id}`
+          return `${this.viewModel.activeConversationId}:${message.id}`
         })
       }
       .layoutWeight(1)
