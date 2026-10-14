@@ -236,8 +236,10 @@ add('history actions preserve loaded model and reject busy transitions', async (
     view.layaRuntimeState = 'idle';
     assert.equal(view.headerStatus(), '模型未加载');
     view.layaRuntimeState = 'running';
-    assert.equal(view.headerStatus(), '正在使用 Laya 判定...');
+    assert.equal(view.headerStatus(), '正在执行决策...');
     view.layaRuntimeState = 'idle';
+  }
+  if ('benchmarkRunning' in view) {
     view.benchmarkRunning = true;
     view.benchmarkMessage = '轮次间冷却 10s';
     assert.equal(view.headerStatus(), '正在等待下一轮 Benchmark...');

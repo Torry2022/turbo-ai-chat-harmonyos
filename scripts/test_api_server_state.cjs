@@ -16,6 +16,8 @@ for (const node of ast.statements.filter(ts.isImportDeclaration)) {
     context[name] = /^[A-Z_]+$/.test(name) ? 0 : Stub;
   }
 }
+let layaReady = false;
+context.isLayaReady = () => layaReady;
 context.formatError = error => error.message;
 vm.runInNewContext(ts.transpileModule(ast.statements.find(ts.isClassDeclaration).getText(ast), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, experimentalDecorators: true }
@@ -24,13 +26,13 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
 (async () => {
   const view = new context.exports.ChatViewModel();
   view.notify = view.notifyAndScroll = view.saveApiServerSettings = view.appendApiServerLog = () => {};
-  let prompted = 0, toasts = 0, starts = 0, resolveStart, rejectStart;
+  let prompted = 0, toasts = 0, starts = 0, stops = 0, resolveStart, rejectStart;
   view.toastCallback = () => { toasts++; };
   view.openModelLoadDialog = () => { prompted++; view.showModelLoadDialog = true; };
   view.apiServerKey = 'test-key';
   view.apiServer = {
     start: () => { starts++; return new Promise((resolve, reject) => { resolveStart = resolve; rejectStart = reject; }); },
-    stop: async () => {}
+    stop: async () => { stops++; }
   };
   view.setApiServerEnabled(true);
   assert.equal(view.apiServerRunning, false);
@@ -72,4 +74,38 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
   assert.equal(starts, 2);
   assert.equal(view.apiServerRunning, false);
   console.log('PASS startup rejection and invalid port keep service off');
+
+  view.apiServerPortInput = '8080';
+  view.loaded = false;
+  layaReady = true;
+  view.selectApiServiceTarget('decision');
+  view.setApiServerEnabled(true);
+  assert.equal(starts, 3);
+  assert.equal(view.apiServerStarting, true);
+  resolveStart('http://localhost:8080');
+  await tick();
+  assert.equal(view.apiServerRunning, true);
+  console.log('PASS installed Laya starts service without a loaded chat model');
+  view.selectApiServiceTarget('chat');
+  assert.equal(view.apiServiceTarget, 'decision');
+  console.log('PASS running service locks the selected model');
+
+  view.refreshLayaReady();
+  assert.equal(view.layaReady, true);
+  view.loaded = true;
+  view.stopApiServerForModelChange(true);
+  view.loaded = false;
+  assert.equal(view.apiServerRunning, true);
+  assert.equal(view.apiServerStartAfterModelLoad, false);
+  assert.equal(stops, 1);
+  console.log('PASS chat model change keeps Laya service running');
+
+  layaReady = false;
+  view.refreshLayaReady();
+  assert.equal(view.layaReady, false);
+  view.stopApiServerForModelChange(false);
+  await tick();
+  assert.equal(view.apiServerRunning, false);
+  assert.equal(stops, 2);
+  console.log('PASS model change stops service when Laya is unavailable');
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -1,6 +1,8 @@
 import { describe, expect, it } from '@ohos/hypium'
 import {
   ApiReasoningStreamFilter,
+  formatApiDecision,
+  prepareApiDecision,
   splitApiOutput,
   visibleAnswer
 } from '../../../main/ets/services/OpenAiApiServer'
@@ -35,5 +37,32 @@ export default function openAiApiServerTest(): void {
       expect(output.answer).assertEqual('对外回答。')
       expect(visibleAnswer('<think>内部分析</think>对外回答。', true)).assertEqual('对外回答。')
     })
+    it('preparesChoiceDecisionAndFormatsAnswer', 0, () => {
+      const request = prepareApiDecision('{"input":"界面错位","task":{"type":"choice","instruction":"问题类型？","options":{"ui":"界面问题","other":"其他"}}}')
+      expect(request.options[0]).assertEqual('ui: 界面问题')
+      const response = formatApiDecision(request, '{"logits":[2,0],"elapsed_ms":180}')
+      expect(response.result.choice).assertEqual('ui')
+      expect(response.metadata.task_calibrated).assertEqual(false)
+    })
+
+    it('formatsScoreAndYesNoDecisions', 0, () => {
+      const score = prepareApiDecision('{"input":"界面错位","task":{"type":"score","instruction":"影响程度？","levels":["低","中","高"]}}')
+      expect(formatApiDecision(score, '{"logits":[0,2,0],"elapsed_ms":170}').result.score)
+        .assertEqual(1)
+      const yesNo = prepareApiDecision('{"input":"界面错位","task":{"type":"boolean","instruction":"是界面问题？"}}')
+      expect(formatApiDecision(yesNo, '{"logits":[0,2],"elapsed_ms":160}').result.probabilities['true'])
+        .assertEqual(0.8808)
+    })
+
+    it('rejectsDecisionWithoutCandidates', 0, () => {
+      let rejected = false
+      try {
+        prepareApiDecision('{"input":"界面错位","task":{"type":"choice","instruction":"问题类型？","options":{"ui":"界面问题"}}}')
+      } catch (_error) {
+        rejected = true
+      }
+      expect(rejected).assertEqual(true)
+    })
+
   })
 }

@@ -21,6 +21,10 @@ export struct ModelTab {
   @StorageProp('darkAppearance') private darkAppearance: boolean = true
   @ObjectLink viewModel: ChatViewModel
   @Prop @Watch('onRenderVersionChange') renderVersion: number = 0
+  @Prop layaReady: boolean = false
+  @Prop layaStatus: string = '未安装'
+  @State private modelCategory: number = 0
+  onLayaDecision: () => void = () => {}
   onDragStateChange: (dragging: boolean) => void = (_dragging: boolean) => {}
   @State sliderMaxNewTokens: number = DEFAULT_MAX_NEW_TOKENS
   @State sliderTemperature: number = DEFAULT_TEMPERATURE
@@ -333,33 +337,48 @@ export struct ModelTab {
   private ModelListCard() {
     Column({ space: 10 }) {
       this.SectionTitle('模型列表')
-      Column({ space: 8 }) {
-        ForEach(this.visibleModelProfiles, (profile: ModelProfile) => {
-          this.ModelOption(profile)
-        }, (profile: ModelProfile) =>
-          `${profile.id}-${profile.name}-${profile.shortName}-${profile.description}`)
+      Row({ space: 8 }) {
+        ForEach(['聊天', '决策'], (title: string, index: number) => {
+          Button(title)
+            .attributeModifier(new ActionButtonStyle(
+              this.modelCategory === index ? $r('app.color.button_primary_background') : $r('app.color.button_secondary_background'),
+              this.modelCategory === index ? $r('app.color.button_primary_text') : $r('app.color.button_secondary_text')))
+            .layoutWeight(1)
+            .onClick(() => { this.cancelModelDrag(); this.modelCategory = index })
+        })
       }
       .width('100%')
-      .zIndex(this.draggingModelId.length > 0 ? 10 : 0)
-      Button(this.viewModel.loaded ? '释放模型' : '加载模型')
-        .attributeModifier(new ActionButtonStyle(this.viewModel.loaded ? $r('app.color.button_secondary_background') : $r('app.color.button_primary_background'), this.viewModel.loaded ? $r('app.color.button_secondary_text') : $r('app.color.button_primary_text')))
-        .enabled(this.controlsEnabled())
+      if (this.modelCategory === 1) {
+        this.DecisionModelCard()
+      } else {
+        Column({ space: 8 }) {
+          ForEach(this.visibleModelProfiles, (profile: ModelProfile) => {
+            this.ModelOption(profile)
+          }, (profile: ModelProfile) =>
+            `${profile.id}-${profile.name}-${profile.shortName}-${profile.description}`)
+        }
         .width('100%')
-        .onClick(() => {
-          if (this.viewModel.loaded) {
-            this.viewModel.unloadModel()
-            return
-          }
-            this.viewModel.loadModel()
-          })
-      if (this.viewModel.canDeleteModel(this.viewModel.selectedModelId)) {
-        Button('删除当前模型')
-          .attributeModifier(new ActionButtonStyle($r('app.color.button_danger_background'), $r('app.color.button_danger_text')))
+        .zIndex(this.draggingModelId.length > 0 ? 10 : 0)
+        Button(this.viewModel.loaded ? '释放模型' : '加载模型')
+          .attributeModifier(new ActionButtonStyle(this.viewModel.loaded ? $r('app.color.button_secondary_background') : $r('app.color.button_primary_background'), this.viewModel.loaded ? $r('app.color.button_secondary_text') : $r('app.color.button_primary_text')))
           .enabled(this.controlsEnabled())
           .width('100%')
           .onClick(() => {
-            this.viewModel.requestDeleteModel(this.viewModel.selectedModelId)
-          })
+            if (this.viewModel.loaded) {
+              this.viewModel.unloadModel()
+              return
+            }
+              this.viewModel.loadModel()
+            })
+        if (this.viewModel.canDeleteModel(this.viewModel.selectedModelId)) {
+          Button('删除当前模型')
+            .attributeModifier(new ActionButtonStyle($r('app.color.button_danger_background'), $r('app.color.button_danger_text')))
+            .enabled(this.controlsEnabled())
+            .width('100%')
+            .onClick(() => {
+              this.viewModel.requestDeleteModel(this.viewModel.selectedModelId)
+            })
+        }
       }
     }
     .width('100%')
@@ -367,6 +386,59 @@ export struct ModelTab {
     .backgroundColor($r('app.color.card'))
     .borderRadius($r('app.float.card_radius'))
     .zIndex(this.draggingModelId.length > 0 ? 10 : 0)
+  }
+
+  @Builder
+  private DecisionModelCard() {
+    Column({ space: 8 }) {
+      Row({ space: 8 }) {
+        Text('Laya-Multilingual-MNN-FP16')
+          .fontSize(13)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.text_body'))
+          .layoutWeight(1)
+        Text(this.layaStatus)
+          .fontSize(11)
+          .fontColor(this.layaReady ? $r('app.color.status_good') : $r('app.color.text_hint'))
+      }
+      .width('100%')
+      Text('根据输入完成选择、评分或是非判断。')
+        .fontSize(12)
+        .lineHeight(18)
+        .fontColor($r('app.color.text_muted'))
+        .width('100%')
+      Button(this.layaReady ? '打开决策' : '下载模型')
+        .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
+        .width('100%')
+        .onClick(() => this.onLayaDecision())
+      if (this.layaStatus === '已加载') {
+        Button('释放模型')
+          .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
+          .width('100%')
+          .onClick(() => { this.viewModel.releaseDecisionModel() })
+      }
+    }
+    .width('100%')
+    .padding(12)
+    .backgroundColor($r('app.color.card'))
+    .borderRadius($r('app.float.card_radius'))
+  }
+
+  @Builder
+  private DecisionGuideCard() {
+    Column({ space: 10 }) {
+      this.SectionTitle('使用方式')
+      Text('选择：从给定选项中选出一项')
+        .fontSize(12).fontColor($r('app.color.text_secondary')).width('100%')
+      Text('评分：按给定等级评估输入')
+        .fontSize(12).fontColor($r('app.color.text_secondary')).width('100%')
+      Text('是非判断：回答一个是或否的问题')
+        .fontSize(12).fontColor($r('app.color.text_secondary')).width('100%')
+      Text('打开决策后填写输入和任务说明。首次运行会加载模型，后续决策会复用。')
+        .fontSize(11).lineHeight(17).fontColor($r('app.color.text_muted')).width('100%')
+    }
+    .width('100%').alignItems(HorizontalAlign.Start).padding(12)
+    .backgroundColor($r('app.color.card')).borderRadius($r('app.float.card_radius'))
   }
 
   @Builder
@@ -859,7 +931,7 @@ export struct ModelTab {
   build() {
     Scroll(this.modelScroller) {
       Flex({ direction: this.contentWidth >= 800 ? FlexDirection.Row : FlexDirection.Column }) {
-        Column() {
+        Column({ space: 12 }) {
           this.ModelListCard()
         }
         .width(this.contentWidth >= 800 ? Math.max(320, Math.min(420, this.contentWidth * 0.4)) : this.contentWidth)
@@ -867,11 +939,15 @@ export struct ModelTab {
         .zIndex(this.draggingModelId.length > 0 ? 10 : 0)
         .margin({ right: this.contentWidth >= 800 ? 16 : 0, bottom: this.contentWidth >= 800 ? 0 : 12 })
         Column({ space: 12 }) {
-          this.GenerationSettingsCard()
-          this.RuntimeSettingsCard()
-          this.ImportedModelConfigCard()
-          this.ContextCard()
-          this.ModelManagementCard()
+          if (this.modelCategory === 0) {
+            this.GenerationSettingsCard()
+            this.RuntimeSettingsCard()
+            this.ImportedModelConfigCard()
+            this.ContextCard()
+            this.ModelManagementCard()
+          } else {
+            this.DecisionGuideCard()
+          }
         }
         .width(this.contentWidth >= 800 ?
           this.contentWidth - Math.max(320, Math.min(420, this.contentWidth * 0.4)) - 16 : this.contentWidth)

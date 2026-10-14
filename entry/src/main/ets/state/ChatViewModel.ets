@@ -1,3 +1,4 @@
+import { decideLaya, isLayaReady, LayaRuntimeState, observeLayaRuntime, releaseLaya } from '../services/LayaDecisionService'
 import { ChatConversation, ChatConversationSummary, conversationTitle } from '../models/ChatHistoryTypes'
 import { ChatHistoryService } from '../services/ChatHistoryService'
 import { bundleManager, common } from '@kit.AbilityKit'
@@ -39,6 +40,7 @@ import { catalogCompatibilityMessage } from '../utils/modelCatalog'
 import { NativeInferenceService } from '../services/NativeInferenceService'
 import {
   ApiGenerationRequest,
+  PreparedApiDecision,
   ApiServerModel,
   OpenAiApiServer
 } from '../services/OpenAiApiServer'
@@ -134,6 +136,9 @@ export class ChatViewModel {
   importedModelSystemPromptInput: string = ''
   showDeleteModelDialog: boolean = false
   pendingDeleteModelId: string = ''
+  layaReady: boolean = false
+  layaRuntimeState: LayaRuntimeState = 'idle'
+  apiServiceTarget: 'chat' | 'decision' = 'chat'
   apiServerRunning: boolean = false
   apiServerStarting: boolean = false
   apiServerPortInput: string = '8080'
@@ -169,14 +174,17 @@ export class ChatViewModel {
   private statsService: RuntimeStatsService = new RuntimeStatsService()
   private speechRecognitionService: SpeechRecognitionService = new SpeechRecognitionService()
   private apiServer: OpenAiApiServer = new OpenAiApiServer({
-    isModelLoaded: () => this.loaded,
-    isGenerationReady: () => this.loaded && !this.modelScanning && !this.busy && !this.modelLoading,
+    isModelLoaded: () => this.apiServiceTarget === 'chat' && this.loaded,
+    isLayaReady: () => this.apiServiceTarget === 'decision' && isLayaReady(this.filesDir),
+    isGenerationReady: () => this.apiServiceTarget === 'chat' && this.loaded && !this.modelScanning && !this.busy && !this.modelLoading,
     currentModel: () => this.apiServerModel(),
     currentSettings: () => this.currentGenerationSettings(),
     currentMaxNewTokens: () => this.maxNewTokens,
     generate: (request: ApiGenerationRequest, onChunk: (chunk: string) => void) => {
       return this.runApiGeneration(request, onChunk)
     },
+    decide: (request: PreparedApiDecision) => decideLaya(this.filesDir, request.state, request.type,
+      request.instruction, request.options),
     stopGeneration: () => this.stopGeneration(),
     onStatus: (status: string) => {
       if (status.startsWith('API 请求：')) {
@@ -236,6 +244,12 @@ export class ChatViewModel {
   initialize(context: common.UIAbilityContext): void {
     this.context = context
     this.filesDir = context.filesDir
+    observeLayaRuntime((state: LayaRuntimeState) => {
+      this.layaRuntimeState = state
+      this.refreshLayaReady()
+      this.notify()
+    })
+    this.layaReady = isLayaReady(this.filesDir)
     try {
       const bundleInfo = bundleManager.getBundleInfoForSelfSync(
         bundleManager.BundleFlag.GET_BUNDLE_INFO_DEFAULT
@@ -430,7 +444,12 @@ export class ChatViewModel {
       this.notify()
       return
     }
-    if (!this.loaded) {
+    this.layaReady = isLayaReady(this.filesDir)
+    if (this.apiServiceTarget === 'decision' && !this.layaReady) {
+      this.toastCallback('请先在模型页安装 Laya')
+      return
+    }
+    if (this.apiServiceTarget === 'chat' && !this.loaded) {
       this.apiServerStartAfterModelLoad = true
       this.toastCallback('请先加载模型')
       this.openModelLoadDialog(false)
@@ -458,6 +477,7 @@ export class ChatViewModel {
     this.saveApiServerSettings()
     this.apiServer.start({
       port,
+      target: this.apiServiceTarget,
       requireApiKey: this.apiServerRequireKey,
       apiKey: this.apiServerKey
     }).then((address: string) => {
@@ -1424,16 +1444,57 @@ export class ChatViewModel {
     this.statusTone = tone
   }
 
+  selectApiServiceTarget(target: 'chat' | 'decision'): void {
+    if (this.apiServerRunning || this.apiServerStarting) return
+    this.apiServerStartAfterModelLoad = false
+    this.apiServiceTarget = target
+    this.notify()
+  }
+
+  layaStatusText(): string {
+    if (this.layaRuntimeState === 'loading') return '正在加载决策模型'
+    if (this.layaRuntimeState === 'running') return '正在执行决策'
+    if (this.layaRuntimeState === 'releasing') return '正在释放'
+    if (this.layaRuntimeState === 'loaded') return '已加载'
+    return this.layaReady ? '已安装' : '未安装'
+  }
+
+  async releaseDecisionModel(): Promise<void> {
+    if ((this.apiServerRunning || this.apiServerStarting) && this.apiServiceTarget === 'decision') {
+      this.toastCallback('请先关闭决策 API 服务')
+      return
+    }
+    try {
+      await releaseLaya()
+    } catch (error) {
+      this.toastCallback(formatError(error as Object))
+    }
+  }
+
+  refreshLayaReady(): void {
+    const ready = isLayaReady(this.filesDir)
+    if (ready === this.layaReady) return
+    this.layaReady = ready
+    this.notify()
+  }
+
   headerStatus(): string {
+    if (this.layaRuntimeState === 'loading') return '正在加载决策模型...'
+    if (this.layaRuntimeState === 'running') return '正在执行决策...'
+    if (this.layaRuntimeState === 'releasing') return '正在释放 Laya...'
+    if (!this.loaded && !this.busy && !this.modelLoading && this.status === '模型未加载' &&
+      this.layaRuntimeState === 'loaded') return 'Laya 已加载'
     return this.headerText()
   }
 
   headerColor(): ResourceColor {
+    if (this.layaRuntimeState === 'loading' || this.layaRuntimeState === 'running' ||
+      this.layaRuntimeState === 'releasing') return $r('app.color.status_warning')
     if (this.statusTone === 'error') return $r('app.color.status_error_alt')
     if (this.busy || this.modelLoading || this.speechRecognitionStarting || this.speechRecognizing ||
       this.speechRecognitionStopping) return $r('app.color.status_warning')
     if (this.statusTone === 'warning') return $r('app.color.status_warning')
-    return this.loaded || this.statusTone === 'success' ? $r('app.color.status_good') : $r('app.color.text_muted')
+    return this.loaded || this.layaRuntimeState === 'loaded' || this.statusTone === 'success' ? $r('app.color.status_good') : $r('app.color.text_muted')
   }
 
   private headerText(): string {
@@ -1973,6 +2034,10 @@ export class ChatViewModel {
   }
 
   private stopApiServerForModelChange(restartAfterLoad: boolean): void {
+    if (this.apiServerRunning && this.apiServiceTarget === 'decision' && isLayaReady(this.filesDir)) {
+      this.apiServerStartAfterModelLoad = false
+      return
+    }
     this.apiServerStartAfterModelLoad = restartAfterLoad
     if (!this.apiServerRunning) {
       return

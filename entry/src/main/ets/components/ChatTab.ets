@@ -172,24 +172,6 @@ export struct ChatTab {
     .accessibilityText('停止语音输入')
   }
 
-  private hasConversation(): boolean {
-    return this.viewModel.messages.some((message: ChatMessage) => message.role === 'user')
-  }
-
-  @Builder
-  private EmptyConversation() {
-    Column({ space: 16 }) {
-      if (!this.viewModel.loaded) {
-        Text('尚未加载模型').fontSize(15).fontColor($r('app.color.text_muted'))
-        Button(this.viewModel.modelLoading ? '正在加载…' : '加载模型')
-          .attributeModifier(new ActionButtonStyle($r('app.color.button_primary_background'), $r('app.color.button_primary_text')))
-          .width(132).height(38)
-          .enabled(!this.viewModel.busy && !this.viewModel.modelLoading)
-          .onClick(() => this.viewModel.openModelLoadDialog())
-      }
-    }.width('100%').padding({ left: 24, right: 24 })
-  }
-
   @Builder
   private ChatBody() {
     Column({ space: 8 }) {
@@ -217,11 +199,6 @@ export struct ChatTab {
             .enabled(!this.viewModel.historyBusy).onClick(() => this.viewModel.retryHistorySave())
         }.width('100%').padding(8).backgroundColor($r('app.color.inset')).borderRadius(8)
       }
-      if (!this.hasConversation()) {
-        Column() {
-          this.EmptyConversation()
-        }.width('100%').layoutWeight(1).justifyContent(FlexAlign.Center)
-      } else {
       List({ space: 10, scroller: this.viewModel.chatScroller }) {
         ForEach(this.viewModel.messages, (message: ChatMessage, index: number) => {
           ListItem() {
@@ -230,7 +207,7 @@ export struct ChatTab {
                 Text(this.dateBefore(index)).fontSize(11).fontColor($r('app.color.text_muted'))
                   .width('100%').textAlign(TextAlign.Center).padding({ top: 6, bottom: 2 })
               }
-              if (message.kind === 'notice') {
+              if (message.kind === 'notice' && message.role !== 'assistant') {
                 Text(message.content).fontSize(12).lineHeight(18).fontColor($r('app.color.text_muted'))
                   .width('100%').textAlign(TextAlign.Center).padding({ left: 12, right: 12, top: 6, bottom: 6 })
               } else {
@@ -242,7 +219,7 @@ export struct ChatTab {
             })
               }
             }.width('100%')
-          }.visibility(message.kind === 'notice' && message.role === 'assistant' ? Visibility.None : Visibility.Visible)
+          }
         }, (message: ChatMessage) => {
           if (message.role === 'assistant') {
             return `${message.id}-${message.content.length}-${message.thinkingExpanded ? 1 : 0}-${message.perfMetrics !== undefined ? 1 : 0}-${message.generationState ?? ''}`
@@ -262,8 +239,6 @@ export struct ChatTab {
       .onClick(() => {
         this.inputController.stopEditing()
       })
-
-      }
 
       if (this.viewModel.selectedImageUri.length > 0) {
         Row({ space: 8 }) {
@@ -501,7 +476,7 @@ export struct ChatTab {
             closeOnSelection: true, onClose: () => this.setHistoryOpen(false) })
         }.width(Math.max(1, Math.min(260, this.historyWidth - 48))).height('100%')
           .padding({ left: 8, right: 8, top: 4, bottom: 8 })
-          .backgroundColor($r('app.color.page')).hitTestBehavior(HitTestMode.Block).onClick(() => {})
+          .backgroundColor($r('app.color.page')).hitTestBehavior(HitTestMode.BLOCK_HIERARCHY)
           .transition(TransitionEffect.move(TransitionEdge.START).combine(TransitionEffect.OPACITY)
             .animation({ duration: 220, curve: Curve.EaseInOut }))
       }

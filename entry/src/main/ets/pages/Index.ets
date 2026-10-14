@@ -9,6 +9,8 @@ import { AppHeader } from '../components/AppHeader'
 import { DesktopTitleBar } from '../components/DesktopTitleBar'
 import { DesktopHelpDialog } from '../components/DesktopHelpDialog'
 import { ApiServerTab } from '../components/ApiServerTab'
+import { ApiUsageDialog } from '../components/ApiUsageDialog'
+import { LayaDecisionDialog } from '../components/LayaDecisionDialog'
 import { BottomTabs } from '../components/BottomTabs'
 import { BuiltinModelInstallDialog } from '../components/BuiltinModelInstallDialog'
 import { ChatTab } from '../components/ChatTab'
@@ -35,6 +37,9 @@ struct Index {
   private tabTransitionSerial: number = 0
   @State @Watch('onSettingsChanged') private showSettings: boolean = false
   @State @Watch('onSettingsChanged') private helpDialog: string = ''
+  @State @Watch('onSettingsChanged') private showLayaDecision: boolean = false
+  @State @Watch('onSettingsChanged') private apiUsageMode: string = ''
+  @State private apiUsageExample: string = ''
   @State private dialogExitBlocking: boolean = false
   @State private stateVersion: number = 0
   @State private modelCardDragging: boolean = false
@@ -65,6 +70,14 @@ struct Index {
 
   onBackPress(): boolean {
     if (this.dialogExitBlocking) return true
+    if (this.apiUsageMode.length > 0) {
+      this.apiUsageMode = ''
+      return true
+    }
+    if (this.showLayaDecision) {
+      this.showLayaDecision = false
+      return true
+    }
     if (this.helpDialog.length > 0) {
       this.helpDialog = ''
       return true
@@ -135,6 +148,8 @@ struct Index {
   }
 
   private modalFocusId(): string {
+    if (this.apiUsageMode.length > 0) return 'api-usage-dialog'
+    if (this.showLayaDecision) return 'laya-decision-dialog'
     if (this.helpDialog.length > 0) return 'desktop-help-dialog'
     if (this.showSettings) return 'settings-dialog'
     if (this.viewModel.showDeleteModelDialog) return 'delete-dialog'
@@ -208,6 +223,14 @@ struct Index {
   private handleKey(event: KeyEvent): boolean {
     if (this.dialogExitBlocking) return true
     if (event.keyCode === KeyCode.KEYCODE_ESCAPE && event.type === KeyType.Down) {
+      if (this.apiUsageMode.length > 0) {
+        this.apiUsageMode = ''
+        return true
+      }
+      if (this.showLayaDecision) {
+        this.showLayaDecision = false
+        return true
+      }
       if (this.helpDialog.length > 0) {
         this.helpDialog = ''
         return true
@@ -226,7 +249,7 @@ struct Index {
       this.newChatKeyHeld = false
       return false
     }
-    if (this.helpDialog.length > 0 || this.showSettings || this.activeTab !== 0 || !event.getModifierKeyState?.(['ctrl']) ||
+    if (this.apiUsageMode.length > 0 || this.showLayaDecision || this.helpDialog.length > 0 || this.showSettings || this.activeTab !== 0 || !event.getModifierKeyState?.(['ctrl']) ||
       this.viewModel.showModelLoadDialog || this.viewModel.showBuiltinModelInstallDialog ||
       this.viewModel.showModelMarketDialog || this.viewModel.showDeleteModelDialog) {
       return false
@@ -323,7 +346,7 @@ struct Index {
                 viewModel: this.viewModel,
                 renderVersion: this.stateVersion,
                 active: this.activeTab === 0,
-                dialogVisible: this.helpDialog.length > 0 || this.dialogExitBlocking || this.showSettings || this.viewModel.showModelLoadDialog || this.viewModel.showBuiltinModelInstallDialog ||
+                dialogVisible: this.apiUsageMode.length > 0 || this.showLayaDecision || this.helpDialog.length > 0 || this.dialogExitBlocking || this.showSettings || this.viewModel.showModelLoadDialog || this.viewModel.showBuiltinModelInstallDialog ||
                   this.viewModel.showModelMarketDialog || this.viewModel.showDeleteModelDialog
               })
               .padding({ left: this.windowWidth >= 840 ? 0 : this.pagePadding(), right: this.pagePadding() })
@@ -341,6 +364,9 @@ struct Index {
             .accessibilityLevel(this.activeTab === 0 ? 'auto' : 'no-hide-descendants')
 
               ModelTab({
+                layaReady: this.viewModel.layaReady,
+                layaStatus: this.viewModel.layaStatusText(),
+                onLayaDecision: () => { this.showLayaDecision = true },
                 extendBottom: this.windowWidth >= 600,
                 bottomOverlayInset: this.windowWidth < 600 && !this.keyboardVisible ? 52 : 0,
                 viewModel: this.viewModel,
@@ -359,6 +385,13 @@ struct Index {
               .accessibilityLevel(this.activeTab === 1 ? 'auto' : 'no-hide-descendants')
 
               ApiServerTab({
+                layaReady: this.viewModel.layaReady,
+                layaStatus: this.viewModel.layaStatusText(),
+                apiServiceTarget: this.viewModel.apiServiceTarget,
+                onApiHelp: (mode: 'chat' | 'decision', example: string) => {
+                  this.apiUsageMode = mode
+                  this.apiUsageExample = example
+                },
                 extendBottom: this.windowWidth >= 600,
                 bottomOverlayInset: this.windowWidth < 600 && !this.keyboardVisible ? 52 : 0,
                 viewModel: this.viewModel,
@@ -477,6 +510,33 @@ struct Index {
           onClose: () => { this.showSettings = false }
         })
         .id('settings-dialog')
+        .focusable(true)
+        .onAppear(() => this.updateModalFocus(true))
+      }
+      if (this.apiUsageMode.length > 0) {
+        ApiUsageDialog({
+          mode: this.apiUsageMode,
+          example: this.apiUsageExample,
+          availableWidth: this.windowWidth,
+          availableHeight: this.windowHeight,
+          onClose: () => { this.apiUsageMode = '' }
+        })
+        .id('api-usage-dialog')
+        .focusable(true)
+        .onAppear(() => this.updateModalFocus(true))
+      }
+      if (this.showLayaDecision) {
+        LayaDecisionDialog({
+          availableWidth: this.windowWidth,
+          availableHeight: this.windowHeight,
+          filesDir: this.abilityContext?.filesDir ?? '',
+          onModelReady: () => { this.viewModel.refreshLayaReady() },
+          onClose: () => {
+            this.showLayaDecision = false
+            this.viewModel.refreshLayaReady()
+          }
+        })
+        .id('laya-decision-dialog')
         .focusable(true)
         .onAppear(() => this.updateModalFocus(true))
       }

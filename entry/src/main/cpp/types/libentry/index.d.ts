@@ -56,3 +56,6 @@ export const generateImageChatStream: (
 export const stopGeneration: () => void;
 export const reset: () => void;
 export const isLoaded: () => boolean;
+
+export const layaDecideAsync: (modelPath: string, tokenizerPath: string, state: string,
+export const layaReleaseAsync: () => Promise<void>;

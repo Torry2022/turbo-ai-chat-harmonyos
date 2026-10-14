@@ -2,6 +2,7 @@
 // See README.md and Git history for provenance and change details.
 
 #include "mnn_llm_runner.h"
+#include "laya_decision.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -53,6 +54,24 @@ struct AsyncLoadWork {
     int32_t threadNum = 4;
     MnnLlmRunner::SamplingConfig sampling;
     std::string error;
+};
+
+struct LayaDecisionWork {
+    napi_async_work work = nullptr;
+    napi_deferred deferred = nullptr;
+    std::string modelPath;
+    std::string tokenizerPath;
+    std::string state;
+    std::string type;
+    std::string instruction;
+    std::vector<std::string> options;
+    std::string output;
+    std::string error;
+};
+
+struct LayaReleaseWork {
+    napi_async_work work = nullptr;
+    napi_deferred deferred = nullptr;
 };
 
 std::string ReadString(napi_env env, napi_value value) {
@@ -860,8 +879,75 @@ napi_value IsLoaded(napi_env env, napi_callback_info info) {
     return result;
 }
 
+napi_value LayaDecideAsync(napi_env env, napi_callback_info info) {
+    size_t argc = 6;
+    napi_value args[6] = {nullptr};
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    bool isArray = false;
+    if (argc != 6 || napi_is_array(env, args[5], &isArray) != napi_ok || !isArray) {
+        napi_throw_type_error(env, nullptr, "Expected model, tokenizer, state, type, question, and options");
+        return nullptr;
+    }
+    auto* work = new LayaDecisionWork();
+    work->modelPath = ReadString(env, args[0]);
+    work->tokenizerPath = ReadString(env, args[1]);
+    work->state = ReadString(env, args[2]);
+    work->type = ReadString(env, args[3]);
+    work->instruction = ReadString(env, args[4]);
+    uint32_t length = 0;
+    napi_get_array_length(env, args[5], &length);
+    for (uint32_t index = 0; index < length; ++index) {
+        napi_value value = nullptr;
+        napi_get_element(env, args[5], index, &value);
+        work->options.push_back(ReadString(env, value));
+    }
+    napi_value promise = nullptr;
+    napi_create_promise(env, &work->deferred, &promise);
+    napi_value resourceName = MakeString(env, "layaDecideAsync");
+    napi_create_async_work(env, nullptr, resourceName,
+        [](napi_env, void* data) {
+            auto* work = static_cast<LayaDecisionWork*>(data);
+            try {
+                work->output = runLayaDecision(work->modelPath, work->tokenizerPath, work->state,
+                    work->type, work->instruction, work->options);
+            } catch (const std::exception& error) {
+                work->error = error.what();
+            }
+        },
+        [](napi_env env, napi_status, void* data) {
+            auto* work = static_cast<LayaDecisionWork*>(data);
+            if (work->error.empty()) napi_resolve_deferred(env, work->deferred, MakeString(env, work->output));
+            else napi_reject_deferred(env, work->deferred, MakeString(env, work->error));
+            napi_delete_async_work(env, work->work);
+            delete work;
+        }, work, &work->work);
+    napi_queue_async_work(env, work->work);
+    return promise;
+}
+
+napi_value LayaReleaseAsync(napi_env env, napi_callback_info info) {
+    auto* work = new LayaReleaseWork();
+    napi_value promise = nullptr;
+    napi_create_promise(env, &work->deferred, &promise);
+    napi_value resourceName = MakeString(env, "layaReleaseAsync");
+    napi_create_async_work(env, nullptr, resourceName,
+        [](napi_env, void*) { releaseLayaDecision(); },
+        [](napi_env env, napi_status, void* data) {
+            auto* work = static_cast<LayaReleaseWork*>(data);
+            napi_value result = nullptr;
+            napi_get_undefined(env, &result);
+            napi_resolve_deferred(env, work->deferred, result);
+            napi_delete_async_work(env, work->work);
+            delete work;
+        }, work, &work->work);
+    napi_queue_async_work(env, work->work);
+    return promise;
+}
+
 static napi_value Init(napi_env env, napi_value exports) {
     napi_property_descriptor desc[] = {
+        {"layaDecideAsync", nullptr, LayaDecideAsync, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"layaReleaseAsync", nullptr, LayaReleaseAsync, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"loadModel", nullptr, LoadModel, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"loadModelAsync", nullptr, LoadModelAsync, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"generate", nullptr, Generate, nullptr, nullptr, nullptr, napi_default, nullptr},

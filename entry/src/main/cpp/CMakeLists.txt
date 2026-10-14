@@ -22,6 +22,8 @@ set_target_properties(mnn PROPERTIES
 add_library(entry SHARED
     napi_init.cpp
     mnn_llm_runner.cpp
+    "${CMAKE_CURRENT_LIST_DIR}/../../../../scripts/laya/laya_tokenizer.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../../scripts/laya/laya_decision.cpp"
 )
 
 set_target_properties(entry PROPERTIES
@@ -31,6 +33,7 @@ set_target_properties(entry PROPERTIES
 target_include_directories(entry PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}"
     "${MNN_STAGED_INCLUDE_DIR}"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../../scripts/laya"
 )
 
 target_link_libraries(entry PUBLIC

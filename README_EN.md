@@ -56,6 +56,9 @@ In the HarmonyOS ecosystem, on-device AI inference today largely depends on Andr
 
 **Chat history and service-page improvements (v1.13.0)**
 
+- Use Laya locally for choice, scoring, and yes/no decisions. Download it from the Decisions category on the Models page; it loads on first use and also supports the `/v1/decisions` API.
+
+
 - Save conversations locally with new, open, rename, delete, and clear-all actions; retain message timestamps, reply models, and model-switch records.
 - Use a collapsible history pane in wide windows and a drawer in narrow windows. Store attached images in the app's private directory; opening history keeps the current model.
 - Keep service settings in the left column and give API logs the right column with internal scrolling. Align API authentication guidance, connection fields, and supporting text.
@@ -223,7 +226,7 @@ Maximized PC window:
 
 ## OpenAI-Compatible API Server
 
-After loading a model, open the **Service** tab, choose a port and optionally enable the app-generated API key, then start the server. The page displays a LAN address such as `http://192.168.1.126:8080`. If no model is loaded, starting the server opens the model-loading flow and continues automatically after a successful load. Releasing, switching, or deleting the current model stops a running server automatically.
+After loading a model, open the **Service** tab, choose a port and optionally enable the app-generated API key, then start the server. The page displays a LAN address such as `http://192.168.1.126:8080`. Starting the chat API without a loaded chat model opens the model-loading flow and continues automatically after a successful load. Releasing, switching, or deleting the current chat model stops a running chat API server automatically.
 
 When adding an OpenAI-compatible provider in Cherry Studio, enter the displayed base URL without appending an endpoint. If API-key authentication is enabled, enter the same key, then fetch the model list. The server provides:
 
@@ -237,7 +240,19 @@ The Service tab shows operational logs for server lifecycle, request paths, mode
 
 Wide windows place service settings beside the API logs. Narrowing the window restores a single column without restarting an active server.
 
-The first version accepts text input only, serves the currently loaded model, and processes one generation request at a time. For models that emit `<think>`, `/v1/chat/completions` returns reasoning in `reasoning_content`, while `/v1/responses` returns a separate reasoning output item; the final answer remains in the regular text field. For now, `usage` accurately reports only the total generated-token count; exact input and reasoning breakdowns are not available. The server runs with the app and stops when the app exits; the device and client must be reachable on the same LAN.
+The chat API accepts text input, serves the currently loaded chat model, and processes one generation request at a time. For models that emit `<think>`, `/v1/chat/completions` returns reasoning in `reasoning_content`, while `/v1/responses` returns a separate reasoning output item; the final answer remains in the regular text field. For now, `usage` accurately reports only the total generated-token count; exact input and reasoning breakdowns are not available. The server runs with the app and stops when the app exits; the device and client must be reachable on the same LAN.
+
+### Laya Decision API
+
+Install Laya (approximately 628 MiB) from the Decisions category on the Models page, select Decision Model in Service Content, and start the server. A loaded chat model is unnecessary: Laya loads on the first request and is reused afterwards. Stop the server before switching its content. Switching chat models leaves a running decision API server active.
+
+Send a JSON request to `/v1/decisions`, for example:
+
+```json
+{"input":"The keyboard moves the bottom tabs","task":{"type":"choice","instruction":"Issue type?","options":{"ui":"Interface issue","other":"Other issue"}}}
+```
+
+Tasks support `choice`, `score`, and `boolean`. Responses include the result, option probabilities, and elapsed time; probabilities are not task-calibrated. The Service page's API Guide provides a copyable example. Laya uses separate files rather than the chat-model ZIP import flow; model weights are not included in the HAP. [Model download source](https://modelscope.cn/models/TorryJi/Laya-Multilingual-MNN-FP16)
 
 ## Install from HAP
 
