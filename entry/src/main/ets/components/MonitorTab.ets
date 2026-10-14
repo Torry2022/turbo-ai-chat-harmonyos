@@ -38,7 +38,8 @@ struct MonitorStatItem {
 
 @Component
 export struct MonitorTab {
-  scroller: Scroller = new Scroller()
+  private scroller: Scroller = new Scroller()
+  onContentScroll: (yOffset: number) => void = (_yOffset: number) => {}
   @Prop extendBottom: boolean = false
   @Prop bottomOverlayInset: number = 0
   @ObjectLink viewModel: ChatViewModel
@@ -288,6 +289,9 @@ export struct MonitorTab {
     })
     .align(Alignment.Top)
     .scrollBar(BarState.Off)
+    .onWillScroll((_xOffset: number, yOffset: number, _scrollState: ScrollState, source: ScrollSource) => {
+      if (source !== ScrollSource.EDGE_EFFECT) this.onContentScroll(yOffset)
+    })
     .edgeEffect(EdgeEffect.Spring)
     .expandSafeArea([SafeAreaType.SYSTEM], this.extendBottom ? [SafeAreaEdge.BOTTOM] : [])
   }

@@ -2,9 +2,12 @@ import { InputFieldStyle } from './ControlStyles'
 import { ActionButtonStyle, CompactActionStyle } from './ButtonStyles'
 import { ApiServerLogEntry, ChatViewModel } from '../state/ChatViewModel'
 import { pasteboard } from '@kit.BasicServicesKit'
+import { ModelType, ModelTypeSelector } from './ModelTypeSelector'
 
 @Component
 export struct ApiServerTab {
+  private scroller: Scroller = new Scroller()
+  onContentScroll: (yOffset: number) => void = (_yOffset: number) => {}
   @Prop extendBottom: boolean = false
   @Prop bottomOverlayInset: number = 0
   @ObjectLink viewModel: ChatViewModel
@@ -144,20 +147,12 @@ export struct ApiServerTab {
             this.onApiHelp(this.apiServiceTarget, example)
           })
       }.width('100%')
-      Row({ space: 8 }) {
-        Button('聊天模型')
-          .attributeModifier(new ActionButtonStyle(
-            this.apiServiceTarget === 'chat' ? $r('app.color.button_primary_background') : $r('app.color.button_secondary_background'),
-            this.apiServiceTarget === 'chat' ? $r('app.color.button_primary_text') : $r('app.color.button_secondary_text')))
-          .layoutWeight(1).enabled(!this.apiServerRunning && !this.apiServerStarting)
-          .onClick(() => { this.viewModel.selectApiServiceTarget('chat') })
-        Button('决策模型')
-          .attributeModifier(new ActionButtonStyle(
-            this.apiServiceTarget === 'decision' ? $r('app.color.button_primary_background') : $r('app.color.button_secondary_background'),
-            this.apiServiceTarget === 'decision' ? $r('app.color.button_primary_text') : $r('app.color.button_secondary_text')))
-          .layoutWeight(1).enabled(!this.apiServerRunning && !this.apiServerStarting)
-          .onClick(() => { this.viewModel.selectApiServiceTarget('decision') })
-      }.width('100%')
+      ModelTypeSelector({
+        selected: this.apiServiceTarget,
+        interactionEnabled: !this.apiServerRunning && !this.apiServerStarting,
+        onChange: (type: ModelType): void => { this.viewModel.selectApiServiceTarget(type) }
+      })
+      .width('100%')
       Text(this.serviceName())
         .fontSize(13).fontWeight(FontWeight.Medium).fontColor($r('app.color.text_body'))
       Text(this.serviceState())
@@ -446,12 +441,13 @@ export struct ApiServerTab {
           Scroll() {
             this.ServiceSettings()
           }.layoutWeight(1).height('100%').scrollBar(BarState.Auto).align(Alignment.Top)
+            .edgeEffect(EdgeEffect.Spring)
           Column() {
             this.ServiceActivity()
           }.layoutWeight(1).height('100%')
         }.width('100%').layoutWeight(1)
       } else {
-        Scroll() {
+        Scroll(this.scroller) {
           Column({ space: 10 }) {
             this.ServiceSettings()
             this.ServiceActivity()
@@ -459,6 +455,10 @@ export struct ApiServerTab {
             .padding({ bottom: $r('app.float.page_scroll_bottom_padding') })
             .margin({ bottom: this.bottomOverlayInset })
         }.width('100%').layoutWeight(1).scrollBar(BarState.Off).align(Alignment.Top)
+          .onWillScroll((_xOffset: number, yOffset: number, _scrollState: ScrollState, source: ScrollSource) => {
+            if (source !== ScrollSource.EDGE_EFFECT) this.onContentScroll(yOffset)
+          })
+          .edgeEffect(EdgeEffect.Spring)
       }
     }.width('100%').height('100%')
       .padding({ bottom: this.wideLayout() ? 12 : 0 })

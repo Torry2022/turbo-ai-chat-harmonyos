@@ -13,10 +13,12 @@ import {
 } from '../models/ModelProfile'
 import { ChatViewModel } from '../state/ChatViewModel'
 import { ModelDragFrame, resolveModelDragPreview } from '../utils/modelDrag'
+import { ModelType, ModelTypeSelector } from './ModelTypeSelector'
 
 @Component
 export struct ModelTab {
-  scroller: Scroller = new Scroller()
+  private scroller: Scroller = new Scroller()
+  onContentScroll: (yOffset: number) => void = (_yOffset: number) => {}
   @Prop extendBottom: boolean = false
   @Prop bottomOverlayInset: number = 0
   @StorageProp('darkAppearance') private darkAppearance: boolean = true
@@ -337,16 +339,13 @@ export struct ModelTab {
   private ModelListCard() {
     Column({ space: 10 }) {
       this.SectionTitle('模型列表')
-      Row({ space: 8 }) {
-        ForEach(['聊天', '决策'], (title: string, index: number) => {
-          Button(title)
-            .attributeModifier(new ActionButtonStyle(
-              this.modelCategory === index ? $r('app.color.button_primary_background') : $r('app.color.button_secondary_background'),
-              this.modelCategory === index ? $r('app.color.button_primary_text') : $r('app.color.button_secondary_text')))
-            .layoutWeight(1)
-            .onClick(() => { this.cancelModelDrag(); this.modelCategory = index })
-        })
-      }
+      ModelTypeSelector({
+        selected: this.modelCategory === 0 ? 'chat' : 'decision',
+        onChange: (type: ModelType): void => {
+          this.cancelModelDrag()
+          this.modelCategory = type === 'chat' ? 0 : 1
+        }
+      })
       .width('100%')
       if (this.modelCategory === 1) {
         this.DecisionModelCard()
@@ -407,7 +406,7 @@ export struct ModelTab {
         .lineHeight(18)
         .fontColor($r('app.color.text_muted'))
         .width('100%')
-      Button(this.layaReady ? '打开决策' : '下载模型')
+      Button(this.layaReady ? '进入决策' : '下载模型')
         .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
         .width('100%')
         .onClick(() => this.onLayaDecision())
@@ -419,9 +418,6 @@ export struct ModelTab {
       }
     }
     .width('100%')
-    .padding(12)
-    .backgroundColor($r('app.color.card'))
-    .borderRadius($r('app.float.card_radius'))
   }
 
   @Builder
@@ -434,7 +430,7 @@ export struct ModelTab {
         .fontSize(12).fontColor($r('app.color.text_secondary')).width('100%')
       Text('是非判断：回答一个是或否的问题')
         .fontSize(12).fontColor($r('app.color.text_secondary')).width('100%')
-      Text('打开决策后填写输入和任务说明。首次运行会加载模型，后续决策会复用。')
+      Text('进入决策界面后填写输入和任务说明。首次运行会加载模型，后续决策会复用。')
         .fontSize(11).lineHeight(17).fontColor($r('app.color.text_muted')).width('100%')
     }
     .width('100%').alignItems(HorizontalAlign.Start).padding(12)
@@ -967,6 +963,9 @@ export struct ModelTab {
     })
     .align(Alignment.Top)
     .scrollBar(BarState.Off)
+    .onWillScroll((_xOffset: number, yOffset: number, _scrollState: ScrollState, source: ScrollSource) => {
+      if (source !== ScrollSource.EDGE_EFFECT) this.onContentScroll(yOffset)
+    })
     .edgeEffect(EdgeEffect.Spring)
     .enableScrollInteraction(this.draggingModelId.length <= 0)
     .expandSafeArea([SafeAreaType.SYSTEM], this.extendBottom ? [SafeAreaEdge.BOTTOM] : [])

@@ -1,17 +1,15 @@
 import { SymbolGlyphModifier } from '@kit.ArkUI'
-import { HdsTabs, HdsTabsController, hdsMaterial } from '@kit.UIDesignKit'
+import { HdsAnimationMode, HdsTabs, HdsTabsController, hdsMaterial } from '@kit.UIDesignKit'
 import { AppTabEntry, DEFAULT_APP_TABS } from './BottomTabs'
 
 @Component
 export struct PhoneTabs {
   @Prop @Watch('syncTab') activeTab: number = 0
   @Prop keyboardVisible: boolean = false
+  @Prop @Watch('syncBarVisibility') barHidden: boolean = false
   @Prop entries: AppTabEntry[] = DEFAULT_APP_TABS
   @BuilderParam pageContent: (index: number) => void = this.EmptyPage
   onTabChange: (index: number) => void = (_index: number) => {}
-  modelScroller: Scroller = new Scroller()
-  knowledgeScroller: Scroller = new Scroller()
-  monitorScroller: Scroller = new Scroller()
   private controller: HdsTabsController = new HdsTabsController()
   private currentIndex: number = 0
   @State private materialLevel: hdsMaterial.MaterialLevel = hdsMaterial.MaterialLevel.ADAPTIVE
@@ -25,30 +23,19 @@ export struct PhoneTabs {
     this.controller.changeIndex(this.activeTab)
   }
 
+  private syncBarVisibility(): void {
+    if (this.barHidden) {
+      this.controller.applyHideAnimation(HdsAnimationMode.SCROLL_ANIMATION)
+    } else {
+      this.controller.applyShowAnimation(HdsAnimationMode.SCROLL_ANIMATION)
+    }
+  }
+
   aboutToAppear(): void {
     this.materialLevel = hdsMaterial.getSystemMaterialTypes().indexOf(hdsMaterial.MaterialType.IMMERSIVE) >= 0 ?
       hdsMaterial.MaterialLevel.EXQUISITE : hdsMaterial.MaterialLevel.SMOOTH
     this.currentIndex = this.activeTab
-    this.bindScroller('模型', this.modelScroller)
-    this.bindScroller('知识库', this.knowledgeScroller)
-    this.bindScroller('监控', this.monitorScroller)
-  }
-
-  aboutToDisappear(): void {
-    this.unbindScroller('模型', this.modelScroller)
-    this.unbindScroller('知识库', this.knowledgeScroller)
-    this.unbindScroller('监控', this.monitorScroller)
-  }
-
-  private bindScroller(title: string, scroller: Scroller): void {
-    const index = this.entries.findIndex((entry: AppTabEntry) => entry.title === title)
-    if (index >= 0) this.controller.bindScroller(index, scroller)
-  }
-
-  private unbindScroller(title: string, scroller: Scroller): void {
-    if (this.entries.findIndex((entry: AppTabEntry) => entry.title === title) >= 0) {
-      this.controller.unbindScroller(scroller)
-    }
+    this.syncBarVisibility()
   }
 
   build() {
