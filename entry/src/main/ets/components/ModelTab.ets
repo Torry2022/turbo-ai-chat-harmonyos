@@ -16,6 +16,8 @@ import { ModelDragFrame, resolveModelDragPreview } from '../utils/modelDrag'
 
 @Component
 export struct ModelTab {
+  scroller: Scroller = new Scroller()
+  onContentScroll: (yOffset: number) => void = (_yOffset: number) => {}
   @Prop extendBottom: boolean = false
   @Prop bottomOverlayInset: number = 0
   @StorageProp('darkAppearance') private darkAppearance: boolean = true
@@ -43,7 +45,6 @@ export struct ModelTab {
   @State dragTargetIndex: number = -1
   @State private contentWidth: number = 0
   private dragFrames: ModelDragFrame[] = []
-  private modelScroller: Scroller = new Scroller()
   private readonly modelCardGap: number = 8
   private dragStartIndex: number = -1
   private modelCardFrames: Map<string, ModelDragFrame> = new Map()
@@ -929,7 +930,7 @@ export struct ModelTab {
   }
 
   build() {
-    Scroll(this.modelScroller) {
+    Scroll(this.scroller) {
       Flex({ direction: this.contentWidth >= 800 ? FlexDirection.Row : FlexDirection.Column }) {
         Column({ space: 12 }) {
           this.ModelListCard()
@@ -967,6 +968,11 @@ export struct ModelTab {
     })
     .align(Alignment.Top)
     .scrollBar(BarState.Off)
+    .onScrollFrameBegin((offset: number, scrollState: ScrollState) => {
+      if (scrollState === ScrollState.Scroll) this.onContentScroll(offset)
+      return { offsetRemain: offset }
+    })
+    .onReachStart(() => this.onContentScroll(-8))
     .edgeEffect(EdgeEffect.Spring)
     .enableScrollInteraction(this.draggingModelId.length <= 0)
     .expandSafeArea([SafeAreaType.SYSTEM], this.extendBottom ? [SafeAreaEdge.BOTTOM] : [])

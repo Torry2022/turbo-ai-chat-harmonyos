@@ -20,9 +20,10 @@ export default class EntryAbility extends UIAbility {
         mainWindow.setWindowDecorVisible(false)
       }
       themeService.attachWindow(mainWindow)
-      mainWindow.setWindowLayoutFullScreen(false).catch((err: Error) => {
-        hilog.warn(0x0000, 'TurboAIChat', 'set window layout failed: %{public}s', JSON.stringify(err))
-      })
+      mainWindow.setWindowLayoutFullScreen(deviceInfo.deviceType === 'phone' && deviceInfo.apiAvailable('26.0.0'))
+        .catch((err: Error) => {
+          hilog.warn(0x0000, 'TurboAIChat', 'set window layout failed: %{public}s', JSON.stringify(err))
+        })
       mainWindow.setWindowSystemBarEnable(['status', 'navigation']).catch((err: Error) => {
         hilog.warn(0x0000, 'TurboAIChat', 'set system bar enable failed: %{public}s', JSON.stringify(err))
       })

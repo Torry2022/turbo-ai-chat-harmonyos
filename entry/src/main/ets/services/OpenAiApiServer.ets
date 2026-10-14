@@ -449,7 +449,7 @@ export class OpenAiApiServer {
       })
       server.on('error', (err: Error) => {
         this.callbacks.onStatus(`API 服务异常：${err.message}`)
-        this.callbacks.onLog('ERROR', `Server error: ${errorMessage(err)}`)
+        this.callbacks.onLog('ERROR', `服务异常：${errorMessage(err)}`)
       })
       await server.listen({ address: '0.0.0.0', family: 1, port: config.port })
     } catch (err) {
@@ -465,7 +465,7 @@ export class OpenAiApiServer {
     }
     this.running = true
     this.callbacks.onStatus(`API 服务已启动：${this.baseUrl()}`)
-    this.callbacks.onLog('INFO', `Server started on 0.0.0.0:${config.port}`)
+    this.callbacks.onLog('INFO', `服务已启动，正在监听端口 ${config.port}`)
     return this.baseUrl()
   }
 
@@ -492,7 +492,7 @@ export class OpenAiApiServer {
       })
     }
     this.callbacks.onStatus('API 服务已停止')
-    this.callbacks.onLog('INFO', 'Server stopped')
+    this.callbacks.onLog('INFO', '服务已停止')
   }
 
   private acceptClient(client: socket.TCPSocketConnection): void {

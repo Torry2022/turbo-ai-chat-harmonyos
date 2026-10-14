@@ -51,21 +51,35 @@ export struct ChatHistoryPanel {
   build() {
     Column({ space: 8 }) {
       Row({ space: 4 }) {
-        Text('历史对话').fontSize(14).fontWeight(FontWeight.Medium)
+        if (this.closeOnSelection) {
+          Image($r('app.media.icon_chat_history')).width(20).height(20)
+            .fillColor($r('app.color.text_secondary')).accessibilityLevel('no')
+        }
+        Text('历史对话').fontSize(this.closeOnSelection ? 16 : 14).fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.text_secondary')).layoutWeight(1)
-        Button('清空').width(40).height(30).padding(0).fontSize(12).borderRadius(6)
-          .fontColor($r('app.color.text_muted')).backgroundColor(Color.Transparent)
-          .hoverEffect(HoverEffect.Auto).accessibilityText('清空全部对话')
-          .enabled(this.viewModel.canManageConversations() &&
-            (this.viewModel.conversations.length > 0 || this.viewModel.historyError.length > 0))
-          .onClick(() => this.confirmDelete())
-      }.width('100%').height(36).padding({ left: 8, right: 2 })
+        if (this.viewModel.conversations.length > 0 || this.viewModel.historyError.length > 0) {
+          Button('清空').width(40).height(30).padding(0).fontSize(12).borderRadius(6)
+            .fontColor($r('app.color.text_muted')).backgroundColor(Color.Transparent)
+            .hoverEffect(HoverEffect.Auto).accessibilityText('清空全部对话')
+            .enabled(this.viewModel.canManageConversations())
+            .onClick(() => this.confirmDelete())
+        }
+        if (this.closeOnSelection) {
+          Button({ type: ButtonType.Normal }) {
+            SymbolGlyph($r('sys.symbol.xmark')).fontSize(18)
+              .fontColor([$r('app.color.text_secondary')])
+          }.width(28).height(28).padding(0).borderRadius(6).backgroundColor(Color.Transparent)
+            .accessibilityText('收起历史对话').onClick(() => this.onClose())
+        }
+      }.width('100%').height(this.closeOnSelection ? 44 : 36).padding({ left: 8, right: 2 })
       if (this.viewModel.conversations.length === 0) {
-        Column({ space: 6 }) {
+        Column({ space: 12 }) {
+          Image($r('app.media.icon_chat_history')).width(36).height(36)
+            .fillColor($r('app.color.text_muted')).opacity(0.65).accessibilityLevel('no')
           Text(this.viewModel.historyReady ? '暂无对话' : '正在读取…')
-            .fontSize(13).fontColor($r('app.color.text_secondary'))
-        }.width('100%').alignItems(HorizontalAlign.Start).padding({ left: 6, right: 6, top: 18 })
-        Blank()
+            .fontSize(13).fontColor($r('app.color.text_muted'))
+        }.width('100%').layoutWeight(1).justifyContent(FlexAlign.Center)
+          .alignItems(HorizontalAlign.Center)
       } else {
         List({ space: 2 }) {
           ForEach(this.viewModel.conversations, (item: ChatConversationSummary, index: number) => {

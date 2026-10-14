@@ -11,9 +11,11 @@ import { DesktopHelpDialog } from '../components/DesktopHelpDialog'
 import { ApiServerTab } from '../components/ApiServerTab'
 import { ApiUsageDialog } from '../components/ApiUsageDialog'
 import { LayaDecisionDialog } from '../components/LayaDecisionDialog'
+import { PhoneTabs } from '../components/PhoneTabs'
 import { BottomTabs } from '../components/BottomTabs'
 import { BuiltinModelInstallDialog } from '../components/BuiltinModelInstallDialog'
 import { ChatTab } from '../components/ChatTab'
+import { ChatHistoryPanel } from '../components/ChatHistoryPanel'
 import { ChatRunTicker } from '../components/ChatRunTicker'
 import { DeleteModelDialog } from '../components/DeleteImportedModelDialog'
 import { LaunchScreen } from '../components/LaunchScreen'
@@ -57,12 +59,22 @@ struct Index {
   private readonly onTitleButtonRectChange = (rect: window.TitleButtonRect): void => {
     this.desktopControlsWidth = rect.width + rect.right
   }
+  @State private topInset: number = 0
   @State private bottomInset: number = 0
   @State private keyboardVisible: boolean = false
+  @State private phoneHistoryOpen: boolean = false
+  @State private phoneTabBarHidden: boolean = false
+  private modelPageScroller: Scroller = new Scroller()
+  private knowledgePageScroller: Scroller = new Scroller()
+  private monitorPageScroller: Scroller = new Scroller()
+  private phoneTabBarScrollDelta: number = 0
   private readonly onKeyboardHeightChange = (height: number): void => {
     this.keyboardVisible = height > 0
   }
   private readonly onAvoidAreaChange = (event: window.AvoidAreaOptions): void => {
+    if (event.type === window.AvoidAreaType.TYPE_SYSTEM) {
+      this.topInset = this.getUIContext().px2vp(event.area.topRect.height)
+    }
     if (event.type === window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR) {
       this.bottomInset = this.getUIContext().px2vp(event.area.bottomRect.height)
     }
@@ -122,6 +134,7 @@ struct Index {
         mainWindow.setWindowDecorVisible(false)
         this.desktopTitleVisible = true
       }
+      this.topInset = this.getUIContext().px2vp(mainWindow.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM).topRect.height)
       this.bottomInset = this.getUIContext().px2vp(
         mainWindow.getWindowAvoidArea(window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR).bottomRect.height)
       mainWindow.on('avoidAreaChange', this.onAvoidAreaChange)
@@ -186,6 +199,8 @@ struct Index {
     if (index === this.activeTab) {
       return
     }
+    this.phoneTabBarHidden = false
+    this.phoneTabBarScrollDelta = 0
     if (index !== 0) {
       if (this.viewModel.speechRecognitionStarting) {
         this.viewModel.cancelSpeechRecognition()
@@ -261,6 +276,38 @@ struct Index {
     return true
   }
 
+  private usePhoneTabs(): boolean {
+    return this.windowWidth < 600 && deviceInfo.deviceType === 'phone' && deviceInfo.apiAvailable('26.0.0')
+  }
+
+  private mobileNavigationHeight(): number {
+    return this.usePhoneTabs() ? 84 : 52
+  }
+
+  private setPhoneHistoryOpen(open: boolean): void {
+    this.getUIContext().animateTo({ duration: 220, curve: Curve.EaseInOut }, () => {
+      this.phoneHistoryOpen = open
+    })
+  }
+
+  private finishHistorySwipe(event: GestureEvent): void {
+    if (this.usePhoneTabs() && this.activeTab === 0 && !this.phoneHistoryOpen && event.offsetX >= 48) {
+      this.setPhoneHistoryOpen(true)
+    }
+  }
+
+  private handleLongPageScroll(yOffset: number): void {
+    if (!this.usePhoneTabs() || Math.abs(yOffset) < 0.2) return
+    if (this.phoneTabBarScrollDelta === 0 || this.phoneTabBarScrollDelta * yOffset > 0) {
+      this.phoneTabBarScrollDelta += yOffset
+    } else {
+      this.phoneTabBarScrollDelta = yOffset
+    }
+    if (Math.abs(this.phoneTabBarScrollDelta) < 6) return
+    this.phoneTabBarHidden = this.phoneTabBarScrollDelta > 0
+    this.phoneTabBarScrollDelta = 0
+  }
+
   private pagePadding(): number {
     return this.windowWidth >= 840 ? 24 : this.windowWidth >= 600 ? 20 : 14
   }
@@ -282,6 +329,154 @@ struct Index {
         colors: [[$r('app.color.header_shadow'), 0], [Color.Transparent, 1]] })
       .translate({ y: 3 })
       .hitTestBehavior(HitTestMode.None)
+  }
+
+  @Builder
+  private ChatPage() {
+    Column({ space: this.windowWidth < 600 ? 4 : 8 }) {
+      if (!this.usePhoneTabs()) {
+        ChatRunTicker({
+          viewModel: this.viewModel,
+          active: this.activeTab === 0,
+          compact: this.windowWidth < 600,
+          topSpacing: this.windowWidth >= 600 ? 4 : 0
+        })
+      }
+      ChatTab({
+        compactTicker: this.usePhoneTabs(),
+        contentInset: this.usePhoneTabs() ? this.pagePadding() : 0,
+        contentBottomInset: this.usePhoneTabs() && !this.keyboardVisible ? this.mobileNavigationHeight() + 8 : 0,
+        compactHistoryManaged: this.usePhoneTabs(),
+        compactHistoryOpen: this.phoneHistoryOpen,
+        onCompactHistoryChange: (open: boolean): void => { this.setPhoneHistoryOpen(open) },
+        leadingInset: this.windowWidth >= 840 ? this.pagePadding() : 0,
+        onRequestModel: () => {
+          this.changeTab(1)
+          this.showToast('请先加载模型', 1800)
+        },
+        inputBottomOffset: this.windowWidth >= 600 && !this.keyboardVisible ? this.bottomInset : 0,
+        viewModel: this.viewModel,
+        renderVersion: this.stateVersion,
+        active: this.activeTab === 0,
+        dialogVisible: this.apiUsageMode.length > 0 || this.showLayaDecision || this.helpDialog.length > 0 || this.dialogExitBlocking || this.showSettings || this.viewModel.showModelLoadDialog || this.viewModel.showBuiltinModelInstallDialog ||
+          this.viewModel.showModelMarketDialog || this.viewModel.showDeleteModelDialog
+      })
+      .padding({ left: this.usePhoneTabs() || this.windowWidth >= 840 ? 0 : this.pagePadding(), right: this.usePhoneTabs() ? 0 : this.pagePadding() })
+      .width(Math.max(1, Math.min(1280 + 2 * this.pagePadding(), this.windowWidth -
+        (this.windowWidth >= 840 ? 160 : this.windowWidth >= 600 ? 88 : 0))))
+      .layoutWeight(1)
+    }
+    .width('100%')
+    .height('100%')
+    .padding({ bottom: this.windowWidth >= 600 ? $r('app.float.wide_bottom_spacing') :
+      (this.usePhoneTabs() || this.keyboardVisible ? 0 : this.mobileNavigationHeight() + 8) })
+    .opacity(this.transitionTab === 0 ? 1 : 0)
+    .visibility((this.visibleTabs & 1) !== 0 ? Visibility.Visible : Visibility.Hidden)
+    .hitTestBehavior(this.activeTab === 0 ? HitTestMode.Default : HitTestMode.None)
+    .accessibilityLevel(this.activeTab === 0 ? 'auto' : 'no-hide-descendants')
+    .parallelGesture(PanGesture({ direction: PanDirection.Horizontal, distance: 12 })
+      .onActionEnd((event: GestureEvent) => this.finishHistorySwipe(event)))
+  }
+
+  @Builder
+  private ModelsPage() {
+    ModelTab({
+      scroller: this.modelPageScroller,
+      onContentScroll: (yOffset: number): void => { this.handleLongPageScroll(yOffset) },
+      layaReady: this.viewModel.layaReady,
+      layaStatus: this.viewModel.layaStatusText(),
+      onLayaDecision: () => { this.showLayaDecision = true },
+      extendBottom: this.windowWidth >= 600,
+      bottomOverlayInset: this.windowWidth < 600 && !this.keyboardVisible && !this.phoneTabBarHidden ?
+        this.mobileNavigationHeight() : 0,
+      viewModel: this.viewModel,
+      renderVersion: this.stateVersion,
+      onDragStateChange: (dragging: boolean) => {
+        this.modelCardDragging = dragging
+      }
+    })
+    .padding({ left: this.pagePadding(), right: this.pagePadding(), top: this.windowWidth < 600 ? 8 : 0 })
+    .width(Math.max(1, Math.min(1280 + 2 * this.pagePadding(), this.windowWidth -
+      (this.windowWidth >= 840 ? 160 : this.windowWidth >= 600 ? 88 : 0))))
+    .height('100%')
+    .opacity(this.transitionTab === 1 ? 1 : 0)
+    .visibility((this.visibleTabs & 2) !== 0 ? Visibility.Visible : Visibility.Hidden)
+    .hitTestBehavior(this.activeTab === 1 ? HitTestMode.Default : HitTestMode.None)
+    .accessibilityLevel(this.activeTab === 1 ? 'auto' : 'no-hide-descendants')
+  }
+
+  @Builder
+  private ServicePage() {
+    ApiServerTab({
+      layaReady: this.viewModel.layaReady,
+      layaStatus: this.viewModel.layaStatusText(),
+      apiServiceTarget: this.viewModel.apiServiceTarget,
+      onApiHelp: (mode: 'chat' | 'decision', example: string) => {
+        this.apiUsageMode = mode
+        this.apiUsageExample = example
+      },
+      extendBottom: this.windowWidth >= 600,
+      bottomOverlayInset: this.windowWidth < 600 && !this.keyboardVisible ? this.mobileNavigationHeight() : 0,
+      viewModel: this.viewModel,
+      renderVersion: this.stateVersion,
+      loaded: this.viewModel.loaded,
+      busy: this.viewModel.busy,
+      currentModelName: this.viewModel.currentModel().shortName,
+      apiServerRunning: this.viewModel.apiServerRunning,
+      apiServerStarting: this.viewModel.apiServerStarting,
+      apiServerPortInput: this.viewModel.apiServerPortInput,
+      apiServerRequireKey: this.viewModel.apiServerRequireKey,
+      apiServerKey: this.viewModel.apiServerKey,
+      apiServerAddress: this.viewModel.apiServerAddress,
+      apiServerStatus: this.viewModel.apiServerStatus,
+      apiServerRequestCount: this.viewModel.apiServerRequestCount,
+      apiServerLogs: this.viewModel.apiServerLogs
+    })
+    .padding({ left: this.pagePadding(), right: this.pagePadding(), top: this.windowWidth < 600 ? 8 : 0 })
+    .width(Math.max(1, Math.min(1280 + 2 * this.pagePadding(), this.windowWidth -
+      (this.windowWidth >= 840 ? 160 : this.windowWidth >= 600 ? 88 : 0))))
+    .height('100%')
+    .opacity(this.transitionTab === 2 ? 1 : 0)
+    .visibility((this.visibleTabs & 4) !== 0 ? Visibility.Visible : Visibility.Hidden)
+    .hitTestBehavior(this.activeTab === 2 ? HitTestMode.Default : HitTestMode.None)
+    .accessibilityLevel(this.activeTab === 2 ? 'auto' : 'no-hide-descendants')
+  }
+
+  @Builder
+  private MonitorPage() {
+    MonitorTab({
+      scroller: this.monitorPageScroller,
+      onContentScroll: (yOffset: number): void => { this.handleLongPageScroll(yOffset) },
+      extendBottom: this.windowWidth >= 600,
+      bottomOverlayInset: this.windowWidth < 600 && !this.keyboardVisible && !this.phoneTabBarHidden ?
+        this.mobileNavigationHeight() : 0,
+      viewModel: this.viewModel,
+      active: this.activeTab === 3
+    })
+    .padding({ left: this.pagePadding(), right: this.pagePadding(), top: this.windowWidth < 600 ? 8 : 0 })
+    .width(Math.max(1, Math.min(1280 + 2 * this.pagePadding(), this.windowWidth -
+      (this.windowWidth >= 840 ? 160 : this.windowWidth >= 600 ? 88 : 0))))
+    .height('100%')
+    .opacity(this.transitionTab === 3 ? 1 : 0)
+    .visibility((this.visibleTabs & 8) !== 0 ? Visibility.Visible : Visibility.Hidden)
+    .hitTestBehavior(this.activeTab === 3 ? HitTestMode.Default : HitTestMode.None)
+    .accessibilityLevel(this.activeTab === 3 ? 'auto' : 'no-hide-descendants')
+  }
+
+  @Builder
+  private PhonePage(index: number) {
+    if (index === 0) {
+      this.ChatPage()
+    }
+    else if (index === 1) {
+      this.ModelsPage()
+    }
+    else if (index === 2) {
+      this.ServicePage()
+    }
+    else if (index === 3) {
+      this.MonitorPage()
+    }
   }
 
   @Builder
@@ -327,116 +522,28 @@ struct Index {
         .backgroundColor($r('app.color.header_background'))
         .overlay(this.HeaderShadow(), { align: Alignment.Bottom })
         .zIndex(1)
+        if (this.usePhoneTabs()) {
+          PhoneTabs({
+            activeTab: this.activeTab, keyboardVisible: this.keyboardVisible,
+            barHidden: this.phoneTabBarHidden,
+            modelScroller: this.modelPageScroller,
+            knowledgeScroller: this.knowledgePageScroller,
+            monitorScroller: this.monitorPageScroller,
+            pageContent: (index: number): void => { this.PhonePage(index) },
+            onTabChange: (index: number): void => { this.changeTab(index) }
+          }).width('100%').layoutWeight(1)
+        } else {
         Flex({ direction: this.windowWidth >= 600 ? FlexDirection.RowReverse : FlexDirection.Column }) {
           Stack() {
-            Column({ space: 8 }) {
-              ChatRunTicker({
-                viewModel: this.viewModel,
-                active: this.activeTab === 0,
-                compact: this.windowWidth < 600,
-                topSpacing: this.windowWidth >= 600 ? 4 : 0
-              })
-              ChatTab({
-                leadingInset: this.windowWidth >= 840 ? this.pagePadding() : 0,
-                onRequestModel: () => {
-                  this.changeTab(1)
-                  this.showToast('请先加载模型', 1800)
-                },
-                inputBottomOffset: this.windowWidth >= 600 && !this.keyboardVisible ? this.bottomInset : 0,
-                viewModel: this.viewModel,
-                renderVersion: this.stateVersion,
-                active: this.activeTab === 0,
-                dialogVisible: this.apiUsageMode.length > 0 || this.showLayaDecision || this.helpDialog.length > 0 || this.dialogExitBlocking || this.showSettings || this.viewModel.showModelLoadDialog || this.viewModel.showBuiltinModelInstallDialog ||
-                  this.viewModel.showModelMarketDialog || this.viewModel.showDeleteModelDialog
-              })
-              .padding({ left: this.windowWidth >= 840 ? 0 : this.pagePadding(), right: this.pagePadding() })
-              .width(Math.max(1, Math.min(1280 + 2 * this.pagePadding(), this.windowWidth -
-                (this.windowWidth >= 840 ? 160 : this.windowWidth >= 600 ? 88 : 0))))
-              .layoutWeight(1)
-            }
-            .width('100%')
-            .height('100%')
-            .padding({ bottom: this.windowWidth >= 600 ? $r('app.float.wide_bottom_spacing') :
-              (this.keyboardVisible ? 0 : 60) })
-            .opacity(this.transitionTab === 0 ? 1 : 0)
-            .visibility((this.visibleTabs & 1) !== 0 ? Visibility.Visible : Visibility.Hidden)
-            .hitTestBehavior(this.activeTab === 0 ? HitTestMode.Default : HitTestMode.None)
-            .accessibilityLevel(this.activeTab === 0 ? 'auto' : 'no-hide-descendants')
-
-              ModelTab({
-                layaReady: this.viewModel.layaReady,
-                layaStatus: this.viewModel.layaStatusText(),
-                onLayaDecision: () => { this.showLayaDecision = true },
-                extendBottom: this.windowWidth >= 600,
-                bottomOverlayInset: this.windowWidth < 600 && !this.keyboardVisible ? 52 : 0,
-                viewModel: this.viewModel,
-                renderVersion: this.stateVersion,
-                onDragStateChange: (dragging: boolean) => {
-                  this.modelCardDragging = dragging
-                }
-              })
-              .padding({ left: this.pagePadding(), right: this.pagePadding(), top: this.windowWidth < 600 ? 8 : 0 })
-              .width(Math.max(1, Math.min(1280 + 2 * this.pagePadding(), this.windowWidth -
-                (this.windowWidth >= 840 ? 160 : this.windowWidth >= 600 ? 88 : 0))))
-              .height('100%')
-              .opacity(this.transitionTab === 1 ? 1 : 0)
-              .visibility((this.visibleTabs & 2) !== 0 ? Visibility.Visible : Visibility.Hidden)
-              .hitTestBehavior(this.activeTab === 1 ? HitTestMode.Default : HitTestMode.None)
-              .accessibilityLevel(this.activeTab === 1 ? 'auto' : 'no-hide-descendants')
-
-              ApiServerTab({
-                layaReady: this.viewModel.layaReady,
-                layaStatus: this.viewModel.layaStatusText(),
-                apiServiceTarget: this.viewModel.apiServiceTarget,
-                onApiHelp: (mode: 'chat' | 'decision', example: string) => {
-                  this.apiUsageMode = mode
-                  this.apiUsageExample = example
-                },
-                extendBottom: this.windowWidth >= 600,
-                bottomOverlayInset: this.windowWidth < 600 && !this.keyboardVisible ? 52 : 0,
-                viewModel: this.viewModel,
-                renderVersion: this.stateVersion,
-                loaded: this.viewModel.loaded,
-                busy: this.viewModel.busy,
-                currentModelName: this.viewModel.currentModel().shortName,
-                apiServerRunning: this.viewModel.apiServerRunning,
-                apiServerStarting: this.viewModel.apiServerStarting,
-                apiServerPortInput: this.viewModel.apiServerPortInput,
-                apiServerRequireKey: this.viewModel.apiServerRequireKey,
-                apiServerKey: this.viewModel.apiServerKey,
-                apiServerAddress: this.viewModel.apiServerAddress,
-                apiServerStatus: this.viewModel.apiServerStatus,
-                apiServerRequestCount: this.viewModel.apiServerRequestCount,
-                apiServerLogs: this.viewModel.apiServerLogs
-              })
-              .padding({ left: this.pagePadding(), right: this.pagePadding(), top: this.windowWidth < 600 ? 8 : 0 })
-              .width(Math.max(1, Math.min(1280 + 2 * this.pagePadding(), this.windowWidth -
-                (this.windowWidth >= 840 ? 160 : this.windowWidth >= 600 ? 88 : 0))))
-              .height('100%')
-              .opacity(this.transitionTab === 2 ? 1 : 0)
-              .visibility((this.visibleTabs & 4) !== 0 ? Visibility.Visible : Visibility.Hidden)
-              .hitTestBehavior(this.activeTab === 2 ? HitTestMode.Default : HitTestMode.None)
-              .accessibilityLevel(this.activeTab === 2 ? 'auto' : 'no-hide-descendants')
-
-              MonitorTab({
-                extendBottom: this.windowWidth >= 600,
-                bottomOverlayInset: this.windowWidth < 600 && !this.keyboardVisible ? 52 : 0,
-                viewModel: this.viewModel,
-                active: this.activeTab === 3
-              })
-              .padding({ left: this.pagePadding(), right: this.pagePadding(), top: this.windowWidth < 600 ? 8 : 0 })
-              .width(Math.max(1, Math.min(1280 + 2 * this.pagePadding(), this.windowWidth -
-                (this.windowWidth >= 840 ? 160 : this.windowWidth >= 600 ? 88 : 0))))
-              .height('100%')
-              .opacity(this.transitionTab === 3 ? 1 : 0)
-              .visibility((this.visibleTabs & 8) !== 0 ? Visibility.Visible : Visibility.Hidden)
-              .hitTestBehavior(this.activeTab === 3 ? HitTestMode.Default : HitTestMode.None)
-              .accessibilityLevel(this.activeTab === 3 ? 'auto' : 'no-hide-descendants')
+            this.ChatPage()
+            this.ModelsPage()
+            this.ServicePage()
+            this.MonitorPage()
           }
           .layoutWeight(1)
           .width(this.windowWidth >= 600 ? 0 : '100%')
           .height(this.windowWidth >= 600 ? '100%' : 0)
-          .margin({ bottom: this.windowWidth < 600 && !this.keyboardVisible ? -52 : 0 })
+          .margin({ bottom: this.windowWidth < 600 && !this.keyboardVisible ? -this.mobileNavigationHeight() : 0 })
           .zIndex(this.modelCardDragging ? 10 : 0)
           BottomTabs({
             bottomInset: this.keyboardVisible ? 0 : this.bottomInset,
@@ -448,20 +555,50 @@ struct Index {
             }
           })
           .width(this.windowWidth >= 840 ? 160 : this.windowWidth >= 600 ? 88 : '100%')
-          .height(this.windowWidth >= 600 ? '100%' : 52)
+          .height(this.windowWidth >= 600 ? '100%' : this.mobileNavigationHeight())
           .zIndex(this.windowWidth < 600 ? 11 : 0)
           .flexShrink(0)
           .visibility(this.windowWidth < 600 && this.keyboardVisible ? Visibility.None : Visibility.Visible)
         }
         .width('100%')
         .layoutWeight(1)
+        }
       }
       .width('100%')
       .height('100%')
       .justifyContent(FlexAlign.Start)
-      .padding({ bottom: this.windowWidth < 600 && this.keyboardVisible ? 8 : 0 })
+      .padding({ top: this.usePhoneTabs() ? this.topInset : 0,
+        bottom: this.windowWidth < 600 && this.keyboardVisible ? 8 : 0 })
       .id('app-content')
       .focusable(!this.dialogExitBlocking && this.modalFocusId() === 'app-content')
+
+      if (this.usePhoneTabs() && this.phoneHistoryOpen) {
+        Column()
+          .width('100%').height('100%').backgroundColor('#66000000')
+          .hitTestBehavior(HitTestMode.Block)
+          .onClick(() => { this.setPhoneHistoryOpen(false) })
+          .transition(TransitionEffect.OPACITY.animation({ duration: 220, curve: Curve.EaseInOut }))
+        Column() {
+          ChatHistoryPanel({
+            viewModel: this.viewModel,
+            renderVersion: this.stateVersion,
+            closeOnSelection: true,
+            onClose: () => { this.setPhoneHistoryOpen(false) }
+          })
+        }
+        .width(Math.max(1, Math.min(280, this.windowWidth - 40)))
+        .height('100%')
+        .padding({ top: this.topInset, bottom: this.bottomInset })
+        .backgroundColor($r('app.color.page'))
+        .border({ width: { right: 1 }, color: $r('app.color.attachment_border') })
+        .hitTestBehavior(HitTestMode.BLOCK_HIERARCHY)
+        .gesture(PanGesture({ direction: PanDirection.Horizontal, distance: 12 })
+          .onActionEnd((event: GestureEvent) => {
+            if (event.offsetX <= -48) this.setPhoneHistoryOpen(false)
+          }))
+        .transition(TransitionEffect.move(TransitionEdge.START).combine(TransitionEffect.OPACITY)
+          .animation({ duration: 220, curve: Curve.EaseInOut }))
+      }
 
       if (this.viewModel.showModelLoadDialog) {
         ModelLoadDialog({

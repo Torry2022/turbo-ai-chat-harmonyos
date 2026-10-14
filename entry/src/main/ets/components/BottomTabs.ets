@@ -4,17 +4,19 @@ export interface AppTabEntry {
   icon: Resource
 }
 
-@Component
-export struct BottomTabs {
-  @Prop activeTab: number
-  @Prop windowWidth: number = 0
-  @Prop bottomInset: number = 0
-  @Prop entries: AppTabEntry[] = [
+export const DEFAULT_APP_TABS: AppTabEntry[] = [
     { title: '聊天', description: '全屏对话', icon: $r('sys.symbol.message') },
     { title: '模型', description: '加载参数', icon: $r('sys.symbol.square_grid_2x2') },
     { title: 'API 服务', description: 'OpenAI API', icon: $r('sys.symbol.externaldrive_3') },
     { title: '监控', description: 'CPU 内存', icon: $r('sys.symbol.waveform_path_ecg_square') }
   ]
+
+@Component
+export struct BottomTabs {
+  @Prop activeTab: number
+  @Prop windowWidth: number = 0
+  @Prop bottomInset: number = 0
+  @Prop entries: AppTabEntry[] = DEFAULT_APP_TABS
   onTabChange: (index: number) => void = (_index: number) => {}
   onSettings: () => void = () => {}
   private readonly wideLabelWidth: number = 64
@@ -136,4 +138,5 @@ export struct BottomTabs {
     .width('100%')
     .height(this.windowWidth >= 600 ? '100%' : 52)
   }
+
 }

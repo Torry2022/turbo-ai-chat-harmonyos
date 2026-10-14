@@ -56,6 +56,7 @@ In the HarmonyOS ecosystem, on-device AI inference today largely depends on Andr
 
 **Chat history and service-page improvements (v1.13.0)**
 
+- Use the system immersive floating tab bar on phones running API 26 or later; retain the existing navigation on older systems and the original sidebars in wide windows.
 - Use Laya locally for choice, scoring, and yes/no decisions. Download it from the Decisions category on the Models page; it loads on first use and also supports the `/v1/decisions` API.
 
 

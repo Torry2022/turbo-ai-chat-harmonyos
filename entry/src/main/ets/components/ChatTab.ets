@@ -1,3 +1,4 @@
+import { ChatRunTicker } from './ChatRunTicker'
 import { ChatHistoryPanel } from './ChatHistoryPanel'
 import { messageDate } from '../models/ChatHistoryTypes'
 import { ActionButtonStyle, CompactActionStyle } from './ButtonStyles'
@@ -12,9 +13,15 @@ export struct ChatTab {
   @Prop @Watch('onHistoryReady') renderVersion: number
   @Prop @Watch('onActiveChange') active: boolean = false
   @Prop dialogVisible: boolean = false
+  @Prop contentInset: number = 0
+  @Prop contentBottomInset: number = 0
+  @Prop compactTicker: boolean = false
+  @Prop compactHistoryManaged: boolean = false
+  @Prop compactHistoryOpen: boolean = false
   @Prop leadingInset: number = 0
   @Prop inputBottomOffset: number = 0
   onRequestModel: () => void = () => {}
+  onCompactHistoryChange: (open: boolean) => void = (_open: boolean) => {}
   @State private historyWidth: number = 0
   @State private historyOpen: boolean = false
   private historyInitialized: boolean = false
@@ -45,7 +52,15 @@ export struct ChatTab {
     return this.historyWidth >= 872
   }
 
+  private isHistoryOpen(): boolean {
+    return this.compactHistoryManaged && !this.wideHistory() ? this.compactHistoryOpen : this.historyOpen
+  }
+
   private setHistoryOpen(open: boolean): void {
+    if (this.compactHistoryManaged && !this.wideHistory()) {
+      this.onCompactHistoryChange(open)
+      return
+    }
     this.getUIContext().animateTo({ duration: 220, curve: Curve.EaseInOut }, () => {
       this.historyOpen = open
     })
@@ -60,7 +75,7 @@ export struct ChatTab {
 
   aboutToAppear(): void {
     this.viewModel.bindHistoryClose((): boolean => {
-      if (!this.historyOpen || this.wideHistory()) return false
+      if (!this.isHistoryOpen() || this.wideHistory()) return false
       this.setHistoryOpen(false)
       return true
     })
@@ -74,7 +89,7 @@ export struct ChatTab {
   }
 
   private sendKeyboardMessage(): void {
-    if (this.active && this.inputFocused && (this.wideHistory() || !this.historyOpen) && !this.dialogVisible && this.viewModel.loaded &&
+    if (this.active && this.inputFocused && (this.wideHistory() || !this.isHistoryOpen()) && !this.dialogVisible && this.viewModel.loaded &&
       !this.viewModel.busy && !this.viewModel.generating && !this.viewModel.speechRecognitionStarting &&
       !this.viewModel.speechRecognizing && this.viewModel.inputText.trim().length > 0) {
       this.viewModel.sendMessage()
@@ -174,23 +189,27 @@ export struct ChatTab {
 
   @Builder
   private ChatBody() {
-    Column({ space: 8 }) {
+    Column({ space: 6 }) {
+      if (this.compactTicker) {
+        ChatRunTicker({ viewModel: this.viewModel, active: this.active, compact: true, topSpacing: 0 })
+          .margin({ left: -this.contentInset, right: -this.contentInset })
+      }
       Row({ space: 8 }) {
         Button({ type: ButtonType.Normal }) {
           Image($r('app.media.icon_chat_history')).width(22).height(22)
             .fillColor($r('app.color.text_secondary'))
         }.width(34).height(34).padding(0).borderRadius(8)
-          .backgroundColor(this.historyOpen ? $r('app.color.nav_selected_background') : Color.Transparent)
+          .backgroundColor(this.isHistoryOpen() ? $r('app.color.nav_selected_background') : Color.Transparent)
           .hoverEffect(HoverEffect.Auto)
-          .accessibilityText(this.historyOpen ? '收起历史对话' : '展开历史对话')
+          .accessibilityText(this.isHistoryOpen() ? '收起历史对话' : '展开历史对话')
           .onClick(() => {
             this.inputController.stopEditing()
-            this.setHistoryOpen(!this.historyOpen)
+            this.setHistoryOpen(!this.isHistoryOpen())
           })
         Text(this.viewModel.currentConversationTitle())
           .fontSize(15).fontWeight(FontWeight.Medium).fontColor($r('app.color.text_title'))
           .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).layoutWeight(1)
-      }.width('100%').height(40)
+      }.width('100%').height(34)
       if (this.viewModel.historyError.length > 0) {
         Row({ space: 8 }) {
           Text(this.viewModel.historyError).fontSize(12).lineHeight(18)
@@ -465,17 +484,19 @@ export struct ChatTab {
         Column() {
           this.ChatBody()
         }.layoutWeight(1).height('100%').alignItems(HorizontalAlign.Center)
-          .padding({ left: this.wideHistory() && this.historyOpen ? 12 : this.leadingInset })
+          .padding({ left: this.wideHistory() && this.historyOpen ? 12 : this.leadingInset + this.contentInset,
+            right: this.contentInset, bottom: this.contentBottomInset })
       }.width('100%').height('100%')
-      if (!this.wideHistory() && this.historyOpen) {
+      if (!this.compactHistoryManaged && !this.wideHistory() && this.historyOpen) {
         Column().width('100%').height('100%').backgroundColor('#66000000')
           .onClick(() => this.setHistoryOpen(false))
           .transition(TransitionEffect.OPACITY.animation({ duration: 220, curve: Curve.EaseInOut }))
         Column() {
           ChatHistoryPanel({ viewModel: this.viewModel, renderVersion: this.renderVersion,
             closeOnSelection: true, onClose: () => this.setHistoryOpen(false) })
-        }.width(Math.max(1, Math.min(260, this.historyWidth - 48))).height('100%')
-          .padding({ left: 8, right: 8, top: 4, bottom: 8 })
+        }.width(Math.max(1, Math.min(280, this.historyWidth - 40))).height('100%')
+          .padding({ bottom: 8 })
+          .border({ width: { right: 1 }, color: $r('app.color.attachment_border') })
           .backgroundColor($r('app.color.page')).hitTestBehavior(HitTestMode.BLOCK_HIERARCHY)
           .transition(TransitionEffect.move(TransitionEdge.START).combine(TransitionEffect.OPACITY)
             .animation({ duration: 220, curve: Curve.EaseInOut }))
