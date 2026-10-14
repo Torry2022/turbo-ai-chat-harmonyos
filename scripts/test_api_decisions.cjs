@@ -45,6 +45,10 @@ assert.equal(booleanResult.value, true);
 assert.ok(booleanResult.probabilities.true > booleanResult.probabilities.false);
 
 assert.throws(() => request({ input: 'x', task: { type: 'choice', instruction: 'Classify', options: { only: 'One' } } }), /至少需要两个候选项/);
+assert.throws(() => request({ input: 'x', task: { type: 'choice', instruction: 'Classify',
+  options: Object.fromEntries(Array.from({ length: 21 }, (_, index) => [`item${index}`, `Option ${index}`])) } }), /最多支持 20 个候选项/);
+assert.throws(() => request({ input: 'x', task: { type: 'score', instruction: 'Score',
+  levels: Array.from({ length: 21 }, (_, index) => `Level ${index}`) } }), /最多支持 20 个等级/);
 assert.throws(() => request({ model: 'unknown', input: 'x', task: { type: 'boolean', instruction: 'Check' } }), /当前仅支持/);
 assert.throws(() => request({ input: 'x', task: { type: 'noul', instruction: 'Check' } }), /只支持 choice、score 或 boolean/);
 console.log('PASS decision request mapping and response formatting');

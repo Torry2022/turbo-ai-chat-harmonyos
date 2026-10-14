@@ -63,11 +63,9 @@ struct Index {
   @State private bottomInset: number = 0
   @State private keyboardVisible: boolean = false
   @State private phoneHistoryOpen: boolean = false
-  @State private phoneTabBarHidden: boolean = false
   private modelPageScroller: Scroller = new Scroller()
   private knowledgePageScroller: Scroller = new Scroller()
   private monitorPageScroller: Scroller = new Scroller()
-  private phoneTabBarScrollDelta: number = 0
   private readonly onKeyboardHeightChange = (height: number): void => {
     this.keyboardVisible = height > 0
   }
@@ -199,8 +197,6 @@ struct Index {
     if (index === this.activeTab) {
       return
     }
-    this.phoneTabBarHidden = false
-    this.phoneTabBarScrollDelta = 0
     if (index !== 0) {
       if (this.viewModel.speechRecognitionStarting) {
         this.viewModel.cancelSpeechRecognition()
@@ -296,18 +292,6 @@ struct Index {
     }
   }
 
-  private handleLongPageScroll(yOffset: number): void {
-    if (!this.usePhoneTabs() || Math.abs(yOffset) < 0.2) return
-    if (this.phoneTabBarScrollDelta === 0 || this.phoneTabBarScrollDelta * yOffset > 0) {
-      this.phoneTabBarScrollDelta += yOffset
-    } else {
-      this.phoneTabBarScrollDelta = yOffset
-    }
-    if (Math.abs(this.phoneTabBarScrollDelta) < 6) return
-    this.phoneTabBarHidden = this.phoneTabBarScrollDelta > 0
-    this.phoneTabBarScrollDelta = 0
-  }
-
   private pagePadding(): number {
     return this.windowWidth >= 840 ? 24 : this.windowWidth >= 600 ? 20 : 14
   }
@@ -382,12 +366,11 @@ struct Index {
   private ModelsPage() {
     ModelTab({
       scroller: this.modelPageScroller,
-      onContentScroll: (yOffset: number): void => { this.handleLongPageScroll(yOffset) },
       layaReady: this.viewModel.layaReady,
       layaStatus: this.viewModel.layaStatusText(),
       onLayaDecision: () => { this.showLayaDecision = true },
       extendBottom: this.windowWidth >= 600,
-      bottomOverlayInset: this.windowWidth < 600 && !this.keyboardVisible && !this.phoneTabBarHidden ?
+      bottomOverlayInset: this.windowWidth < 600 && !this.keyboardVisible && !this.usePhoneTabs() ?
         this.mobileNavigationHeight() : 0,
       viewModel: this.viewModel,
       renderVersion: this.stateVersion,
@@ -446,9 +429,8 @@ struct Index {
   private MonitorPage() {
     MonitorTab({
       scroller: this.monitorPageScroller,
-      onContentScroll: (yOffset: number): void => { this.handleLongPageScroll(yOffset) },
       extendBottom: this.windowWidth >= 600,
-      bottomOverlayInset: this.windowWidth < 600 && !this.keyboardVisible && !this.phoneTabBarHidden ?
+      bottomOverlayInset: this.windowWidth < 600 && !this.keyboardVisible && !this.usePhoneTabs() ?
         this.mobileNavigationHeight() : 0,
       viewModel: this.viewModel,
       active: this.activeTab === 3
@@ -525,7 +507,6 @@ struct Index {
         if (this.usePhoneTabs()) {
           PhoneTabs({
             activeTab: this.activeTab, keyboardVisible: this.keyboardVisible,
-            barHidden: this.phoneTabBarHidden,
             modelScroller: this.modelPageScroller,
             knowledgeScroller: this.knowledgePageScroller,
             monitorScroller: this.monitorPageScroller,

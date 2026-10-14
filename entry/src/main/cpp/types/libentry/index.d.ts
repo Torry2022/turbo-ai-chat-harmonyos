@@ -58,4 +58,5 @@ export const reset: () => void;
 export const isLoaded: () => boolean;
 
 export const layaDecideAsync: (modelPath: string, tokenizerPath: string, state: string,
+  type: string, instruction: string, options: string[]) => Promise<string>;
 export const layaReleaseAsync: () => Promise<void>;

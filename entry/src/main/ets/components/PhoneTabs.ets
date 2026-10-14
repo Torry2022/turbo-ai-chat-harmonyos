@@ -1,12 +1,11 @@
 import { SymbolGlyphModifier } from '@kit.ArkUI'
-import { HdsAnimationMode, HdsTabs, HdsTabsController, hdsMaterial } from '@kit.UIDesignKit'
+import { HdsTabs, HdsTabsController, hdsMaterial } from '@kit.UIDesignKit'
 import { AppTabEntry, DEFAULT_APP_TABS } from './BottomTabs'
 
 @Component
 export struct PhoneTabs {
   @Prop @Watch('syncTab') activeTab: number = 0
   @Prop keyboardVisible: boolean = false
-  @Prop @Watch('syncBarVisibility') barHidden: boolean = false
   @Prop entries: AppTabEntry[] = DEFAULT_APP_TABS
   @BuilderParam pageContent: (index: number) => void = this.EmptyPage
   onTabChange: (index: number) => void = (_index: number) => {}
@@ -26,14 +25,6 @@ export struct PhoneTabs {
     this.controller.changeIndex(this.activeTab)
   }
 
-  private syncBarVisibility(): void {
-    if (this.barHidden) {
-      this.controller.applyHideAnimation(HdsAnimationMode.SCROLL_ANIMATION)
-    } else {
-      this.controller.applyShowAnimation(HdsAnimationMode.SCROLL_ANIMATION)
-    }
-  }
-
   aboutToAppear(): void {
     this.materialLevel = hdsMaterial.getSystemMaterialTypes().indexOf(hdsMaterial.MaterialType.IMMERSIVE) >= 0 ?
       hdsMaterial.MaterialLevel.EXQUISITE : hdsMaterial.MaterialLevel.SMOOTH
@@ -41,7 +32,6 @@ export struct PhoneTabs {
     this.bindScroller('模型', this.modelScroller)
     this.bindScroller('知识库', this.knowledgeScroller)
     this.bindScroller('监控', this.monitorScroller)
-    this.syncBarVisibility()
   }
 
   aboutToDisappear(): void {

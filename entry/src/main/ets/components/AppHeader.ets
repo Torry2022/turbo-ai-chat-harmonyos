@@ -42,8 +42,7 @@ export struct AppHeader {
           .fontSize(12)
           .fontColor(this.statusColor)
           .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.MARQUEE })
-          .marqueeOptions({ start: true, step: 4, loop: -1, fromStart: true })
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
           .width('100%')
           .height(18)
       }

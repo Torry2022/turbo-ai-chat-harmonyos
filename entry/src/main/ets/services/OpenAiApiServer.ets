@@ -1132,10 +1132,12 @@ export function prepareApiDecision(bodyText: string): PreparedApiDecision {
       options.push(description.length > 0 ? `${label}: ${description}` : label)
     }
     if (labels.length < 2) throw new Error('选择题至少需要两个候选项。')
+    if (labels.length > 20) throw new Error('选择题最多支持 20 个候选项。')
   } else if (task.type === 'score') {
     if (!Array.isArray(task.levels) || task.levels.length < 2) {
       throw new Error('评分题的 task.levels 至少需要两个等级。')
     }
+    if (task.levels.length > 20) throw new Error('评分题最多支持 20 个等级。')
     const criteria = task.levels as string[]
     for (let index = 0; index < criteria.length; index++) {
       if (typeof criteria[index] !== 'string' || criteria[index].trim().length === 0) {

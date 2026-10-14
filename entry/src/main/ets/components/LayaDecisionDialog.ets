@@ -182,6 +182,11 @@ export struct LayaDecisionDialog {
       this.previewText = ''
       return undefined
     }
+    if (this.questionType !== 'noul' && lines.length > 20) {
+      this.validationText = this.questionType === 'choice' ? '候选项最多 20 个' : '评分等级最多 20 个'
+      this.previewText = ''
+      return undefined
+    }
     let criteria: string[] | Record<string, string>
     const labels: string[] = []
     const options: string[] = []
