@@ -1,5 +1,5 @@
 import { SymbolGlyphModifier } from '@kit.ArkUI'
-import { HdsAnimationMode, HdsTabs, HdsTabsController, hdsMaterial } from '@kit.UIDesignKit'
+import { DividerMode, HdsAnimationMode, HdsTabs, HdsTabsController, hdsMaterial } from '@kit.UIDesignKit'
 import { AppTabEntry, DEFAULT_APP_TABS } from './BottomTabs'
 
 @Component
@@ -56,6 +56,7 @@ export struct PhoneTabs {
     }
     .width('100%').height('100%')
     .barHeight(this.keyboardVisible ? 0 : 56).barPosition(BarPosition.End)
+    .divider({ mode: DividerMode.NONE })
     .vertical(false).barOverlap(true).scrollable(false).animationDuration(0)
     .barFloatingStyle(this.keyboardVisible ? undefined : {
       barBottomMargin: 28,

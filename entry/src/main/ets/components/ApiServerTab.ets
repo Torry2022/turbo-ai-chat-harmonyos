@@ -29,7 +29,7 @@ export struct ApiServerTab {
   @Prop apiServerRequestCount: number = 0
   @Prop apiServerLogs: ApiServerLogEntry[] = []
   @State apiKeyVisible: boolean = false
-  @State private contentWidth: number = 0
+  @Prop contentWidth: number = 0
   private portInputController: TextInputController = new TextInputController()
 
   private wideLayout(): boolean {
@@ -372,13 +372,17 @@ export struct ApiServerTab {
         .alignItems(VerticalAlign.Top)
 
         if (this.apiServerLogs.length <= 0) {
-          Text('暂无 API 请求日志')
-            .height(this.wideLayout() ? undefined : 120)
-            .layoutWeight(this.wideLayout() ? 1 : 0)
-            .fontSize(12)
-            .fontColor($r('app.color.text_log_time'))
-            .width('100%')
-            .textAlign(TextAlign.Center)
+          Column({ space: 12 }) {
+            Image($r('app.media.icon_api_log')).width(36).height(36)
+              .fillColor($r('app.color.text_muted')).opacity(0.65).accessibilityLevel('no')
+            Text('暂无 API 日志')
+              .fontSize(13).fontColor($r('app.color.text_muted'))
+          }
+          .height(this.wideLayout() ? undefined : 120)
+          .layoutWeight(this.wideLayout() ? 1 : 0)
+          .width('100%')
+          .justifyContent(FlexAlign.Center)
+          .alignItems(HorizontalAlign.Center)
         } else {
           List({ space: 5 }) {
             ForEach(this.logItems(), (item: ApiServerLogEntry) => {
@@ -462,9 +466,6 @@ export struct ApiServerTab {
       }
     }.width('100%').height('100%')
       .padding({ bottom: this.wideLayout() ? 12 : 0 })
-      .onAreaChange((_oldArea: Area, newArea: Area) => {
-        this.contentWidth = Number(newArea.width)
-      })
       .onClick(() => this.portInputController.stopEditing())
       .expandSafeArea([SafeAreaType.SYSTEM], this.extendBottom ? [SafeAreaEdge.BOTTOM] : [])
   }

@@ -62,6 +62,7 @@ struct Index {
   @State private topInset: number = 0
   @State private bottomInset: number = 0
   @State private keyboardVisible: boolean = false
+  @State private chatInputExpanded: boolean = false
   @State private phoneHistoryOpen: boolean = false
   @State private phoneTabBarHidden: boolean = false
   private phoneTabBarScrollDelta: number = 0
@@ -96,6 +97,14 @@ struct Index {
       return true
     }
     if (this.viewModel.dismissTopDialogIfIdle()) {
+      return true
+    }
+    if (this.chatInputExpanded) {
+      if (this.keyboardVisible) {
+        this.getUIContext().getFocusController().clearFocus()
+      } else {
+        this.chatInputExpanded = false
+      }
       return true
     }
     if (this.viewModel.closeHistoryDrawer()) return true
@@ -196,6 +205,7 @@ struct Index {
     if (index === this.activeTab) {
       return
     }
+    this.chatInputExpanded = false
     this.phoneTabBarHidden = false
     this.phoneTabBarScrollDelta = 0
     if (index !== 0) {
@@ -223,6 +233,7 @@ struct Index {
   }
 
   private newChat(): void {
+    this.chatInputExpanded = false
     this.viewModel.closeHistoryDrawer()
     this.viewModel.newChat()
     this.changeTab(0)
@@ -300,9 +311,14 @@ struct Index {
   }
 
   private finishHistorySwipe(event: GestureEvent): void {
-    if (this.usePhoneTabs() && this.activeTab === 0 && !this.phoneHistoryOpen && event.offsetX >= 48) {
+    if (this.usePhoneTabs() && this.activeTab === 0 && !this.phoneHistoryOpen && !this.chatInputExpanded && event.offsetX >= 48) {
       this.setPhoneHistoryOpen(true)
     }
+  }
+
+  private pageContentWidth(): number {
+    const navigationWidth = this.windowWidth >= 840 ? 160 : this.windowWidth >= 600 ? 88 : 0
+    return Math.max(1, Math.min(1280, this.windowWidth - navigationWidth - 2 * this.pagePadding()))
   }
 
   private pagePadding(): number {
@@ -341,8 +357,11 @@ struct Index {
       }
       ChatTab({
         compactTicker: this.usePhoneTabs(),
+        compactPage: this.windowWidth < 600,
+        inputExpanded: this.chatInputExpanded,
+        onInputExpandedChange: (expanded: boolean): void => { this.chatInputExpanded = expanded },
         contentInset: this.usePhoneTabs() ? this.pagePadding() : 0,
-        contentBottomInset: this.usePhoneTabs() && !this.keyboardVisible ? this.mobileNavigationHeight() + 8 : 0,
+        contentBottomInset: this.usePhoneTabs() && !this.keyboardVisible ? (this.mobileNavigationHeight() + 8) : 0,
         compactHistoryManaged: this.usePhoneTabs(),
         compactHistoryOpen: this.phoneHistoryOpen,
         onCompactHistoryChange: (open: boolean): void => { this.setPhoneHistoryOpen(open) },
@@ -367,8 +386,8 @@ struct Index {
     .height('100%')
     .padding({ bottom: this.windowWidth >= 600 ? $r('app.float.wide_bottom_spacing') :
       (this.usePhoneTabs() || this.keyboardVisible ? 0 : this.mobileNavigationHeight() + 8) })
-    .opacity(this.transitionTab === 0 ? 1 : 0)
-    .visibility((this.visibleTabs & 1) !== 0 ? Visibility.Visible : Visibility.Hidden)
+    .opacity(this.usePhoneTabs() || this.transitionTab === 0 ? 1 : 0)
+    .visibility(this.usePhoneTabs() || (this.visibleTabs & 1) !== 0 ? Visibility.Visible : Visibility.Hidden)
     .hitTestBehavior(this.activeTab === 0 ? HitTestMode.Default : HitTestMode.None)
     .accessibilityLevel(this.activeTab === 0 ? 'auto' : 'no-hide-descendants')
     .parallelGesture(PanGesture({ direction: PanDirection.Horizontal, distance: 12 })
@@ -397,8 +416,8 @@ struct Index {
     .width(Math.max(1, Math.min(1280 + 2 * this.pagePadding(), this.windowWidth -
       (this.windowWidth >= 840 ? 160 : this.windowWidth >= 600 ? 88 : 0))))
     .height('100%')
-    .opacity(this.transitionTab === 1 ? 1 : 0)
-    .visibility((this.visibleTabs & 2) !== 0 ? Visibility.Visible : Visibility.Hidden)
+    .opacity(this.usePhoneTabs() || this.transitionTab === 1 ? 1 : 0)
+    .visibility(this.usePhoneTabs() || (this.visibleTabs & 2) !== 0 ? Visibility.Visible : Visibility.Hidden)
     .hitTestBehavior(this.activeTab === 1 ? HitTestMode.Default : HitTestMode.None)
     .accessibilityLevel(this.activeTab === 1 ? 'auto' : 'no-hide-descendants')
   }
@@ -406,6 +425,7 @@ struct Index {
   @Builder
   private ServicePage() {
     ApiServerTab({
+      contentWidth: this.pageContentWidth(),
       onContentScroll: (yOffset: number): void => {
         this.handleLongPageScroll(yOffset)
       },
@@ -438,8 +458,8 @@ struct Index {
     .width(Math.max(1, Math.min(1280 + 2 * this.pagePadding(), this.windowWidth -
       (this.windowWidth >= 840 ? 160 : this.windowWidth >= 600 ? 88 : 0))))
     .height('100%')
-    .opacity(this.transitionTab === 2 ? 1 : 0)
-    .visibility((this.visibleTabs & 4) !== 0 ? Visibility.Visible : Visibility.Hidden)
+    .opacity(this.usePhoneTabs() || this.transitionTab === 2 ? 1 : 0)
+    .visibility(this.usePhoneTabs() || (this.visibleTabs & 4) !== 0 ? Visibility.Visible : Visibility.Hidden)
     .hitTestBehavior(this.activeTab === 2 ? HitTestMode.Default : HitTestMode.None)
     .accessibilityLevel(this.activeTab === 2 ? 'auto' : 'no-hide-descendants')
   }
@@ -447,12 +467,13 @@ struct Index {
   @Builder
   private MonitorPage() {
     MonitorTab({
+      contentWidth: this.pageContentWidth(),
       onContentScroll: (yOffset: number): void => {
         this.handleLongPageScroll(yOffset)
       },
       extendBottom: this.windowWidth >= 600,
-      bottomOverlayInset: this.windowWidth < 600 && !this.keyboardVisible && !this.usePhoneTabs() ?
-        this.mobileNavigationHeight() : 0,
+      bottomOverlayInset: this.windowWidth < 600 && !this.keyboardVisible ?
+        (this.usePhoneTabs() && this.phoneTabBarHidden ? this.bottomInset : this.mobileNavigationHeight()) : 0,
       viewModel: this.viewModel,
       active: this.activeTab === 3
     })
@@ -460,8 +481,8 @@ struct Index {
     .width(Math.max(1, Math.min(1280 + 2 * this.pagePadding(), this.windowWidth -
       (this.windowWidth >= 840 ? 160 : this.windowWidth >= 600 ? 88 : 0))))
     .height('100%')
-    .opacity(this.transitionTab === 3 ? 1 : 0)
-    .visibility((this.visibleTabs & 8) !== 0 ? Visibility.Visible : Visibility.Hidden)
+    .opacity(this.usePhoneTabs() || this.transitionTab === 3 ? 1 : 0)
+    .visibility(this.usePhoneTabs() || (this.visibleTabs & 8) !== 0 ? Visibility.Visible : Visibility.Hidden)
     .hitTestBehavior(this.activeTab === 3 ? HitTestMode.Default : HitTestMode.None)
     .accessibilityLevel(this.activeTab === 3 ? 'auto' : 'no-hide-descendants')
   }
@@ -590,7 +611,7 @@ struct Index {
         .height('100%')
         .padding({ top: this.topInset, bottom: this.bottomInset })
         .backgroundColor($r('app.color.page'))
-        .border({ width: { right: 1 }, color: $r('app.color.attachment_border') })
+        .border({ width: { right: 0.5 }, color: $r('app.color.divider') })
         .hitTestBehavior(HitTestMode.BLOCK_HIERARCHY)
         .gesture(PanGesture({ direction: PanDirection.Horizontal, distance: 12 })
           .onActionEnd((event: GestureEvent) => {

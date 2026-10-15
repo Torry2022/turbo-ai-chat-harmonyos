@@ -46,7 +46,7 @@ export struct MonitorTab {
   @Prop @Watch('onActiveChanged') active: boolean = false
   @State stats: RuntimeStats = EMPTY_RUNTIME_STATS
   @State storageStats: StorageStats = EMPTY_STORAGE_STATS
-  @State private contentWidth: number = 0
+  @Prop contentWidth: number = 0
   private statsTimer: number = -1
   private storageStatsReading: boolean = false
   private statsService: RuntimeStatsService = new RuntimeStatsService()
@@ -139,7 +139,7 @@ export struct MonitorTab {
         .width('100%')
         .padding({ left: 4, bottom: 4 })
 
-        Flex({ wrap: FlexWrap.Wrap }) {
+        Flex({ wrap: FlexWrap.Wrap, alignContent: FlexAlign.Start }) {
           // Model state
           Column({ space: 6 }) {
             this.SectionTitle('模型状态')
@@ -263,13 +263,14 @@ export struct MonitorTab {
             .alignItems(VerticalAlign.Top)
           }
           .width(this.cardWidth())
-          .margin({ right: this.contentWidth >= 720 ? 16 : 0, bottom: 10 })
+          .margin({ right: this.contentWidth >= 720 ? 16 : 0 })
           .padding(10)
           .backgroundColor($r('app.color.card'))
           .borderRadius($r('app.float.card_radius'))
 
         }
         .width('100%')
+        .flexShrink(0)
 
 
         Text(this.viewModel.appVersion.length > 0 ? `Turbo AI Chat v${this.viewModel.appVersion}` : 'Turbo AI Chat')
@@ -284,13 +285,12 @@ export struct MonitorTab {
     }
     .width('100%')
     .height('100%')
-    .onAreaChange((_oldArea: Area, newArea: Area) => {
-      this.contentWidth = Number(newArea.width)
-    })
     .align(Alignment.Top)
     .scrollBar(BarState.Off)
     .onWillScroll((_xOffset: number, yOffset: number, _scrollState: ScrollState, source: ScrollSource) => {
-      if (source !== ScrollSource.EDGE_EFFECT) this.onContentScroll(yOffset)
+      if (source === ScrollSource.DRAG || source === ScrollSource.FLING || source === ScrollSource.OTHER_USER_INPUT) {
+        this.onContentScroll(yOffset)
+      }
     })
     .edgeEffect(EdgeEffect.Spring)
     .expandSafeArea([SafeAreaType.SYSTEM], this.extendBottom ? [SafeAreaEdge.BOTTOM] : [])

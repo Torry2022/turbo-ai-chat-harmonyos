@@ -145,6 +145,7 @@ export struct ChatHistoryPanel {
             }
           }, (item: ChatConversationSummary) => `${item.id}:${item.updatedAt}:${item.title}:${item.modelName}`)
         }.width('100%').layoutWeight(1).scrollBar(BarState.Auto)
+          .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
       }
     }.width('100%').height('100%').padding({ left: 8, right: 8, top: 2, bottom: 4 })
   }

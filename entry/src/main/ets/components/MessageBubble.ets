@@ -4,10 +4,12 @@ import { MarkdownBlock, MarkdownSpan, parseInlineMarkdown, parseLightMarkdown } 
 import { parseAssistantText } from '../utils/thinking'
 import { deviceInfo, pasteboard } from '@kit.BasicServicesKit'
 import { common } from '@kit.AbilityKit'
+import { SelectionContainer, SelectionContainerAttribute, SelectionContainerController } from '@kit.ArkUI'
+import { MessageSelectionPart, joinMessageSelection } from '../utils/messageSelection'
 
 @Component
 export struct MessageBubble {
-  message: ChatMessage = {
+  @Prop message: ChatMessage = {
     id: 0,
     role: 'assistant',
     content: '',
@@ -17,24 +19,52 @@ export struct MessageBubble {
     thinkingExpanded: false
   }
   onToggleThinking: (messageId: number) => void = (_messageId: number) => {}
-  private selectedCopyText: string = ''
+  onAnswerSelection: () => void = () => {}
+  @State private selectionSnapshot: string = ''
+  private answerSelection: Map<string, MessageSelectionPart> = new Map()
+  private selectionController: SelectionContainerController | undefined = undefined
 
-  private updateSelection(text: string, start: number, end: number): void {
-    this.selectedCopyText = start >= 0 && end > start ? text.substring(start, end) : ''
+  aboutToAppear(): void {
+    if (deviceInfo.apiAvailable('26.0.0')) {
+      this.selectionController = new SelectionContainerController()
+    }
   }
 
   private inlinePlainText(text: string): string {
     return parseInlineMarkdown(text).map((span: MarkdownSpan) => span.text).join('')
   }
 
-  private async copyToClipboard(): Promise<void> {
-    const text = this.selectedCopyText.length > 0 ? this.selectedCopyText : this.answerText()
-    try {
-      const pasteData = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, text)
-      await pasteboard.getSystemPasteboard().setData(pasteData)
-    } catch (_) {
-      // clipboard may be unavailable
+  private updateAnswerSelection(text: string, start: number, end: number,
+    block: number, row: number = 0, column: number = 0, kind: string = 'text'): void {
+    if (!deviceInfo.apiAvailable('26.0.0')) return
+    const key = `${block}:${row}:${column}`
+    if (start < 0 || end <= start) {
+      this.answerSelection.delete(key)
+    } else {
+      this.answerSelection.set(key, { block, row, column, kind, text: text.substring(start, end) })
     }
+  }
+
+  private clearAnswerSelection(): void {
+    this.selectionController?.clearTextSelection()
+    this.answerSelection.clear()
+    this.selectionSnapshot = ''
+  }
+
+  private async copyText(text: string): Promise<void> {
+    try {
+      await pasteboard.getSystemPasteboard().setData(pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, text))
+      this.clearAnswerSelection()
+    } catch (_) {
+      this.showLinkToast('复制失败，请重试')
+    }
+  }
+
+  private copySelectedAnswer(nativeText: string): boolean {
+    const text = joinMessageSelection(Array.from(this.answerSelection.values()), nativeText)
+    if (text === nativeText) return true
+    this.copyText(text)
+    return false
   }
 
   private hasThinking(): boolean {
@@ -90,7 +120,8 @@ export struct MessageBubble {
   }
 
   @Builder
-  private MarkdownLine(text: string, color: ResourceColor = $r('app.color.text_body')) {
+  private MarkdownLine(text: string, color: ResourceColor = $r('app.color.text_body'),
+    blockIndex: number = 0, rowIndex: number = 0, columnIndex: number = 0, kind: string = 'text') {
     Text() {
       ForEach(parseInlineMarkdown(text), (span: MarkdownSpan) => {
         if (span.code) {
@@ -114,11 +145,11 @@ export struct MessageBubble {
         }
       }, (_span: MarkdownSpan, index: number) => `${index}`)
     }
+    .onTextSelectionChange((start: number, end: number) => {
+      this.updateAnswerSelection(this.inlinePlainText(text), start, end, blockIndex, rowIndex, columnIndex, kind)
+    })
     .copyOption(CopyOptions.LocalDevice)
     .textSelectable(TextSelectableMode.SELECTABLE_FOCUSABLE)
-    .onTextSelectionChange((start: number, end: number) => {
-      this.updateSelection(this.inlinePlainText(text), start, end)
-    })
     .width('100%')
     .fontSize(14)
     .lineHeight(21)
@@ -145,11 +176,11 @@ export struct MessageBubble {
           }
         }, (_span: MarkdownSpan, index: number) => `${blockIndex}-${index}`)
       }
+      .onTextSelectionChange((start: number, end: number) => {
+        this.updateAnswerSelection(this.inlinePlainText(block.text), start, end, blockIndex)
+      })
       .copyOption(CopyOptions.LocalDevice)
       .textSelectable(TextSelectableMode.SELECTABLE_FOCUSABLE)
-      .onTextSelectionChange((start: number, end: number) => {
-        this.updateSelection(this.inlinePlainText(block.text), start, end)
-      })
       .width('100%')
       .fontSize(15)
       .lineHeight(22)
@@ -157,11 +188,11 @@ export struct MessageBubble {
     } else if (block.type === 'code') {
       Stack({ alignContent: Alignment.TopEnd }) {
         Text(block.text)
+          .onTextSelectionChange((start: number, end: number) => {
+            this.updateAnswerSelection(block.text, start, end, blockIndex)
+          })
           .copyOption(CopyOptions.LocalDevice)
           .textSelectable(TextSelectableMode.SELECTABLE_FOCUSABLE)
-          .onTextSelectionChange((start: number, end: number) => {
-            this.updateSelection(block.text, start, end)
-          })
           .width('100%')
           .fontSize(13)
           .lineHeight(19)
@@ -174,17 +205,12 @@ export struct MessageBubble {
           .attributeModifier(new CompactActionStyle())
           .padding({ left: 8, right: 8 })
           .margin({ top: 9, right: 4 })
-          .onClick(async () => {
-            try {
-              const data = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, block.text)
-              await pasteboard.getSystemPasteboard().setData(data)
-            } catch (_) {}
-          })
+          .onClick(() => this.copyText(block.text))
       }
       .width('100%')
     } else if (block.type === 'blockquote') {
       Row() {
-        this.MarkdownLine(block.text, $r('app.color.text_secondary'))
+        this.MarkdownLine(block.text, $r('app.color.text_secondary'), blockIndex)
       }
       .width('100%')
       .padding({ left: 11, top: 4, bottom: 4 })
@@ -195,9 +221,9 @@ export struct MessageBubble {
       Column({ space: 0 }) {
         if (block.headers !== undefined) {
           Row() {
-            ForEach(block.headers, (h: string) => {
+            ForEach(block.headers, (h: string, hi: number) => {
               Column() {
-                this.MarkdownLine(h, $r('app.color.text_title'))
+                this.MarkdownLine(h, $r('app.color.text_title'), blockIndex, 0, hi, 'table')
               }
               .padding({ left: 8, right: 8, top: 4, bottom: 4 })
               .layoutWeight(1)
@@ -209,9 +235,9 @@ export struct MessageBubble {
         if (block.rows !== undefined) {
           ForEach(block.rows, (row: string[], ri: number) => {
             Row() {
-              ForEach(row, (cell: string) => {
+              ForEach(row, (cell: string, ci: number) => {
                 Column() {
-                  this.MarkdownLine(cell, $r('app.color.code_text'))
+                  this.MarkdownLine(cell, $r('app.color.code_text'), blockIndex, ri + 1, ci, 'table')
                 }
                 .padding({ left: 8, right: 8, top: 3, bottom: 3 })
                 .layoutWeight(1)
@@ -234,6 +260,10 @@ export struct MessageBubble {
         ForEach(block.items, (item: string, itemIndex: number) => {
           Row({ space: 6 }) {
             Text(block.type === 'ordered-list' ? `${(block.startNumber ?? 1) + itemIndex}.` : '•')
+              .onTextSelectionChange((start: number, end: number) => {
+                this.updateAnswerSelection(block.type === 'ordered-list' ? `${(block.startNumber ?? 1) + itemIndex}.` : '•',
+                  start, end, blockIndex, itemIndex, 0, 'list')
+              })
               .width(20)
               .fontSize(15)
               .lineHeight(22)
@@ -256,11 +286,11 @@ export struct MessageBubble {
                 }
               }, (_span: MarkdownSpan, spanIndex: number) => `${blockIndex}-${itemIndex}-${spanIndex}`)
             }
+            .onTextSelectionChange((start: number, end: number) => {
+              this.updateAnswerSelection(this.inlinePlainText(item), start, end, blockIndex, itemIndex, 1, 'list')
+            })
             .copyOption(CopyOptions.LocalDevice)
             .textSelectable(TextSelectableMode.SELECTABLE_FOCUSABLE)
-            .onTextSelectionChange((start: number, end: number) => {
-              this.updateSelection(this.inlinePlainText(item), start, end)
-            })
             .fontSize(15)
             .lineHeight(22)
             .layoutWeight(1)
@@ -272,18 +302,44 @@ export struct MessageBubble {
       }
       .width('100%')
     } else {
-      this.MarkdownLine(block.text)
+      this.MarkdownLine(block.text, $r('app.color.text_body'), blockIndex)
     }
   }
 
   @Builder
-  private MarkdownContent(content: string) {
+  private MarkdownContent() {
     Column({ space: 8 }) {
-      ForEach(parseLightMarkdown(content), (block: MarkdownBlock, blockIndex: number) => {
+      ForEach(parseLightMarkdown(this.selectionSnapshot || this.answerText() || '...'), (block: MarkdownBlock, blockIndex: number) => {
         this.MarkdownBlock(block, blockIndex)
-      }, (_block: MarkdownBlock, blockIndex: number) => `${blockIndex}`)
+      }, (block: MarkdownBlock, blockIndex: number) => `${blockIndex}:${JSON.stringify(block)}`)
     }
     .width('100%')
+  }
+
+  @Builder
+  private SelectableAnswer() {
+    if (deviceInfo.apiAvailable('26.0.0')) {
+      SelectionContainer({ controller: this.selectionController }) {
+        this.MarkdownContent()
+      }
+      .copyOption(CopyOptions.LocalDevice)
+      .onTextSelectionChange((texts: string[]) => {
+        if (texts.length > 0) {
+          if (this.selectionSnapshot.length === 0) {
+            this.onAnswerSelection()
+            this.selectionSnapshot = this.answerText()
+          }
+        } else {
+          this.answerSelection.clear()
+          this.selectionSnapshot = ''
+        }
+      })
+      .onWillCopy((text: string) => this.copySelectedAnswer(text))
+      .onCopy(() => this.clearAnswerSelection())
+      .width('100%')
+    } else {
+      this.MarkdownContent()
+    }
   }
 
   @Builder
@@ -310,9 +366,6 @@ export struct MessageBubble {
         Text(this.thinkingText().length > 0 ? this.thinkingText() : '...')
           .copyOption(CopyOptions.LocalDevice)
           .textSelectable(TextSelectableMode.SELECTABLE_FOCUSABLE)
-          .onTextSelectionChange((start: number, end: number) => {
-            this.updateSelection(this.thinkingText(), start, end)
-          })
           .fontSize(13)
           .lineHeight(20)
           .fontColor($r('app.color.text_thinking_body'))
@@ -332,7 +385,7 @@ export struct MessageBubble {
       }
       Column({ space: 6 }) {
         Row() {
-          Text(this.message.role === 'user' ? '你' : (this.message.modelName ?? '助手'))
+          Text(this.message.role === 'user' ? '你' : (this.message.modelName?.trim().length ? this.message.modelName : '助手'))
             .fontSize(11)
             .fontColor(this.message.role === 'user' ? $r('app.color.chat_user_meta') : $r('app.color.text_assistant_meta'))
             .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).layoutWeight(1)
@@ -341,12 +394,6 @@ export struct MessageBubble {
             .fontColor(this.message.role === 'user' ? $r('app.color.chat_user_time') : $r('app.color.text_caption'))
             .margin({ left: 8 }).flexShrink(0)
         }.width('100%')
-        if (this.message.generationState === 'stopped') {
-          Text('已停止生成').fontSize(11).fontColor($r('app.color.text_muted'))
-        }
-        if (this.message.generationState === 'interrupted') {
-          Text('生成已中断').fontSize(11).fontColor($r('app.color.status_warning'))
-        }
         if (this.message.imageUnavailable) {
           Text('此图片未能保存').fontSize(11).fontColor($r('app.color.text_muted'))
         }
@@ -362,20 +409,23 @@ export struct MessageBubble {
         }
         if (this.answerText().length > 0 || !this.hasThinking()) {
           if (this.message.role === 'assistant') {
-            this.MarkdownContent(this.answerText().length > 0 ? this.answerText() : '...')
+            this.SelectableAnswer()
           } else {
             Text(this.answerText().length > 0 ? this.answerText() : '...')
               .copyOption(CopyOptions.LocalDevice)
               .textSelectable(TextSelectableMode.SELECTABLE_FOCUSABLE)
-              .onTextSelectionChange((start: number, end: number) => {
-                this.updateSelection(this.answerText(), start, end)
-              })
               .width('100%')
               .fontSize(15)
               .lineHeight(22)
               .textAlign(TextAlign.Start)
               .fontColor($r('app.color.chat_user_text'))
           }
+        }
+        if (this.message.generationState === 'stopped') {
+          Text('已停止生成').fontSize(11).fontColor($r('app.color.text_muted'))
+        }
+        if (this.message.generationState === 'interrupted') {
+          Text('生成已中断').fontSize(11).fontColor($r('app.color.status_warning'))
         }
         if (this.message.role === 'assistant' && this.message.perfMetrics !== undefined) {
           Text(`TTFT ${this.message.perfMetrics.ttft}ms · ${this.message.perfMetrics.tpot}ms/tok · ${this.message.perfMetrics.tokensPerSec} tok/s · ${this.message.perfMetrics.tokens} tokens`)
@@ -402,9 +452,9 @@ export struct MessageBubble {
   @Builder
   CopyMenuBuilder() {
     Menu() {
-      MenuItem({ content: '复制' })
+      MenuItem({ content: '复制整条' })
         .onClick(() => {
-          this.copyToClipboard()
+          this.copyText(this.answerText())
         })
     }
   }

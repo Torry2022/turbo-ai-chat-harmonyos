@@ -13,11 +13,11 @@ class ThemeService {
 
   initialize(context: common.UIAbilityContext): void {
     this.context = context
-    let mode: ThemeMode = 'dark'
+    let mode: ThemeMode = 'system'
     try {
       this.settings = preferences.getPreferencesSync(context, { name: 'appearance' })
-      const saved = this.settings.getSync('theme', 'dark')
-      if (saved === 'light' || saved === 'system') {
+      const saved = this.settings.getSync('theme', 'system')
+      if (saved === 'dark' || saved === 'light' || saved === 'system') {
         mode = saved
       }
     } catch (err) {

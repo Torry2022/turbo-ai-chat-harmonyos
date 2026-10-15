@@ -6,7 +6,7 @@
 ![HarmonyOS](https://img.shields.io/badge/HarmonyOS-NEXT-orange)
 ![Runtime](https://img.shields.io/badge/runtime-MNN%20CPU-green)
 
-![Turbo AI Chat hero](docs/images/hero.png)
+![Turbo AI Chat wide-window Models page](docs/images/pc-models.jpg)
 
 **Turbo AI Chat is a HarmonyOS NEXT native on-device LLM chat application** for validating a complete local-inference pipeline on HarmonyOS devices. It is built with ArkTS, C++ N-API, and MNN Runtime, ships profiles for Qwen3-4B-Instruct, MiniCPM5-1B, and Gemma-4-E2B-it, and can add compatible text and multimodal MNN models through the Model Gallery or local import. The app also includes streaming chat, model switching, image understanding, runtime monitoring, and an OpenAI-compatible LAN API.
 
@@ -54,15 +54,17 @@ In the HarmonyOS ecosystem, on-device AI inference today largely depends on Andr
 
 ## Recent Highlights
 
-**Chat history and service-page improvements (v1.13.0)**
+**Chat history, on-device decisions, and phone navigation (v1.13.0)**
 
-- Use the system immersive floating tab bar on phones running API 26 or later; retain the existing navigation on older systems and the original sidebars in wide windows.
-- Use Laya locally for choice, scoring, and yes/no decisions. Download it from the Decisions category on the Models page; it loads on first use and also supports the `/v1/decisions` API.
-
-
+- Use the official immersive floating tab bar on phones running API 26 or later. Keep it visible in Chat and hide or restore it while scrolling other long pages; retain existing navigation on older systems and sidebars in wide windows.
+- Use Laya locally for choice, scoring, and yes/no decisions. Download it from the Decision Model category on the Models page; it loads on first use and also supports the `/v1/decisions` API.
 - Save conversations locally with new, open, rename, delete, and clear-all actions; retain message timestamps, reply models, and model-switch records.
 - Use a collapsible history pane in wide windows and a drawer in narrow windows. Store attached images in the app's private directory; opening history keeps the current model.
 - Keep service settings in the left column and give API logs the right column with internal scrolling. Align API authentication guidance, connection fields, and supporting text.
+- Share an animated Chat Model / Decision Model selector between Models and Service. Fix Service and Monitor tab-switch flicker and Monitor footer spacing.
+- Follow the system appearance on new installations and preserve existing appearance preferences on upgrade.
+- Grow the composer for long drafts and expand or collapse it in place, keeping the headers, draft, and keyboard state. Sending dismisses the on-screen keyboard; chat scrolling retains its spring effect at both boundaries.
+- On API 26 or later, select across paragraphs, lists, code blocks, and tables within one answer. Copy selections as visible text or copy the entire answer as Markdown.
 
 **Navigation and model import improvements (v1.12.0)**
 
@@ -176,18 +178,19 @@ The app and HAP do not include model weights. Open the app → Model tab → Mod
 
 ### 3. Start chatting
 
-After the model loads, return to the Chat tab and send a message. MiniCPM5-1B displays thinking blocks (`<think>`). Gemma-4-E2B-it supports image input.
+After the model loads, return to the Chat tab and send a message. Qwen3-4B-Instruct is the default text model. MiniCPM5-1B displays thinking blocks (`<think>`). Gemma-4-E2B-it supports image input.
 
 With a physical keyboard, Enter sends from the chat input and Shift+Enter inserts a line break; the input method handles candidate selection first. Ctrl+N starts a new conversation. Esc leaves the input or closes a dismissible dialog without exiting the app. With the on-screen keyboard, use the send button. Chat content is centered with a maximum width in wide windows; opening the on-screen keyboard reduces the content area while keeping the header and input visible.
 
 ## Features
 
-- Appearance: choose Light, Dark, or System in Settings. Open Settings from the bottom of the sidebar in wide windows, or from the top-left logo menu in narrow windows. The selection is saved; both themes share the same layouts, logo, and launch artwork.
-- Adaptive navigation: bottom tabs in narrow windows and a sidebar in wider windows. Resizing retains page instances; monitoring pauses when hidden and preserves its scroll position.
+- Appearance: new installations follow the system. Choose Light, Dark, or System in Settings. Open Settings from the bottom of the sidebar in wide windows, or from the top-left logo menu in narrow windows. The selection is saved; both themes share the same layouts, logo, and launch artwork.
+- Adaptive navigation: bottom tabs in narrow windows and a sidebar in wider windows. On API 26 or later phones, the official immersive bar stays visible in Chat and hides or reappears while scrolling other pages. Monitoring pauses when hidden and preserves its scroll position.
 - The PC window title bar provides Chat, Settings, and Help menus for starting a new chat, opening appearance settings, and viewing keyboard shortcuts or the app version. Once opened, hover over another menu heading to switch menus, or press Esc to close. Phone and tablet entry points remain unchanged.
 - The chat runtime strip spans only the page content area and does not shift the sidebar. Wide-screen chat uses the same maximum page width as other tabs, with separate message-width limits for readability.
-- The composer keeps the model name and loading state visible. Clicking it before a model is loaded opens the model page. Long-press a message bubble on phones and tablets, or right-click it on PC, to open the copy menu.
-- Message text supports partial copying: long-press text and adjust the selection on touchscreens, or drag with a mouse on PC. Selections stay within one text block; continuous selection across Markdown paragraphs, code blocks, or table cells is not yet supported.
+- The composer keeps the model name and loading state visible. Clicking it before a model is loaded opens the model page. Long-press a message bubble on phones and tablets, or right-click it on PC, to open the Copy entire message menu.
+- Message text supports partial copying. On API 26 and later, select continuously across Markdown paragraphs, lists, code blocks, and table cells within one answer using touch handles or a mouse. Selection copies visible text with paragraph breaks and code indentation; list markers stay with their text, and table columns use tabs. Older systems retain selection within one text block. The bubble menu’s Copy entire message copies the answer’s original Markdown, excluding model names, timestamps, thinking content, and performance data; code-block buttons copy code only. On API 26 and later, selecting a streaming answer holds its displayed text while generation continues; copying or clearing the selection resumes the latest display.
+- The composer starts with one line and grows for long drafts. Use the top-right button to expand it smoothly upward within the chat content area, keeping the app and conversation headers visible. The expanded composer overlays messages without resizing or scrolling the message list. Wide tablet and PC windows keep part of the conversation visible. Both sizes reserve the same right-side space for controls, so resizing does not change text width or line wrapping. The same input stays mounted, preserving the draft, cursor, and keyboard state when expanding or collapsing. Sending dismisses the on-screen keyboard. Chat scrolling retains its spring effect at both boundaries.
 - Wide model pages place the model list beside its settings. Long-press a handle to reorder by touch, or drag it directly with a mouse. Resizing cancels an active drag without applying its tentative order.
 - Monitoring cards switch between one and two columns according to available width, with metrics sharing the space inside each card.
 - Dialogs fit the available window width and allow long body text to scroll. The Model Gallery shrinks when the on-screen keyboard opens, and keyboard focus stays out of the underlying page while a dialog is open.
@@ -207,23 +210,41 @@ With a physical keyboard, Enter sends from the chat input and Shift+Enter insert
 
 ### Chat history
 
-Chats are saved locally with images, thinking content, the generating model, timestamps, and existing performance metrics. Wide chat areas have a collapsible history sidebar; narrower windows open the list from the history button. Create, resume, rename, or delete individual chats, or confirm deletion of all chats. Empty chats are not added to history. Deletion also removes the chat's image copies and cannot be undone.
+Chats are saved locally with images, thinking content, the generating model, timestamps, and existing performance metrics. History starts collapsed; use the history button to open a sidebar in wide chat areas or a drawer in narrower windows. Create, resume, rename, or delete individual chats, or confirm deletion of all chats. Empty chats are not added to history. The history list retains spring feedback at both boundaries, including when it does not fill the pane. Deletion also removes the chat's image copies and cannot be undone.
+
+On phones, swipe right in the chat content area to open history and left to close it. History entries omit timestamps; message timestamps and model information remain inside conversations.
 
 Restarting the app restores the last conversation without automatically loading its model. Opening history keeps the current model. Switching models within a conversation retains messages and continues using the existing context limits; replies show their original model, and a notice marks continuation with another model. Recovered unfinished responses are marked interrupted and excluded from complete context turns. History is stored in the app's private directory and is removed when app data is cleared or the app is uninstalled. API requests and Benchmark records are not saved as chat history.
 
 ## Screenshots
 
-| Chat | Model | Monitor |
+Current v1.13.0 UI. Phone screenshots are from a Pura 70 Pro+ device, and the selection and PC Service screenshots are from a MateBook Pro S device. Tablet and PC Models screenshots are emulator layout previews, not evidence of local MNN inference on emulators.
+
+| Chat | Chat models | Monitor |
 | --- | --- | --- |
-| ![chat](docs/images/chat.jpg) | ![models](docs/images/models.jpg) | ![monitor](docs/images/monitor.jpg) |
+| ![Chat](docs/images/chat.jpg) | ![Chat models](docs/images/models.jpg) | ![Monitor](docs/images/monitor.jpg) |
+
+| Chat history | Decision models | API Service |
+| --- | --- | --- |
+| ![Chat history](docs/images/history.jpg) | ![Decision models](docs/images/decisions.jpg) | ![API Service](docs/images/service.jpg) |
+
+Expand long drafts within the chat page:
+
+![Expanded composer](docs/images/composer-expanded.jpg)
+
+Selection across paragraphs, lists, and tables on a MateBook Pro S device (shared message layout):
+
+![Cross-block message selection](docs/images/message-selection.jpg)
 
 Tablet in landscape:
 
-![Tablet model page](docs/images/tablet-models.jpg)
+![Tablet Models page](docs/images/tablet-models.jpg)
 
 Maximized PC window:
 
-![PC model page](docs/images/pc-models.jpg)
+![PC Models page](docs/images/pc-models.jpg)
+
+![PC Service page](docs/images/pc-service.jpg)
 
 ## OpenAI-Compatible API Server
 
@@ -245,7 +266,7 @@ The chat API accepts text input, serves the currently loaded chat model, and pro
 
 ### Laya Decision API
 
-Install Laya (approximately 628 MiB) from the Decisions category on the Models page, select Decision Model in Service Content, and start the server. A loaded chat model is unnecessary: Laya loads on the first request and is reused afterwards. Stop the server before switching its content. Switching chat models leaves a running decision API server active.
+Install Laya (approximately 628 MiB) from the Decision Model category on the Models page, select Decision Model in Service Content, and start the server. A loaded chat model is unnecessary: Laya loads on the first request and is reused afterwards. Stop the server before switching its content. Switching chat models leaves a running decision API server active.
 
 Send a JSON request to `/v1/decisions`, for example:
 
@@ -258,6 +279,8 @@ Tasks support `choice`, `score`, and `boolean`. Responses include the result, op
 ## Install from HAP
 
 [Releases](https://github.com/Torry2022/turbo-ai-chat-harmonyos/releases) provide signed HAPs (only for devices included in the current profile). Install via hdc:
+
+Each Release also provides a ZIP containing the HAP, `LICENSE`, and `NOTICE`. Extract the ZIP before installing its HAP. Packages do not include model weights.
 
 ```sh
 hdc install -r turbo-ai-chat-harmonyos-vX.Y.Z-signed.hap
@@ -380,7 +403,7 @@ ChatTab / ModelTab / MonitorTab / ...
            CPU Backend
 ```
 
-`MnnLlmRunner` provides native inference for compatible MNN `Transformer::Llm` directories. ArkTS lifecycle services handle installation, import, and directory preflight, while text, raw-prompt, and image generation share a stable N-API boundary. See [Core Inference Pipeline Evolution](docs/architecture/core-inference-evolution.md) for details.
+`MnnLlmRunner` provides native inference for compatible MNN `Transformer::Llm` directories. ArkTS lifecycle services handle installation, import, and directory preflight, while text, raw-prompt, and image generation share a stable N-API boundary. Laya decisions use a separate `LayaDecisionService` → N-API → MNN Interpreter path, with option probabilities returned directly rather than generated as chat text. See [Core Inference Pipeline Evolution](docs/architecture/core-inference-evolution.md) for details.
 
 ## Native API
 
@@ -394,6 +417,8 @@ entry.generateImageChatStream(messages, pixels, width, height, maxNewTokens, set
 entry.stopGeneration(): void
 entry.reset(): void
 entry.isLoaded(): boolean
+entry.layaDecideAsync(modelPath, tokenizerPath, state, type, instruction, options): Promise<string>
+entry.layaReleaseAsync(): Promise<void>
 ```
 
 ## License
@@ -402,6 +427,7 @@ This repository's source code is licensed under Apache-2.0.
 
 MNN Runtime and model weights follow their respective upstream licenses or model-card terms. This repository and Release HAPs do not include model weights. Users who download models through the Model Gallery, scripts, or manual push should follow the terms of the corresponding upstream source.
 
+- [Laya-Multilingual-MNN-FP16](https://modelscope.cn/models/TorryJi/Laya-Multilingual-MNN-FP16)
 - [MNN](https://github.com/alibaba/MNN)
 - [Qwen3-4B-Instruct-2507-MNN](https://modelscope.cn/models/MNN/Qwen3-4B-Instruct-2507-MNN)
 - [Gemma-4-E2B-it-MNN](https://modelscope.cn/models/MNN/Gemma-4-E2B-it-MNN)

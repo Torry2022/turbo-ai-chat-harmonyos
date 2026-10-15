@@ -6,7 +6,7 @@
 ![HarmonyOS](https://img.shields.io/badge/HarmonyOS-NEXT-orange)
 ![Runtime](https://img.shields.io/badge/runtime-MNN%20CPU-green)
 
-![Turbo AI Chat hero](docs/images/hero.png)
+![Turbo AI Chat 宽窗口模型页](docs/images/pc-models.jpg)
 
 **Turbo AI Chat 是一个 HarmonyOS NEXT 原生端侧大模型聊天应用**，用于验证在鸿蒙设备上直接运行本地 LLM 的完整链路。项目基于 ArkTS、C++ N-API 和 MNN Runtime 构建，预置 Qwen3-4B-Instruct、MiniCPM5-1B 和 Gemma-4-E2B-it，并可通过模型广场或本地导入扩展兼容的文本与多模态 MNN 模型；同时提供流式对话、模型切换、图片理解、运行监控和局域网 OpenAI 兼容 API。
 
@@ -56,15 +56,17 @@
 
 ## 近期重要改进
 
-**聊天历史与服务页改进（v1.13.0）**
+**聊天历史、端侧决策与手机导航（v1.13.0）**
 
-- API 26 及以上手机使用系统沉浸光感悬浮底栏；旧系统保留原底栏，宽窗口继续使用原侧栏。
-- 决策模型支持 Laya 本地选择、评分和是非判断；从模型页的“决策”分类下载，首次运行按需加载，另提供 `/v1/decisions` API。
-
-
+- API 26 及以上手机使用官方沉浸光感悬浮底栏；聊天页常驻显示，其他长内容页随滚动隐藏与恢复。旧系统保留原底栏，宽窗口继续使用原侧栏。
+- 决策模型支持 Laya 本地选择、评分和是非判断；从模型页的“决策模型”分类下载，首次运行按需加载，另提供 `/v1/decisions` API。
 - 自动保存本地对话，支持新建、切换、重命名、删除和清空；保留消息时间、实际回复模型与模型切换记录。
 - 宽窗口使用可收起的历史栏，窄窗口使用抽屉；图片随对话保存到应用私有目录，重新打开历史不会自动切换模型。
 - 服务设置集中在左侧，API 日志独占右侧并在框内滚动；统一 API 认证说明、连接字段样式和辅助文字。
+- 模型页与服务页统一使用带切换动效的“聊天模型 / 决策模型”分段控件；修复服务页、监控页切换闪烁和监控页底部间距。
+- 新安装默认跟随系统外观；升级保留已有的外观选择。
+- 聊天输入区支持长文本自动增高与原地展开、收起；保留顶部标题、草稿和键盘状态，发送后收起软键盘，并恢复聊天列表边界回弹。
+- API 26 及以上支持在同一条回答内跨段落、列表、代码块和表格选取；选区复制可见文字，整条复制保留 Markdown。
 
 **导航与模型导入改进（v1.12.0）**
 
@@ -184,12 +186,13 @@ App 和 HAP 均不内置模型权重。打开 App → 模型页 → 模型广场
 
 ## 功能
 
-- 外观：在设置中选择浅色模式、深色模式或跟随系统，选择会保留。宽窗口从侧栏底部进入设置，手机窄窗口点击左上角 Logo 菜单进入；两种模式使用相同布局、Logo 和启动图。
-- 自适应导航：窄窗口使用底部标签栏，较宽窗口改为侧栏；窗口缩放不会重建各页面，监控页离开后暂停采样并保留滚动位置。
+- 外观：新安装默认跟随系统；可在设置中选择浅色模式、深色模式或跟随系统，选择会保留。宽窗口从侧栏底部进入设置，手机窄窗口点击左上角 Logo 菜单进入；两种模式使用相同布局、Logo 和启动图。
+- 自适应导航：窄窗口使用底部标签栏，较宽窗口改为侧栏。API 26 及以上手机使用官方沉浸光感底栏，聊天页常驻，其他页面滚动时自动收起或显示；监控页离开后暂停采样并保留滚动位置。
 - PC 窗口标题栏提供“对话、设置、帮助”菜单，可新建对话、打开外观设置，以及查看快捷键说明和应用版本。展开后，鼠标移到其他菜单项即可切换，按 Esc 关闭；手机和平板保留原有入口。
 - 聊天运行状态条仅占页面内容区，不改变侧栏位置；宽屏聊天区与其他页面采用相同的最大宽度，单条消息另行限宽以便阅读。
-- 输入区常驻显示模型名称与加载状态；未加载时点击输入区会前往模型页。手机和平板长按消息气泡、PC 右键点击气泡可打开复制菜单。
-- 消息文本支持局部选取复制：触屏长按文字后调整选区，PC 使用鼠标拖选。选区限于同一个文本块，暂不支持跨 Markdown 段落、代码块或表格单元格连续选择。
+- 输入区常驻显示模型名称与加载状态；未加载时点击输入区会前往模型页。手机和平板长按消息气泡、PC 右键点击气泡可打开“复制整条”菜单。
+- 消息正文支持局部选取复制：API 26 及以上可在同一条回答内跨 Markdown 段落、列表、代码块和表格连续选取，触屏拖动手柄、PC 鼠标拖选均可。选区复制可见文字，保留段落与代码缩进，列表序号与正文同行，表格用制表符分列；旧系统保留单个文本块内选取。气泡菜单“复制整条”复制正文 Markdown 原文，不包含模型名、时间、思考内容和性能信息；代码块按钮仅复制代码。API 26 及以上在生成中选取会暂时固定该条正文的显示，生成继续进行，复制或取消选区后显示最新内容。
+- 输入框从单行起步，长文本自动增高；点击右上角展开按钮，可在聊天页内容区内平滑向上扩大输入区，顶部应用标题与对话标题保持可见，展开时覆盖聊天内容而不改变列表布局或滚动位置；平板与 PC 宽窗口适度增高并保留部分聊天内容。右侧统一预留操作区，展开、收起不改变文字宽度和换行；沿用同一个输入框，保留草稿、光标和输入法状态；发送后收起软键盘。聊天列表上下边界保留回弹。
 - 模型页在宽窗口下并排显示模型列表与参数区；触屏长按拖动手柄排序，鼠标可直接拖动手柄。调整窗口尺寸会取消正在进行的拖拽，不会提交中途的排序。
 - 监控页根据可用宽度切换单列或双列卡片，卡片内的指标自动分配剩余宽度。
 - 弹窗按可用窗口限宽，长正文可滚动；模型广场在软键盘弹出时自动缩小。弹窗打开期间，键盘焦点不会进入底层页面。
@@ -209,15 +212,31 @@ App 和 HAP 均不内置模型权重。打开 App → 模型页 → 模型广场
 
 ### 历史对话
 
-聊天记录自动保存在本机，包括图片、思考内容、生成模型、时间及已有的性能信息。宽窗口显示可收起的历史侧栏，窄窗口通过“历史对话”打开列表；可新建、继续、重命名或删除单个对话，也可确认后清空全部对话。尚未发送消息的新对话不会生成历史条目。删除同时移除该对话的图片副本，无法恢复。
+聊天记录自动保存在本机，包括图片、思考内容、生成模型、时间及已有的性能信息。历史栏默认收起；宽窗口通过历史图标展开侧栏，窄窗口打开历史抽屉；可新建、继续、重命名或删除单个对话，也可确认后清空全部对话。尚未发送消息的新对话不会生成历史条目。历史列表上下边界保留回弹，条目不足一屏时也可拉动。删除同时移除该对话的图片副本，无法恢复。
+
+手机支持在聊天内容区右滑打开、左滑关闭历史抽屉；历史项不显示时间，消息中的时间与模型信息仍保留。
 
 重启 App 会恢复上次对话，但不会自动加载历史模型。打开历史保持当前模型；同一对话切换模型后保留消息，并按现有上下文限制继续聊天。回答显示当时使用的模型，跨模型续聊处显示切换提示。未完成的生成在恢复后标记为中断，不作为完整问答加入后续上下文。记录保存在应用私有目录，卸载或清除应用数据会删除历史；本功能不保存 API 请求或 Benchmark 记录。
 
 ## 截图
 
-| 聊天界面                          | 模型界面                              | 监控界面                                |
-|-------------------------------|-----------------------------------|-------------------------------------|
-| ![chat](docs/images/chat.jpg) | ![models](docs/images/models.jpg) | ![monitor](docs/images/monitor.jpg) |
+v1.13.0 当前界面。手机截图来自 Pura 70 Pro+ 真机，消息选取与 PC 服务页截图来自 MateBook Pro S 真机；平板与 PC 模型页截图来自模拟器，仅展示窗口布局，不代表模拟器支持本地 MNN 推理。
+
+| 聊天 | 聊天模型 | 监控 |
+| --- | --- | --- |
+| ![聊天](docs/images/chat.jpg) | ![聊天模型](docs/images/models.jpg) | ![监控](docs/images/monitor.jpg) |
+
+| 历史对话 | 决策模型 | API 服务 |
+| --- | --- | --- |
+| ![历史对话](docs/images/history.jpg) | ![决策模型](docs/images/decisions.jpg) | ![API 服务](docs/images/service.jpg) |
+
+长文本输入区在聊天页内展开：
+
+![展开输入区](docs/images/composer-expanded.jpg)
+
+跨段落、列表与表格选取（MateBook Pro S 真机，两版共用的消息布局）：
+
+![跨段落选取](docs/images/message-selection.jpg)
 
 平板横屏：
 
@@ -226,6 +245,8 @@ App 和 HAP 均不内置模型权重。打开 App → 模型页 → 模型广场
 PC 最大化：
 
 ![PC 模型页](docs/images/pc-models.jpg)
+
+![PC 服务页](docs/images/pc-service.jpg)
 
 ## OpenAI 兼容 API 服务
 
@@ -247,7 +268,7 @@ PC 最大化：
 
 ### Laya 决策 API
 
-在模型页的“决策”分类安装 Laya（约 628 MiB），再在服务内容中选择“决策模型”并开启服务。无需加载聊天模型；Laya 在首次请求时加载，后续请求复用。切换服务内容前须先关闭服务，聊天模型切换不会关闭已启动的决策 API。
+在模型页的“决策模型”分类安装 Laya（约 628 MiB），再在服务内容中选择“决策模型”并开启服务。无需加载聊天模型；Laya 在首次请求时加载，后续请求复用。切换服务内容前须先关闭服务，聊天模型切换不会关闭已启动的决策 API。
 
 向 `/v1/decisions` 发送 JSON 请求，例如：
 
@@ -260,6 +281,8 @@ PC 最大化：
 ## 从 HAP 直接安装
 
 [Releases](https://github.com/Torry2022/turbo-ai-chat-harmonyos/releases) 提供签名 HAP（仅限当前 profile 内设备）。使用 hdc 安装：
+
+Release 同时提供包含 HAP、`LICENSE` 与 `NOTICE` 的 ZIP 包；使用 ZIP 时先解压再安装其中的 HAP。安装包不包含模型权重。
 
 ```sh
 hdc install -r turbo-ai-chat-harmonyos-vX.Y.Z-signed.hap
@@ -380,7 +403,7 @@ ChatTab / ModelTab / MonitorTab / ...
            CPU Backend
 ```
 
-`MnnLlmRunner` 负责兼容 MNN `Transformer::Llm` 目录的 native 推理。模型安装、导入和目录预检由 ArkTS 生命周期服务处理，文本、原始 Prompt 和图片生成共享稳定的 N-API 边界。详细演进见[核心推理链演进说明](docs/architecture/core-inference-evolution.md)。
+`MnnLlmRunner` 负责兼容 MNN `Transformer::Llm` 目录的 native 推理。模型安装、导入和目录预检由 ArkTS 生命周期服务处理，文本、原始 Prompt 和图片生成共享稳定的 N-API 边界。Laya 决策使用独立的 `LayaDecisionService` → N-API → MNN Interpreter 链路，直接返回选项概率，不生成聊天文本。详细演进见[核心推理链演进说明](docs/architecture/core-inference-evolution.md)。
 
 ## 原生接口
 
@@ -394,6 +417,8 @@ entry.generateImageChatStream(messages, pixels, width, height, maxNewTokens, set
 entry.stopGeneration(): void
 entry.reset(): void
 entry.isLoaded(): boolean
+entry.layaDecideAsync(modelPath, tokenizerPath, state, type, instruction, options): Promise<string>
+entry.layaReleaseAsync(): Promise<void>
 ```
 
 ## 许可证
@@ -402,6 +427,7 @@ entry.isLoaded(): boolean
 
 MNN Runtime 和模型权重遵循各自上游许可证或模型卡说明。本仓库和 Release HAP 均不提交模型权重，用户通过模型广场、脚本或手动推送获得的模型文件需自行遵守对应来源的使用条款。
 
+- [Laya-Multilingual-MNN-FP16](https://modelscope.cn/models/TorryJi/Laya-Multilingual-MNN-FP16)
 - [MNN](https://github.com/alibaba/MNN)
 - [Qwen3-4B-Instruct-2507-MNN](https://modelscope.cn/models/MNN/Qwen3-4B-Instruct-2507-MNN)
 - [Gemma-4-E2B-it-MNN](https://modelscope.cn/models/MNN/Gemma-4-E2B-it-MNN)

@@ -5,7 +5,7 @@ import { dialogFade, dialogScale } from './DialogMotion'
 
 @Component
 export struct SettingsDialog {
-  @StorageLink('themeMode') private themeMode: ThemeMode = 'dark'
+  @StorageLink('themeMode') private themeMode: ThemeMode = 'system'
   @Prop availableWidth: number = 360
   @Prop availableHeight: number = 640
   @State private isClosePressed: boolean = false
