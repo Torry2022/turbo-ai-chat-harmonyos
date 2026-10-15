@@ -28,6 +28,19 @@ export struct AppHeader {
         .width('100%')
         .padding({ left: 10, right: 10 })
       }
+      .backgroundColor(Color.Transparent)
+      .borderRadius(6)
+      .stateStyles({
+        normal: {
+          .backgroundColor(Color.Transparent)
+        },
+        pressed: {
+          .backgroundColor($r('app.color.selected_background'))
+        },
+        clicked: {
+          .backgroundColor($r('app.color.selected_background'))
+        }
+      })
       .onClick(() => this.onSettings())
     }
     .width(156)
@@ -52,7 +65,9 @@ export struct AppHeader {
         .bindMenu(this.SettingsMenu, {
           backgroundColor: $r('app.color.dialog'),
           backgroundBlurStyle: BlurStyle.NONE,
-          borderRadius: $r('app.float.button_radius')
+          borderRadius: $r('app.float.button_radius'),
+          outlineColor: $r('app.color.border'),
+          outlineWidth: 1
         })
       } else {
         Image($r('app.media.app_icon'))
