@@ -83,3 +83,21 @@ for (const target of ['chat', 'decision']) {
   assert.equal(payload.data[0].id, target === 'chat' ? 'chat-model' : 'Laya-Multilingual-MNN-FP16');
 }
 console.log('PASS exclusive service routing and model list');
+
+// A different installed model must not make the selected service appear ready.
+for (const chatLoaded of [false, true]) {
+  for (const decisionReady of [false, true]) {
+    server.callbacks.isModelLoaded = () => chatLoaded;
+    server.callbacks.isLayaReady = () => decisionReady;
+    for (const target of [undefined, 'chat', 'decision']) {
+      server.config.target = target;
+      server.sendModels({});
+      const ready = target === 'decision' ? decisionReady : chatLoaded;
+      assert.equal(payload.data.length, ready ? 1 : 0,
+        `target=${target}, chatLoaded=${chatLoaded}, decisionReady=${decisionReady}`);
+      if (ready) assert.equal(payload.data[0].id,
+        target === 'decision' ? 'Laya-Multilingual-MNN-FP16' : 'chat-model');
+    }
+  }
+}
+console.log('PASS model list follows selected-service readiness, including legacy chat config');

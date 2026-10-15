@@ -601,7 +601,7 @@ export class OpenAiApiServer {
   private sendModels(state: HttpConnectionState): void {
     const model = this.callbacks.currentModel()
     const data: ApiModelObject[] = []
-    if (this.callbacks.isModelLoaded() || this.callbacks.isLayaReady()) {
+    if (this.config.target === 'decision' ? this.callbacks.isLayaReady() : this.callbacks.isModelLoaded()) {
       const modelObject: ApiModelObject = {
         id: this.config.target === 'decision' ? DECISION_MODEL_ID : model.id,
         object: 'model',
