@@ -12,6 +12,29 @@ export struct AppHeader {
   onNewChat: () => void = () => {}
   onAction: () => void = () => {}
 
+  @Builder
+  private SettingsMenu() {
+    Menu() {
+      MenuItem() {
+        Row({ space: 10 }) {
+          SymbolGlyph($r('sys.symbol.gearshape'))
+            .fontSize(20)
+            .fontColor([$r('app.color.text_secondary')])
+          Text('设置')
+            .fontSize(14)
+            .fontColor($r('app.color.text_title'))
+        }
+        .height(40)
+        .width('100%')
+        .padding({ left: 10, right: 10 })
+      }
+      .onClick(() => this.onSettings())
+    }
+    .width(156)
+    .borderRadius($r('app.float.button_radius'))
+    .backgroundColor($r('app.color.dialog'))
+  }
+
   build() {
     Row({ space: 10 }) {
       if (this.compact) {
@@ -26,7 +49,11 @@ export struct AppHeader {
         .padding(0)
         .backgroundColor(Color.Transparent)
         .accessibilityText('打开应用菜单')
-        .bindMenu([{ value: '设置', action: () => this.onSettings() }])
+        .bindMenu(this.SettingsMenu, {
+          backgroundColor: $r('app.color.dialog'),
+          backgroundBlurStyle: BlurStyle.NONE,
+          borderRadius: $r('app.float.button_radius')
+        })
       } else {
         Image($r('app.media.app_icon'))
           .width(38)
