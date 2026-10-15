@@ -6,13 +6,13 @@
 ![HarmonyOS](https://img.shields.io/badge/HarmonyOS-NEXT-orange)
 ![Runtime](https://img.shields.io/badge/runtime-MNN%20CPU-green)
 
-![Turbo AI Chat wide-window Models page](docs/images/pc-models.jpg)
+![Turbo AI Chat hero](docs/images/hero.png)
 
 **Turbo AI Chat is a HarmonyOS NEXT native on-device LLM chat application** for validating a complete local-inference pipeline on HarmonyOS devices. It is built with ArkTS, C++ N-API, and MNN Runtime, ships profiles for Qwen3-4B-Instruct, MiniCPM5-1B, and Gemma-4-E2B-it, and can add compatible text and multimodal MNN models through the Model Gallery or local import. The app also includes streaming chat, model switching, image understanding, runtime monitoring, and an OpenAI-compatible LAN API.
 
-> This version uses MNN development snapshot `2edeef91b425e98a93707840b6fffdd97980bdbe`, not the 3.6.1 release, to support the `FusedLinear` / `RoPE` operators used by the official MiniCPM5-2B MNN package. Offline HarmonyOS device regression tests have been completed for MiniCPM5-2B and selected existing models. The new catalog is live, with refresh and cached startup verified on a phone. MiniCPM5-2B requires v1.10.1. The legacy catalog is unchanged. Build scripts pin this commit; check it out under `.codex_mnn_source_2edeef91` rather than tracking a moving master branch.
+> This version is built on MNN development snapshot [`2edeef91`](https://github.com/alibaba/MNN/commit/2edeef91b425e98a93707840b6fffdd97980bdbe), adding support for the official MiniCPM5-2B MNN package with offline validation on physical HarmonyOS devices. MiniCPM5-2B requires app version v1.10.1 or later.
 
-This branch also includes two [local MNN patches](third_party/mnn/patches/README.md): one prevents multimodal generation from using embedding-model attention masks; the other prevents successive text requests from reusing stale PLE embeddings. Build scripts apply them automatically, and `BUILD_INFO.json` records the patch and library hashes. This is not an unmodified upstream build.
+The project also includes two [MNN compatibility patches](third_party/mnn/patches/README.md) for incorrect attention masks in multimodal generation and stale PLE embeddings across successive text requests. The build scripts apply these patches automatically.
 
 ## Table of Contents
 
@@ -35,7 +35,7 @@ This branch also includes two [local MNN patches](third_party/mnn/patches/README
 
 This project started from [Turbo1123/turbo-ai-chat-harmonyos](https://github.com/Turbo1123/turbo-ai-chat-harmonyos). The upstream repository's first two commits established an on-device ArkTS → N-API → C++ → MNN inference pipeline with Gemma 4 text generation, streaming output, and multi-turn conversation, providing a working foundation for subsequent development.
 
-While retaining that foundation, this repository gradually expanded the Gemma 4-oriented implementation into a general inference path for compatible MNN model directories. It completed the image-input path from ArkTS to MNN and added generation control, stop reasons, token statistics, model-directory validation, and lifecycle management. At the application layer, subsequent work added model switching and import, the online Model Gallery, offline voice input, runtime monitoring, an OpenAI-compatible LAN API, and repeated regression testing on physical devices.
+While retaining that foundation, this repository gradually expanded the Gemma 4-oriented implementation into a general inference path for compatible MNN model directories. It completed the image-input path from ArkTS to MNN and added generation control, stop reasons, token statistics, model-directory validation, and lifecycle management. At the application layer, subsequent work added model switching and import, the online Model Gallery, offline voice input, runtime monitoring, and an OpenAI-compatible LAN API.
 
 The repository has since left the original fork network and is now maintained independently, while preserving the upstream commit history, Apache-2.0 license, and source attribution. See [Core Inference Pipeline Evolution](docs/architecture/core-inference-evolution.md) for the upstream baseline, implementation changes, and corresponding commits, and [`MODIFICATIONS.md`](MODIFICATIONS.md) for file-level modification notices. The complete code difference is available at [`f946a84...main`](https://github.com/Torry2022/turbo-ai-chat-harmonyos/compare/f946a842...main).
 
@@ -54,17 +54,12 @@ In the HarmonyOS ecosystem, on-device AI inference today largely depends on Andr
 
 ## Recent Highlights
 
-**Chat history, on-device decisions, and phone navigation (v1.13.0)**
+**Chat history and on-device decisions (v1.13.0)**
 
-- Use the official immersive floating tab bar on phones running API 26 or later. Keep it visible in Chat and hide or restore it while scrolling other long pages; retain existing navigation on older systems and sidebars in wide windows.
-- Use Laya locally for choice, scoring, and yes/no decisions. Download it from the Decision Model category on the Models page; it loads on first use and also supports the `/v1/decisions` API.
-- Save conversations locally with new, open, rename, delete, and clear-all actions; retain message timestamps, reply models, and model-switch records.
-- Use a collapsible history pane in wide windows and a drawer in narrow windows. Store attached images in the app's private directory; opening history keeps the current model.
-- Keep service settings in the left column and give API logs the right column with internal scrolling. Align API authentication guidance, connection fields, and supporting text.
-- Share an animated Chat Model / Decision Model selector between Models and Service. Fix Service and Monitor tab-switch flicker and Monitor footer spacing.
-- Follow the system appearance on new installations and preserve existing appearance preferences on upgrade.
-- Grow the composer for long drafts and expand or collapse it in place, keeping the headers, draft, and keyboard state. Sending dismisses the on-screen keyboard; chat scrolling retains its spring effect at both boundaries.
-- On API 26 or later, select across paragraphs, lists, code blocks, and tables within one answer. Copy selections as visible text or copy the entire answer as Markdown.
+- Save and manage conversations locally, retaining reply models and model-switch records.
+- Use Laya for local choice, scoring, and yes/no decisions, including through `/v1/decisions`.
+- Expand long drafts in place; select across Markdown blocks on API 26 or later.
+- Use the official immersive phone tab bar on API 26 or later; new installations follow the system appearance.
 
 **Navigation and model import improvements (v1.12.0)**
 
@@ -86,8 +81,8 @@ In the HarmonyOS ecosystem, on-device AI inference today largely depends on Andr
 **Runtime and model compatibility (v1.10.1)**
 
 - Move to a pinned MNN development snapshot for MiniCPM5-2B operators, with local fixes for Gemma attention masks and stale PLE inputs across text requests.
-- Add minimum App version requirements to the Model Gallery: incompatible entries remain visible but cannot be downloaded. Legacy and current catalogs remain separate.
-- Fix generation retries after cancellation and simplify microphone permission errors, preserving existing models and app data.
+- Show minimum app version requirements in the Model Gallery and prompt users to upgrade before downloading models that their version cannot run.
+- Fix generation retries after cancellation and improve microphone permission error messages.
 - Improve wide-window bottom layouts: scrolling pages extend to the screen edge, while the chat input and sidebar Settings button stay aligned with bottom spacing and keyboard avoidance.
 - Hide bottom navigation while the phone keyboard is open and restore it when dismissed, keeping the input area clear.
 
@@ -111,12 +106,12 @@ In the HarmonyOS ecosystem, on-device AI inference today largely depends on Andr
 **Models and market**
 
 - Switched the default text model to Qwen3-4B-Instruct, with in-app model-market installation from ModelScope for preset models and additional MNN model entries.
-- The Model Gallery supports online catalog refresh with a local fallback cache. This build reads [`model-catalog/catalog-v2.json`](model-catalog/catalog-v2.json), while older apps continue to read `catalog.json`. Models requiring the upgraded MNN runtime belong only in the new catalog; compatible catalog updates still require no new app package.
+- The Model Gallery refreshes its catalog online and uses a local cache when offline. Compatible models can be added through catalog updates without reinstalling the app; models requiring a newer runtime prompt users to upgrade first.
 - Forks and derivative builds still read this repository's online catalog by default. To maintain an independent Model Gallery, change `REMOTE_MODEL_CATALOG_URL` in [`ModelCatalogService.ets`](entry/src/main/ets/services/ModelCatalogService.ets) to your own Raw catalog URL and rebuild the app.
 - Default generation settings come from repository configuration or app presets, not per-model tuning. Catalog refresh does not overwrite bundled presets or installed-model configuration snapshots. See the [parameter sourcing and update notes (Chinese)](model-catalog/generation-defaults.md).
 - Model-market downloads support stop-and-resume behavior. Closing a stopped install dialog clears unfinished temporary download files to avoid sandbox leftovers.
 - In addition to zip import, you can push a complete MNN model directory into the app sandbox and scan it from the Model tab to avoid large zip import failures.
-- The Model tab supports model ordering and deleting installed model directories, and disables related controls during generation, loading, or import to avoid inconsistent state.
+- The Model tab supports reordering and deleting installed models. Related actions are temporarily unavailable during generation, loading, or import.
 
 **Chat experience**
 
@@ -130,7 +125,7 @@ In the HarmonyOS ecosystem, on-device AI inference today largely depends on Andr
 - Upgraded MNN Runtime to 3.6.0 and synchronized the HarmonyOS `arm64-v8a` shared library and public headers.
 - Model loading, market installation, and local import share one directory preflight that validates configuration, referenced weights, visual files, and chat-template compatibility before native inference starts.
 - Image inference preserves the visual input size declared by each model directory, supporting MNN multimodal models with different visual-grid configurations.
-- A real-device `ohosTest` regression baseline now covers context handling, Markdown, thinking blocks, model compatibility rules, imported-model naming, and download progress.
+- Added `ohosTest` automated tests for conversation context, Markdown, thinking blocks, model compatibility, imported-model naming, and download progress.
 - The Monitor tab includes app storage usage, model state, version/license text, and tighter device metrics.
 - Model load failures keep the error in the load dialog and reset inference state, making low-memory or failed-load recovery clearer.
 - Markdown tables, lists, code snippets, thinking blocks, raw output logs, and MNN chat-template handling were improved for diagnosing repetition, stop tokens, and prompt template issues.
@@ -146,7 +141,7 @@ In the HarmonyOS ecosystem, on-device AI inference today largely depends on Andr
 |------|-------------|
 | System | HarmonyOS NEXT. The project currently uses `compatibleSdkVersion` `6.1.0(23)` and `targetSdkVersion` `6.1.1(24)` |
 | Device | ARM64 HarmonyOS phone, tablet, or PC (`phone` / `tablet` / `2in1`). The emulator is not the target environment for local MNN inference in this project |
-| RAM | 8 GB or more is recommended for Qwen3-4B-Instruct / Gemma-4-E2B-it. MiniCPM5-1B is better suited for lower-memory validation |
+| RAM | 8 GB or more is recommended for Qwen3-4B-Instruct / Gemma-4-E2B-it. MiniCPM5-1B and other lightweight models are better suited to devices with less RAM |
 | Storage | The HAP is small; model weights dominate storage. A single MNN model directory usually requires several GB |
 | Network | In-app model-market installation downloads from ModelScope, so first-time model installation requires ModelScope access |
 
@@ -189,62 +184,39 @@ With a physical keyboard, Enter sends from the chat input and Shift+Enter insert
 - The PC window title bar provides Chat, Settings, and Help menus for starting a new chat, opening appearance settings, and viewing keyboard shortcuts or the app version. Once opened, hover over another menu heading to switch menus, or press Esc to close. Phone and tablet entry points remain unchanged.
 - The chat runtime strip spans only the page content area and does not shift the sidebar. Wide-screen chat uses the same maximum page width as other tabs, with separate message-width limits for readability.
 - The composer keeps the model name and loading state visible. Clicking it before a model is loaded opens the model page. Long-press a message bubble on phones and tablets, or right-click it on PC, to open the Copy entire message menu.
-- Message text supports partial copying. On API 26 and later, select continuously across Markdown paragraphs, lists, code blocks, and table cells within one answer using touch handles or a mouse. Selection copies visible text with paragraph breaks and code indentation; list markers stay with their text, and table columns use tabs. Older systems retain selection within one text block. The bubble menu’s Copy entire message copies the answer’s original Markdown, excluding model names, timestamps, thinking content, and performance data; code-block buttons copy code only. On API 26 and later, selecting a streaming answer holds its displayed text while generation continues; copying or clearing the selection resumes the latest display.
-- The composer starts with one line and grows for long drafts. Use the top-right button to expand it smoothly upward within the chat content area, keeping the app and conversation headers visible. The expanded composer overlays messages without resizing or scrolling the message list. Wide tablet and PC windows keep part of the conversation visible. Both sizes reserve the same right-side space for controls, so resizing does not change text width or line wrapping. The same input stays mounted, preserving the draft, cursor, and keyboard state when expanding or collapsing. Sending dismisses the on-screen keyboard. Chat scrolling retains its spring effect at both boundaries.
+- Message text supports partial copying: on API 26 or later, use touch handles or a mouse to select across paragraphs, lists, code blocks, and tables within one answer; older systems support selection within one text block. Selections copy visible text, Copy entire message preserves Markdown, and code-block buttons copy code only.
+- The composer starts with one line, grows for long drafts, and expands in place without changing text width or the message list position. Wide tablet and PC windows keep part of the conversation visible. Sending dismisses the on-screen keyboard.
 - Wide model pages place the model list beside its settings. Long-press a handle to reorder by touch, or drag it directly with a mouse. Resizing cancels an active drag without applying its tentative order.
 - Monitoring cards switch between one and two columns according to available width, with metrics sharing the space inside each card.
 - Dialogs fit the available window width and allow long body text to scroll. The Model Gallery shrinks when the on-screen keyboard opens, and keyboard focus stays out of the underlying page while a dialog is open.
 - Local inference: models run on-device, no network required
-- Streaming output: updates responses from native inference callback chunks in real time
+- Streaming output: displays the answer as it is generated, without waiting for the full response
 - Stop generation: interrupt the current response while it is streaming
 - Voice input: offline Mandarin recognition through Core Speech Kit, with live partial results and manual stop
 - Model switching: switch between preset models, installed market models, and imported models
-- Thinking blocks: separate reasoning from the final answer, including models whose chat template already supplies the opening `<think>` tag. The model's default thinking setting is preserved. Reasoning consumes the output budget; reaching the limit does not mean the model cannot run.
+- Thinking blocks: separate reasoning from the final answer, including models whose chat template already supplies the opening `<think>` tag. The model's default thinking setting is preserved. Reasoning counts toward the maximum output length, so reaching the limit may cut the answer short.
 - Markdown rendering: code blocks (with copy button), tables, blockquotes, links, etc., with compatibility handling for incomplete inline code, empty table cells, and table column jitter during streaming output
 - Long-conversation scrolling optimization: caches Markdown / thinking-block parsing and pauses auto-follow while the user is scrolling
 - Generation parameter controls: temperature, Top-P/K, penalty terms, etc.
-- Performance metrics: TTFT, TPOT, tokens/s per assistant message
+- Performance metrics: TTFT, TPOT, tokens/s, and token counts for completed responses
 - Model management: model-market download, model ordering, and deleting installed model directories
 - Import local MNN models by selecting a folder (where supported), importing a zip, or pushing a directory and scanning it in the app; standard MNN export directories use `jinja.chat_template` from `llm_config.json`
 - OpenAI-compatible API: serve the currently loaded model to Cherry Studio and other LAN clients with streaming output and Bearer authentication
-
-### Chat history
-
-Chats are saved locally with images, thinking content, the generating model, timestamps, and existing performance metrics. History starts collapsed; use the history button to open a sidebar in wide chat areas or a drawer in narrower windows. Create, resume, rename, or delete individual chats, or confirm deletion of all chats. Empty chats are not added to history. The history list retains spring feedback at both boundaries, including when it does not fill the pane. Deletion also removes the chat's image copies and cannot be undone.
-
-On phones, swipe right in the chat content area to open history and left to close it. History entries omit timestamps; message timestamps and model information remain inside conversations.
-
-Restarting the app restores the last conversation without automatically loading its model. Opening history keeps the current model. Switching models within a conversation retains messages and continues using the existing context limits; replies show their original model, and a notice marks continuation with another model. Recovered unfinished responses are marked interrupted and excluded from complete context turns. History is stored in the app's private directory and is removed when app data is cleared or the app is uninstalled. API requests and Benchmark records are not saved as chat history.
+- Chat history: save conversations and images locally; create, resume, rename, delete, or clear chats. History starts collapsed. Opening history keeps the current model; replies retain their model and timestamp. Uninstalling or clearing app data removes history.
 
 ## Screenshots
 
-Current v1.13.0 UI. Phone screenshots are from a Pura 70 Pro+ device, and the selection and PC Service screenshots are from a MateBook Pro S device. Tablet and PC Models screenshots are emulator layout previews, not evidence of local MNN inference on emulators.
-
-| Chat | Chat models | Monitor |
+| Chat | Model | Monitor |
 | --- | --- | --- |
-| ![Chat](docs/images/chat.jpg) | ![Chat models](docs/images/models.jpg) | ![Monitor](docs/images/monitor.jpg) |
-
-| Chat history | Decision models | API Service |
-| --- | --- | --- |
-| ![Chat history](docs/images/history.jpg) | ![Decision models](docs/images/decisions.jpg) | ![API Service](docs/images/service.jpg) |
-
-Expand long drafts within the chat page:
-
-![Expanded composer](docs/images/composer-expanded.jpg)
-
-Selection across paragraphs, lists, and tables on a MateBook Pro S device (shared message layout):
-
-![Cross-block message selection](docs/images/message-selection.jpg)
+| ![chat](docs/images/chat.jpg) | ![models](docs/images/models.jpg) | ![monitor](docs/images/monitor.jpg) |
 
 Tablet in landscape:
 
-![Tablet Models page](docs/images/tablet-models.jpg)
+![Tablet model page](docs/images/tablet-models.jpg)
 
 Maximized PC window:
 
-![PC Models page](docs/images/pc-models.jpg)
-
-![PC Service page](docs/images/pc-service.jpg)
+![PC model page](docs/images/pc-models.jpg)
 
 ## OpenAI-Compatible API Server
 
@@ -266,15 +238,9 @@ The chat API accepts text input, serves the currently loaded chat model, and pro
 
 ### Laya Decision API
 
-Install Laya (approximately 628 MiB) from the Decision Model category on the Models page, select Decision Model in Service Content, and start the server. A loaded chat model is unnecessary: Laya loads on the first request and is reused afterwards. Stop the server before switching its content. Switching chat models leaves a running decision API server active.
+Install Laya from the Decision Model category on the Models page, select Decision Model on the Service page, and start the server. Laya loads on the first request without a loaded chat model. Stop the server before switching service content; switching chat models leaves the decision API active.
 
-Send a JSON request to `/v1/decisions`, for example:
-
-```json
-{"input":"The keyboard moves the bottom tabs","task":{"type":"choice","instruction":"Issue type?","options":{"ui":"Interface issue","other":"Other issue"}}}
-```
-
-Tasks support `choice`, `score`, and `boolean`. Responses include the result, option probabilities, and elapsed time; probabilities are not task-calibrated. The Service page's API Guide provides a copyable example. Laya uses separate files rather than the chat-model ZIP import flow; model weights are not included in the HAP. [Model download source](https://modelscope.cn/models/TorryJi/Laya-Multilingual-MNN-FP16)
+`POST /v1/decisions` supports `choice`, `score`, and `boolean` tasks. See the Service page’s API Guide for copyable request examples. Laya uses separate model files rather than chat-model ZIP import; weights are not included in the HAP.
 
 ## Install from HAP
 
@@ -293,17 +259,13 @@ You can also sideload the HAP with [Xiaobai Debug Assistant](https://github.com/
 The recommended path is to install models from the in-app Model Gallery. Import local conversions by selecting a folder or zip; manual directory push remains a debugging fallback.
 
 - **Model Gallery**: refresh the online catalog and install preset or extended models from ModelScope; if refresh fails, the app keeps the last valid cache or its bundled catalog.
-- **Folder import**: select a complete MNN model directory through the system picker. The app copies and validates the files without changing the source directory. If the picker cannot open, retry or use zip import.
-- **Zip import**: useful for small or medium complete MNN model directories.
+- **Folder import**: select a complete MNN model directory through the system picker. The app checks available storage, then copies and validates the files without changing the source directory. If the picker cannot open, retry or use zip import.
+- **Zip import**: select a ZIP containing a complete MNN model directory. The app checks space for the staging copy; extraction needs additional space. Error messages identify the failed stage: copying, extraction, validation, or saving. The app does not impose a 2 GB limit, but large imports still depend on system support and available storage.
 - **Manual directory push**: useful for large models, offline debugging, or when zip import fails; push the directory and scan it from the Model tab.
 
 ### Fallback: Manual Model Push
 
 Model Gallery downloads, folder selection, and zip import are the recommended approaches. Manual `hdc` push is kept as a debugging fallback.
-
-Folder import opens the system folder picker directly. Select one complete MNN model directory; the app copies it into its sandbox, validates it, and registers it without modifying the source. Available space is checked against the total file size. If the picker cannot open, retry or use zip import.
-
-Zip import checks space for the staging copy, but extraction needs additional space. Errors distinguish copying, extraction, validation, and manifest saving. There is no app-imposed 2GB limit; support on different system versions must be verified separately.
 
 The model directory must be in **MNN format** — exported via MNN `llmexport.py` from HuggingFace weights, containing `config.json`, `llm_config.json`, tokenizer file, `llm.mnn`, `llm.mnn.weight`, etc. Original HuggingFace safetensors, GGUF, and MLX weights cannot be used directly.
 
@@ -342,10 +304,10 @@ To register a pushed model as an imported model:
    The directory should contain `config.json`, `llm_config.json`, `llm.mnn`, `llm.mnn.weight`, and tokenizer files.
 
 5. Open the app → Model tab → expand "Model Management".
-6. Tap "Scan pushed directory". The app will find `config.json`, `.mnn` files, and a compatible chat template, then update `model-imports/imported-models.json` automatically.
+6. Tap "Scan pushed directory". The app checks the configuration, weights, and chat template, then adds compatible models to the list.
 7. Select the new imported model from the model list and load it.
 
-For folder import, zip import, and directory scanning, the app reads `is_visual` from `llm_config.json` to detect image capability automatically. Generated short names accept hyphens, underscores, and spaces, prioritizing model generations, parameter sizes, variants such as `VL`, and quantization markers. Missing parameter sizes are not guessed. Existing nonempty short names are preserved; clear the short-name field in the imported model settings and save to regenerate it.
+For folder import, zip import, and directory scanning, the app reads `is_visual` from `llm_config.json` to detect image capability automatically. The app generates a short display name, preserving key identifiers such as the model generation, parameter size, variants like `VL`, and quantization markers where possible. Existing names are preserved; clear the short-name field in the imported model settings and save to regenerate it.
 
 The scanner only checks first-level subdirectories under `model-imports/`. Directory names must not contain `/`, `\`, or `..`. On Windows, run `hdc file send` from the parent directory of the model directory to avoid preserving extra parent paths or writing backslashes into the app sandbox. If your model is not under the repository `models/` directory, `cd` to that model directory's parent before pushing.
 
@@ -379,6 +341,8 @@ The app uses **MNN model directory** format. Built-in models are downloaded from
 ## Inference Backend and Performance
 
 The current version runs local inference with the **MNN CPU backend**. GPU / NPU backends are not integrated yet. The "inference threads" setting on the Model tab is passed to the native layer as the MNN CPU thread count, with a default value of 6.
+
+To build MNN yourself, use the pinned commit above with the repository's [PowerShell](scripts/build_mnn_ohos.ps1) or [Shell](scripts/build_mnn_ohos.sh) build script. Specify the source directory with the `-MnnRoot` parameter or the `MNN_ROOT` environment variable, respectively. Build version and patch details are recorded in `BUILD_INFO.json`.
 
 On-device LLM decoding includes token-by-token serial stages, and actual throughput can also be limited by memory bandwidth, cache contention, and system thermal control. In assistant messages, TTFT is the end-to-end time from request submission to the first complete UTF-8 output chunk. TPOT and tokens/s cover only the decode phase from the first output to completion and use the native generated-token count. Evaluate these metrics together with app CPU, app memory, and device temperature.
 
