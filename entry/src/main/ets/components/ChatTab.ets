@@ -409,6 +409,9 @@ export struct ChatTab {
       .layoutWeight(1)
       .clip(true)
       .id('chat-messages')
+      .onAppear(() => {
+        if (this.active) this.viewModel.scrollToBottom()
+      })
       .width('100%')
       .divider({ strokeWidth: 0 })
       .scrollBar(BarState.Off)

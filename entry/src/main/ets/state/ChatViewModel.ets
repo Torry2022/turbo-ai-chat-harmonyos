@@ -1600,7 +1600,7 @@ export class ChatViewModel {
   closeModelLoadDialog(): void {
     this.apiServerStartAfterModelLoad = false
     this.showModelLoadDialog = false
-    this.notifyAndScroll()
+    this.notify()
   }
 
   loadModel(): void {

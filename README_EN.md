@@ -180,15 +180,15 @@ With a physical keyboard, Enter sends from the chat input and Shift+Enter insert
 ## Features
 
 - Appearance: new installations follow the system. Choose Light, Dark, or System in Settings. Open Settings from the bottom of the sidebar in wide windows, or from the top-left logo menu in narrow windows. The selection is saved; both themes share the same layouts, logo, and launch artwork.
-- Adaptive navigation: bottom tabs in narrow windows and a sidebar in wider windows. On API 26 or later phones, the official immersive bar stays visible in Chat and hides or reappears while scrolling other pages. Monitoring pauses when hidden and preserves its scroll position.
+- Adaptive navigation: bottom tabs in narrow windows and a sidebar in wider windows. On API 26 or later phones, the official immersive bar stays visible in Chat and hides or reappears while scrolling other pages.
 - The PC window title bar provides Chat, Settings, and Help menus for starting a new chat, opening appearance settings, and viewing keyboard shortcuts or the app version. Once opened, hover over another menu heading to switch menus, or press Esc to close. Phone and tablet entry points remain unchanged.
-- The chat runtime strip spans only the page content area and does not shift the sidebar. Wide-screen chat uses the same maximum page width as other tabs, with separate message-width limits for readability.
+- Chat displays app CPU, app memory, and device temperature. Message width is limited on wide screens for readability.
 - The composer keeps the model name and loading state visible. Clicking it before a model is loaded opens the model page. Long-press a message bubble on phones and tablets, or right-click it on PC, to open the Copy entire message menu.
 - Message text supports partial copying: on API 26 or later, use touch handles or a mouse to select across paragraphs, lists, code blocks, and tables within one answer; older systems support selection within one text block. Selections copy visible text, Copy entire message preserves Markdown, and code-block buttons copy code only.
-- The composer starts with one line, grows for long drafts, and expands in place without changing text width or the message list position. Wide tablet and PC windows keep part of the conversation visible. Sending dismisses the on-screen keyboard.
-- Wide model pages place the model list beside its settings. Long-press a handle to reorder by touch, or drag it directly with a mouse. Resizing cancels an active drag without applying its tentative order.
+- The composer starts with one line, grows for long drafts, and can expand or collapse in place.
+- Wide model pages place the model list beside its settings. Long-press a handle to reorder by touch, or drag it directly with a mouse.
 - Monitoring cards switch between one and two columns according to available width, with metrics sharing the space inside each card.
-- Dialogs fit the available window width and allow long body text to scroll. The Model Gallery shrinks when the on-screen keyboard opens, and keyboard focus stays out of the underlying page while a dialog is open.
+- Dialogs fit the available window width and allow long body text to scroll. The Model Gallery shrinks when the on-screen keyboard opens to keep content visible.
 - Local inference: models run on-device, no network required
 - Streaming output: displays the answer as it is generated, without waiting for the full response
 - Stop generation: interrupt the current response while it is streaming
@@ -202,13 +202,13 @@ With a physical keyboard, Enter sends from the chat input and Shift+Enter insert
 - Model management: model-market download, model ordering, and deleting installed model directories
 - Import local MNN models by selecting a folder (where supported), importing a zip, or pushing a directory and scanning it in the app; standard MNN export directories use `jinja.chat_template` from `llm_config.json`
 - OpenAI-compatible API: serve the currently loaded model to Cherry Studio and other LAN clients with streaming output and Bearer authentication
-- Chat history: save conversations and images locally; create, resume, rename, delete, or clear chats. History starts collapsed. Opening history keeps the current model; replies retain their model and timestamp. Uninstalling or clearing app data removes history.
+- Chat history: save conversations and images locally; create, resume, rename, delete, or clear chats. Each reply retains its model and timestamp. Uninstalling or clearing app data removes history.
 
 ## Screenshots
 
-| Chat | Model | Monitor |
-| --- | --- | --- |
-| ![chat](docs/images/chat.jpg) | ![models](docs/images/models.jpg) | ![monitor](docs/images/monitor.jpg) |
+| Chat | Model | Service | Monitor |
+| --- | --- | --- | --- |
+| ![chat](docs/images/chat.jpg) | ![models](docs/images/models.jpg) | ![service](docs/images/service.jpg) | ![monitor](docs/images/monitor.jpg) |
 
 Tablet in landscape:
 
