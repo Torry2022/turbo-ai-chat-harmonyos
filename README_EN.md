@@ -199,7 +199,7 @@ With a physical keyboard, Enter sends from the chat input and Shift+Enter insert
 - Long-conversation scrolling optimization: caches Markdown / thinking-block parsing and pauses auto-follow while the user is scrolling
 - Generation parameter controls: temperature, Top-P/K, penalty terms, etc.
 - Performance metrics: TTFT, TPOT, tokens/s, and token counts for completed responses
-- Model management: model-market download, model ordering, and deleting installed model directories
+- Model management: download from the Model Gallery, reorder or delete installed models, and optionally load the current model when the app starts
 - Import local MNN models by selecting a folder (where supported), importing a zip, or pushing a directory and scanning it in the app; standard MNN export directories use `jinja.chat_template` from `llm_config.json`
 - OpenAI-compatible API: serve the currently loaded model to Cherry Studio and other LAN clients with streaming output and Bearer authentication
 - Chat history: save conversations and images locally; create, resume, rename, delete, or clear chats. Each reply retains its model and timestamp. Uninstalling or clearing app data removes history.

@@ -427,6 +427,11 @@ export struct MessageBubble {
         if (this.message.generationState === 'interrupted') {
           Text('生成已中断').fontSize(11).fontColor($r('app.color.status_warning'))
         }
+        if (this.message.generationState === 'failed') {
+          Text(this.answerText().length > 0 ? '生成失败，已保留以上内容' : '生成失败')
+            .fontSize(11)
+            .fontColor($r('app.color.status_error'))
+        }
         if (this.message.role === 'assistant' && this.message.perfMetrics !== undefined) {
           Text(`TTFT ${this.message.perfMetrics.ttft}ms · ${this.message.perfMetrics.tpot}ms/tok · ${this.message.perfMetrics.tokensPerSec} tok/s · ${this.message.perfMetrics.tokens} tokens`)
             .fontSize(10)

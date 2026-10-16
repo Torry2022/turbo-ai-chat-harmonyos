@@ -90,6 +90,7 @@ export class ChatViewModel {
   historyError: string = ''
   private activeConversation?: ChatConversation
   private historyService: ChatHistoryService = new ChatHistoryService()
+  private conversationDrafts: Map<string, string> = new Map()
   private historyTimer: number = -1
   private historyCloseHandler: () => boolean = () => false
   maxNewTokens: number = DEFAULT_MAX_NEW_TOKENS
@@ -102,6 +103,8 @@ export class ChatViewModel {
   presencePenalty: number = DEFAULT_PRESENCE_PENALTY
   penaltyWindow: number = DEFAULT_PENALTY_WINDOW
   runtimeConfigDirty: boolean = false
+  startupAutoLoadEnabled: boolean = false
+  startupModelId: string = ''
   showModelLoadDialog: boolean = false
   modelLoading: boolean = false
   modelLoadProgress: number = 0
@@ -210,6 +213,10 @@ export class ChatViewModel {
   private builtinModelInstallCancelRequested: boolean = false
   private readonly modelOrderPreferenceName: string = 'model-settings'
   private readonly modelOrderPreferenceKey: string = 'model-order'
+  private readonly startupAutoLoadPreferenceKey: string = 'startup-auto-load'
+  private readonly startupModelPreferenceKey: string = 'startup-model-id'
+  private startupSettingsReady: boolean = false
+  private startupLoadStarted: boolean = false
   private readonly apiServerPreferenceName: string = 'api-server-settings'
   private readonly apiServerPortPreferenceKey: string = 'port'
   private readonly apiServerRequireKeyPreferenceKey: string = 'require-key'
@@ -262,6 +269,7 @@ export class ChatViewModel {
     }
     this.modelManager.initialize(this.filesDir)
     this.loadModelOrder()
+    this.loadStartupModelSettings()
     this.loadApiServerSettings()
     this.resetGenerationSettings(false)
     this.historyService.onAttachmentError = () => {
@@ -288,6 +296,7 @@ export class ChatViewModel {
       this.modelManager.updateImportedProfiles(profiles, this.filesDir)
       this.prepareImportedModelEditor(this.selectedModelId)
       this.preloadModelStorageStats()
+      this.tryStartStartupModelLoad()
       this.notify()
     }).catch((err: Error) => {
       this.modelImportMessage = `读取导入模型失败：${formatError(err as Object)}`
@@ -311,6 +320,23 @@ export class ChatViewModel {
 
   currentModel(): ModelProfile {
     return this.modelManager.currentModel()
+  }
+
+  startupModelName(): string {
+    const profile = this.modelManager.profiles().find((item: ModelProfile) => item.id === this.startupModelId)
+    return profile?.shortName ?? this.startupModelId
+  }
+
+  setStartupAutoLoad(enabled: boolean): void {
+    if (!enabled && this.startupModelId !== this.selectedModelId) {
+      return
+    }
+    this.startupAutoLoadEnabled = enabled
+    if (enabled) {
+      this.startupModelId = this.selectedModelId
+    }
+    this.saveStartupModelSettings()
+    this.notify()
   }
 
   modelCatalogItems(): ModelCatalogItem[] {
@@ -573,7 +599,6 @@ export class ChatViewModel {
     if (!model.supportsImage) {
       this.selectedImageUri = ''
     }
-    this.inputText = ''
     this.selectedImageUri = ''
     this.resetGenerationSettings(false)
     this.session.resetForModelSwitch(model.shortName)
@@ -594,7 +619,17 @@ export class ChatViewModel {
 
   updateInputText(value: string): void {
     this.inputText = value
+    this.storeDraft(this.activeConversationId, value)
     this.notify()
+  }
+
+  private storeDraft(id: string, text: string): void {
+    if (text.length > 0) this.conversationDrafts.set(id, text)
+    else this.conversationDrafts.delete(id)
+  }
+
+  private restoreDraft(id: string): void {
+    this.inputText = this.conversationDrafts.get(id) ?? ''
   }
 
   async startSpeechRecognition(): Promise<void> {
@@ -630,8 +665,7 @@ export class ChatViewModel {
         this.notify()
       },
       onTranscript: (text: string) => {
-        this.inputText = text
-        this.notify()
+        this.updateInputText(text)
       },
       onCompleted: () => {
         this.resetSpeechRecognitionState()
@@ -844,7 +878,6 @@ export class ChatViewModel {
         const model = this.modelManager.switchModel(addedProfile.id, this.filesDir)
         this.prepareImportedModelEditor(model.id)
         this.selectedImageUri = ''
-        this.inputText = ''
         this.resetGenerationSettings(false)
         this.session.resetForModelSwitch(model.shortName)
         this.syncMessages()
@@ -1013,6 +1046,11 @@ export class ChatViewModel {
         } else {
           await this.removeInstalledCatalogState(profile)
         }
+        if (this.startupModelId === modelId) {
+          this.startupAutoLoadEnabled = false
+          this.startupModelId = ''
+          this.saveStartupModelSettings()
+        }
         this.prepareImportedModelEditor(this.selectedModelId)
         this.pendingDeleteModelId = ''
         this.setStatus(deletingCurrent ? `${profile.shortName} 已删除，请重新安装或选择其他模型。` : `${profile.shortName} 已删除`, 'success')
@@ -1156,6 +1194,7 @@ export class ChatViewModel {
     }
     if (changed) {
       this.modelManager.updateCatalogProfiles(this.modelCatalogService.profiles(), this.filesDir)
+      this.tryStartStartupModelLoad()
     }
   }
 
@@ -1165,6 +1204,7 @@ export class ChatViewModel {
     this.modelCatalogPublishedAt = result.publishedAt
     this.modelCatalogStatus = result.message
     this.modelManager.updateCatalogProfiles(this.modelCatalogService.profiles(), this.filesDir)
+    this.tryStartStartupModelLoad()
     this.notify()
   }
 
@@ -1288,7 +1328,7 @@ export class ChatViewModel {
       this.activeConversationId = id
       this.session.restore(conversation.messages)
       this.messages = this.session.messages
-      this.inputText = ''
+      this.restoreDraft(id)
       this.selectedImageUri = ''
       this.historyError = ''
       await this.saveCurrentConversation()
@@ -1326,15 +1366,20 @@ export class ChatViewModel {
     this.historyBusy = true
     try {
       await this.flushHistory()
-      if (id === undefined) await this.historyService.clear()
-      else await this.historyService.remove(id)
-      if (id === undefined || id === this.activeConversationId) this.startEmptyConversation()
+      if (id === undefined) {
+        await this.historyService.clear()
+        this.conversationDrafts.clear()
+      } else {
+        await this.historyService.remove(id)
+        this.conversationDrafts.delete(id)
+      }
+      if (id === undefined || id === this.activeConversationId) this.startEmptyConversation(id !== undefined)
       this.conversations = this.historyService.list()
       this.historyError = ''
     } catch (error) {
       this.conversations = this.historyService.list()
       if (!this.conversations.some((item: ChatConversationSummary) => item.id === this.activeConversationId)) {
-        this.startEmptyConversation()
+        this.startEmptyConversation(true)
       }
       this.historyError = this.historyFailure('删除对话失败', error as Object)
     } finally {
@@ -1366,7 +1411,7 @@ export class ChatViewModel {
     try {
       await this.flushHistory()
       await this.historyService.selectEmpty()
-      this.startEmptyConversation()
+      this.startEmptyConversation(this.activeConversationId.length > 0)
       this.historyError = ''
       this.notifyAndScroll()
     } catch (error) {
@@ -1377,13 +1422,17 @@ export class ChatViewModel {
     }
   }
 
-  private startEmptyConversation(): void {
+  private startEmptyConversation(restorePendingDraft: boolean = false): void {
     this.cancelSpeechRecognition(false)
     this.activeConversation = undefined
     this.activeConversationId = ''
     this.session.newChat(this.loaded, this.currentModel().shortName)
     this.messages = this.session.messages
-    this.inputText = ''
+    if (restorePendingDraft) this.restoreDraft('')
+    else {
+      this.conversationDrafts.delete('')
+      this.inputText = ''
+    }
     this.selectedImageUri = ''
     this.setStatus(this.loaded ? `${this.currentModel().shortName} 已加载` : '模型未加载', this.loaded ? 'success' : 'neutral')
   }
@@ -1646,7 +1695,7 @@ export class ChatViewModel {
     })
   }
 
-  startModelLoad(): void {
+  startModelLoad(showProgressDialog: boolean = true, announceReady: boolean = true): void {
     if (this.rejectWhileModelScanning()) {
       return
     }
@@ -1663,7 +1712,7 @@ export class ChatViewModel {
     }
     this.busy = true
     this.modelLoading = true
-    this.showModelLoadDialog = true
+    this.showModelLoadDialog = showProgressDialog
     this.setStatus(`正在加载 ${this.currentModel().shortName}...`, 'neutral')
     this.modelLoadMessage = '正在加载模型权重，请保持应用在前台。'
     this.startModelLoadProgress()
@@ -1686,17 +1735,25 @@ export class ChatViewModel {
       this.modelLoadMessage = `${this.currentModel().shortName} 加载完成，可以开始聊天。`
       this.stopModelLoadProgress()
       this.modelLoadProgress = 100
-      this.session.appendMessage('assistant', `${this.currentModel().shortName} 加载完成，现在可以开始提问。`, '', false)
-      this.syncMessages()
+      if (announceReady) {
+        this.session.appendMessage('assistant', `${this.currentModel().shortName} 加载完成，现在可以开始提问。`, '', false)
+        this.syncMessages()
+      }
       this.busy = false
       this.modelLoading = false
       this.refreshStats()
-      this.notifyAndScroll()
-      this.startPendingApiServerIfReady()
-      setTimeout(() => {
-        this.showModelLoadDialog = false
+      if (announceReady) {
         this.notifyAndScroll()
-      }, 450)
+      } else {
+        this.notify()
+      }
+      this.startPendingApiServerIfReady()
+      if (showProgressDialog) {
+        setTimeout(() => {
+          this.showModelLoadDialog = false
+          this.notifyAndScroll()
+        }, 450)
+      }
     }).catch((err: Error) => {
       this.apiServerStartAfterModelLoad = false
       this.loaded = false
@@ -1708,7 +1765,11 @@ export class ChatViewModel {
       this.busy = false
       this.modelLoading = false
       this.refreshStats()
-      this.notifyAndScroll()
+      if (showProgressDialog) {
+        this.notifyAndScroll()
+      } else {
+        this.notify()
+      }
     })
   }
 
@@ -1919,6 +1980,7 @@ export class ChatViewModel {
     const assistantId = this.session.appendMessage('assistant', '', '')
     this.syncMessages()
     this.resumeChatAutoScroll()
+    this.conversationDrafts.delete(this.activeConversationId)
     this.inputText = ''
     this.selectedImageUri = ''
     this.busy = true
@@ -1969,7 +2031,8 @@ export class ChatViewModel {
       this.notifyAndMaybeScroll()
     }).catch((err: Error) => {
       const message = `生成失败：${formatError(err as Object)}`
-      this.session.updateMessage(assistantId, message, false)
+      const partialAnswer = this.session.messages.find((item: ChatMessage) => item.id === assistantId)?.content ?? ''
+      this.session.updateMessage(assistantId, partialAnswer, false)
       this.session.markGeneration(assistantId, 'failed')
       this.syncMessages()
       this.setStatus(message, 'error')
@@ -2191,7 +2254,8 @@ export class ChatViewModel {
   currentContextMessageLimit(): number {
     const model = this.currentModel()
     if (model.contextMessageLimit !== undefined) {
-      return Math.max(0, Math.round(model.contextMessageLimit))
+      const rounded = Math.max(0, Math.round(model.contextMessageLimit))
+      return rounded - rounded % 2
     }
     if (model.source === 'imported') {
       return 0
@@ -2248,6 +2312,65 @@ export class ChatViewModel {
       this.modelManager.setModelOrder(order, this.filesDir)
       this.notify()
     }).catch((_err: Error) => {
+    })
+  }
+
+  private loadStartupModelSettings(): void {
+    if (this.context === undefined) {
+      return
+    }
+    preferences.getPreferences(this.context, this.modelOrderPreferenceName).then(async (store: preferences.Preferences) => {
+      const enabled = await store.get(this.startupAutoLoadPreferenceKey, false)
+      const modelId = await store.get(this.startupModelPreferenceKey, '')
+      this.startupAutoLoadEnabled = typeof enabled === 'boolean' ? enabled : false
+      this.startupModelId = typeof modelId === 'string' ? modelId : ''
+      this.startupSettingsReady = true
+      this.tryStartStartupModelLoad()
+      this.notify()
+    }).catch((_err: Error) => {
+      this.startupSettingsReady = true
+    })
+  }
+
+  private saveStartupModelSettings(): void {
+    if (this.context === undefined) {
+      return
+    }
+    preferences.getPreferences(this.context, this.modelOrderPreferenceName).then((store: preferences.Preferences) => {
+      return store.put(this.startupAutoLoadPreferenceKey, this.startupAutoLoadEnabled)
+        .then(() => store.put(this.startupModelPreferenceKey, this.startupModelId))
+        .then(() => store.flush())
+    }).catch((_err: Error) => {
+    })
+  }
+
+  private tryStartStartupModelLoad(): void {
+    if (!this.startupSettingsReady || !this.startupAutoLoadEnabled || this.startupLoadStarted ||
+      this.startupModelId.length <= 0) {
+      return
+    }
+    const profile = this.modelManager.profiles().find((item: ModelProfile) => item.id === this.startupModelId)
+    if (profile === undefined) {
+      return
+    }
+    this.startupLoadStarted = true
+    if (this.selectedModelId !== profile.id) {
+      this.modelManager.switchModel(profile.id, this.filesDir)
+      this.prepareImportedModelEditor(profile.id)
+      this.selectedImageUri = ''
+      this.resetGenerationSettings(false)
+      this.runtimeConfigDirty = false
+    }
+    this.modelLifecycleService.isInstalled(this.filesDir, profile, this.modelPath).then((installed: boolean) => {
+      if (!installed) {
+        this.setStatus(`${profile.shortName} 未安装，已跳过启动加载`, 'warning')
+        this.notify()
+        return
+      }
+      this.startModelLoad(false, false)
+    }).catch((err: Error) => {
+      this.setStatus(`启动加载失败：${formatError(err as Object)}`, 'error')
+      this.notify()
     })
   }
 

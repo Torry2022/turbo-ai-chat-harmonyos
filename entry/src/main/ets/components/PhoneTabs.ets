@@ -58,6 +58,7 @@ export struct PhoneTabs {
     .barHeight(this.keyboardVisible ? 0 : 56).barPosition(BarPosition.End)
     .divider({ mode: DividerMode.NONE })
     .vertical(false).barOverlap(true).scrollable(false).animationDuration(0)
+    .hoverEffect(HoverEffect.None)
     .barFloatingStyle(this.keyboardVisible ? undefined : {
       barBottomMargin: 28,
       systemMaterialEffect: { materialType: hdsMaterial.MaterialType.ADAPTIVE, materialLevel: this.materialLevel }

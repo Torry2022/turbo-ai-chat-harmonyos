@@ -150,9 +150,6 @@ struct Index {
     setTimeout(() => {
       this.showLaunch = false
       themeService.finishLaunch()
-      if (!this.viewModel.loaded) {
-        this.viewModel.openModelLoadDialog(false)
-      }
     }, 1200)
   }
 
@@ -728,38 +725,44 @@ struct Index {
   }
 
   build() {
-    Column() {
-      if (this.desktopTitleVisible && !this.showLaunch) {
-        DesktopTitleBar({
-          mainWindow: this.mainWindow,
-          barHeight: this.desktopTitleHeight,
-          controlsWidth: this.desktopControlsWidth,
-          busy: this.viewModel.busy,
-          onNewChat: () => this.newChat(),
-          onSettings: () => { this.showSettings = true },
-          onShortcuts: () => this.showMenuInfo(false),
-          onAbout: () => this.showMenuInfo(true)
-        })
-        .enabled(!this.showLaunch && !this.dialogExitBlocking && this.modalFocusId() === 'app-content')
-      }
-      Stack() {
-        Column()
-          .width('100%')
-          .height('100%')
-          .backgroundColor(this.showLaunch ? $r('app.color.start_window_background') :
-            (this.windowWidth < 600 ? $r('app.color.page_compact') : $r('app.color.page')))
-          .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
-        if (this.showLaunch) {
-          LaunchScreen()
-        } else {
+    Stack() {
+      Column() {
+        if (this.desktopTitleVisible) {
+          DesktopTitleBar({
+            mainWindow: this.mainWindow,
+            barHeight: this.desktopTitleHeight,
+            controlsWidth: this.desktopControlsWidth,
+            busy: this.viewModel.busy,
+            onNewChat: () => this.newChat(),
+            onSettings: () => { this.showSettings = true },
+            onShortcuts: () => this.showMenuInfo(false),
+            onAbout: () => this.showMenuInfo(true)
+          })
+          .enabled(!this.showLaunch && !this.dialogExitBlocking && this.modalFocusId() === 'app-content')
+        }
+        Stack() {
+          Column()
+            .width('100%')
+            .height('100%')
+            .backgroundColor(this.windowWidth < 600 ? $r('app.color.page_compact') : $r('app.color.page'))
+            .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
           this.MainScreen()
         }
+        .width('100%')
+        .height('100%')
+        .backgroundColor(this.windowWidth < 600 ? $r('app.color.page_compact') : $r('app.color.page'))
+        .layoutWeight(1)
       }
       .width('100%')
       .height('100%')
-      .backgroundColor(this.showLaunch ? $r('app.color.start_window_background') :
-        (this.windowWidth < 600 ? $r('app.color.page_compact') : $r('app.color.page')))
-      .layoutWeight(1)
+      if (this.showLaunch) {
+        LaunchScreen()
+          .width('100%')
+          .height('100%')
+          .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+          .hitTestBehavior(HitTestMode.Block)
+          .zIndex(100)
+      }
     }
     .width('100%')
     .height('100%')

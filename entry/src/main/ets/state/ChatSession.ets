@@ -171,7 +171,8 @@ export class ChatSession {
       role: 'system',
       content: systemPrompt
     }]
-    const safeContextLimit = Math.max(0, Math.round(contextMessageLimit))
+    const roundedContextLimit = Math.max(0, Math.round(contextMessageLimit))
+    const safeContextLimit = roundedContextLimit - roundedContextLimit % 2
     const contextTurns = safeContextLimit > 0 ? this.composeCompleteContextTurns().slice(-safeContextLimit) : []
     contextTurns.forEach((turn: ChatTurn) => {
       turns.push(turn)

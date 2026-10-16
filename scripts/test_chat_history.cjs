@@ -245,6 +245,55 @@ add('history actions preserve loaded model and reject busy transitions', async (
     assert.equal(view.headerStatus(), '正在等待下一轮 Benchmark...');
   }
 });
+add('conversation drafts survive navigation and model switches', async () => {
+  const { ChatViewModel } = load(path.join(ets, 'state/ChatViewModel.ets'));
+  const view = new ChatViewModel();
+  view.notify = view.notifyAndScroll = view.notifyAndMaybeScroll = () => {};
+  view.historyReady = true;
+  await view.historyService.initialize(path.join(temporary, 'drafts'));
+  await view.historyService.save(conversation('c-draft-1'));
+  await view.historyService.save(conversation('c-draft-2'));
+  view.updateInputText('尚未发送的新对话草稿');
+  assert.equal(await view.openConversation('c-draft-1'), true);
+  view.updateInputText('对话一草稿');
+  assert.equal(await view.openConversation('c-draft-2'), true);
+  view.updateInputText('对话二草稿');
+  assert.equal(await view.openConversation('c-draft-1'), true);
+  assert.equal(view.inputText, '对话一草稿');
+  const alternate = view.modelProfiles().find(profile => profile.id !== view.selectedModelId);
+  assert.ok(alternate);
+  view.switchModel(alternate.id);
+  assert.equal(view.inputText, '对话一草稿');
+  await view.beginNewConversation();
+  assert.equal(view.inputText, '尚未发送的新对话草稿');
+});
+add('generation failures retain streamed text and failed state', async () => {
+  const { ChatViewModel } = load(path.join(ets, 'state/ChatViewModel.ets'));
+  const view = new ChatViewModel();
+  view.notify = view.notifyAndScroll = view.notifyAndMaybeScroll = () => {};
+  view.historyReady = true;
+  view.loaded = true;
+  await view.historyService.initialize(path.join(temporary, 'generation-failure'));
+  view.generationWorkflow = {
+    run: (_request, callbacks) => {
+      callbacks.onStream({ text: '已经生成的部分回答', characterCount: 9 });
+      return Promise.reject(new Error('测试故障'));
+    },
+    stop: () => {}
+  };
+  view.updateInputText('测试问题');
+  await view.sendMessage();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const answer = view.messages[view.messages.length - 1];
+  assert.equal(answer.content, '已经生成的部分回答');
+  assert.equal(answer.includeInContext, false);
+  assert.equal(answer.generationState, 'failed');
+  await view.flushHistory();
+  const saved = await view.historyService.load(view.activeConversationId);
+  const savedAnswer = saved.messages[saved.messages.length - 1];
+  assert.equal(savedAnswer.content, '已经生成的部分回答');
+  assert.equal(savedAnswer.generationState, 'failed');
+});
 for (const name of ['ChatSession', 'Thinking', 'Markdown', 'GenerationWorkflow', 'GenerationMetrics', 'OpenAiApiServer', 'Knowledge', 'KnowledgeRelations']) {
   const test = path.join(project, 'entry/src/ohosTest/ets/test', name + '.test.ets');
   if (fs.existsSync(test)) load(test).default();

@@ -46,6 +46,7 @@ export struct MonitorTab {
   @Prop @Watch('onActiveChanged') active: boolean = false
   @State stats: RuntimeStats = EMPTY_RUNTIME_STATS
   @State storageStats: StorageStats = EMPTY_STORAGE_STATS
+  @State viewportHeight: number = 0
   @Prop contentWidth: number = 0
   private statsTimer: number = -1
   private storageStatsReading: boolean = false
@@ -272,6 +273,10 @@ export struct MonitorTab {
         .width('100%')
         .flexShrink(0)
 
+        if (this.contentWidth >= 720) {
+          Blank()
+            .layoutWeight(1)
+        }
 
         Text(this.viewModel.appVersion.length > 0 ? `Turbo AI Chat v${this.viewModel.appVersion}` : 'Turbo AI Chat')
           .width('100%')
@@ -280,12 +285,19 @@ export struct MonitorTab {
           .fontColor($r('app.color.text_version'))
       }
       .width('100%')
+      .constraintSize({ minHeight: Math.max(1, this.viewportHeight) })
       .padding({ bottom: $r('app.float.page_scroll_bottom_padding') })
       .margin({ bottom: this.bottomOverlayInset })
     }
     .width('100%')
     .height('100%')
     .align(Alignment.Top)
+    .onAreaChange((_oldArea: Area, newArea: Area) => {
+      const height = Number(newArea.height)
+      if (height > 0 && height !== this.viewportHeight) {
+        this.viewportHeight = height
+      }
+    })
     .scrollBar(BarState.Off)
     .onWillScroll((_xOffset: number, yOffset: number, _scrollState: ScrollState, source: ScrollSource) => {
       if (source === ScrollSource.DRAG || source === ScrollSource.FLING || source === ScrollSource.OTHER_USER_INPUT) {

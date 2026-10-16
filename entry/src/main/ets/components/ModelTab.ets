@@ -358,7 +358,39 @@ export struct ModelTab {
         }
         .width('100%')
         .zIndex(this.draggingModelId.length > 0 ? 10 : 0)
-        Button(this.viewModel.loaded ? '释放模型' : '加载模型')
+        Divider()
+          .color($r('app.color.divider'))
+          .opacity(0.6)
+        Column() {
+          Row({ space: 12 }) {
+            Text('启动应用时加载当前模型')
+              .fontSize(13)
+              .fontColor($r('app.color.text_secondary'))
+              .layoutWeight(1)
+            Toggle({
+              type: ToggleType.Switch,
+              isOn: this.viewModel.startupAutoLoadEnabled &&
+                this.viewModel.startupModelId === this.viewModel.selectedModelId
+            })
+              .height(22)
+              .margin(0)
+              .selectedColor($r('app.color.status_good'))
+              .enabled(this.controlsEnabled())
+              .onChange((enabled: boolean) => {
+                this.viewModel.setStartupAutoLoad(enabled)
+              })
+          }
+          .width('100%')
+          Text(this.viewModel.startupAutoLoadEnabled ?
+            `当前自动加载：${this.viewModel.startupModelName()}` : '未设置自动加载模型')
+            .fontSize(12)
+            .lineHeight(18)
+            .fontColor($r('app.color.text_muted'))
+            .width('100%')
+        }
+        .width('100%')
+        .margin({ bottom: 4 })
+        Button(this.viewModel.loaded ? '释放当前模型' : '加载当前模型')
           .attributeModifier(new ActionButtonStyle(this.viewModel.loaded ? $r('app.color.button_secondary_background') : $r('app.color.button_primary_background'), this.viewModel.loaded ? $r('app.color.button_secondary_text') : $r('app.color.button_primary_text')))
           .enabled(this.controlsEnabled())
           .width('100%')
