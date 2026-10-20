@@ -1,5 +1,6 @@
 #include "laya_tokenizer.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <fstream>
 #include <stdexcept>
@@ -53,8 +54,17 @@ LayaTokenizer::LayaTokenizer(const std::string& path) {
     merges_.reserve(mergeSize);
     for (uint32_t index = 0; index < vocabSize; ++index) {
         std::string token = readText(stream);
-        vocabulary_.emplace(std::move(token), static_cast<int>(readU32(stream)));
+        const int id = static_cast<int>(readU32(stream));
+        // This checkpoint's whitespace added tokens are LF runs and tab runs of length >= 2.
+        if ((!token.empty() && token.find_first_not_of('\n') == std::string::npos) ||
+            (token.size() >= 2 && token.find_first_not_of('\t') == std::string::npos)) {
+            whitespaceTokens_.emplace_back(token, id);
+        }
+        vocabulary_.emplace(std::move(token), id);
     }
+    std::sort(whitespaceTokens_.begin(), whitespaceTokens_.end(), [](const auto& left, const auto& right) {
+        return left.first.size() > right.first.size();
+    });
     for (uint32_t index = 0; index < mergeSize; ++index) {
         std::string left = readText(stream);
         std::string right = readText(stream);
@@ -63,6 +73,31 @@ LayaTokenizer::LayaTokenizer(const std::string& path) {
 }
 
 std::vector<int> LayaTokenizer::encode(const std::string& text) const {
+    std::vector<int> result;
+    size_t start = 0;
+    for (size_t position = 0; position < text.size();) {
+        bool matched = false;
+        if (text[position] == '\n' || text[position] == '\t') {
+            for (const auto& token : whitespaceTokens_) {
+                if (text.compare(position, token.first.size(), token.first) != 0) continue;
+                // Added tokens split the input before Metaspace prepends each text segment.
+                const auto ids = encodeText(text.substr(start, position - start));
+                result.insert(result.end(), ids.begin(), ids.end());
+                result.push_back(token.second);
+                position += token.first.size();
+                start = position;
+                matched = true;
+                break;
+            }
+        }
+        if (!matched) ++position;
+    }
+    const auto ids = encodeText(text.substr(start));
+    result.insert(result.end(), ids.begin(), ids.end());
+    return result;
+}
+
+std::vector<int> LayaTokenizer::encodeText(const std::string& text) const {
     if (text.empty()) return {};
     const std::string marker = "\xe2\x96\x81";
     std::string normalized = text[0] == ' ' ? "" : marker;
