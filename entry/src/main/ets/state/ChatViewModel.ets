@@ -1,5 +1,5 @@
 import { decideLaya, isLayaReady, LayaRuntimeState, observeLayaRuntime, releaseLaya } from '../services/LayaDecisionService'
-import { ChatConversation, ChatConversationSummary, conversationTitle } from '../models/ChatHistoryTypes'
+import { ChatConversation, ChatConversationSummary, ChatHistorySearchResult, conversationTitle } from '../models/ChatHistoryTypes'
 import { ChatHistoryService } from '../services/ChatHistoryService'
 import { bundleManager, common } from '@kit.AbilityKit'
 import preferences from '@ohos.data.preferences'
@@ -88,6 +88,14 @@ export class ChatViewModel {
   historyReady: boolean = false
   historyBusy: boolean = false
   historyError: string = ''
+  private skipEditConfirmation: boolean = false
+  historySearchText: string = ''
+  historySearchResults: ChatHistorySearchResult[] = []
+  historySearching: boolean = false
+  historySearchError: string = ''
+  highlightedMessageId: number = 0
+  private historySearchTimer: number = -1
+  private historySearchSerial: number = 0
   private activeConversation?: ChatConversation
   private historyService: ChatHistoryService = new ChatHistoryService()
   private conversationDrafts: Map<string, string> = new Map()
@@ -163,6 +171,7 @@ export class ChatViewModel {
   private context?: common.UIAbilityContext
   private modelLoadTimer: number = -1
   private autoScrollPending: boolean = false
+  private chatScrollTargetId: number = 0
   private chatAutoScrollEnabled: boolean = true
   private notifyCallback: () => void = () => {}
   private toastCallback: (message: string) => void = (_message: string) => {}
@@ -270,6 +279,7 @@ export class ChatViewModel {
     this.modelManager.initialize(this.filesDir)
     this.loadModelOrder()
     this.loadStartupModelSettings()
+    this.loadChatActionSettings()
     this.loadApiServerSettings()
     this.resetGenerationSettings(false)
     this.historyService.onAttachmentError = () => {
@@ -305,6 +315,8 @@ export class ChatViewModel {
   }
 
   dispose(): void {
+    clearTimeout(this.historySearchTimer)
+    this.historySearchSerial++
     this.flushHistory().catch((error: Error) => console.error(`保存对话失败：${formatError(error as Object)}`))
     this.stopModelLoadProgress()
     this.speechRecognitionService.shutdown()
@@ -1285,6 +1297,77 @@ export class ChatViewModel {
       !this.modelScanning && !this.apiServerStarting
   }
 
+  canEditQuestion(messageId: number): boolean {
+    return this.canManageConversations() && this.loaded && !this.speechRecognitionStarting &&
+      !this.speechRecognizing && this.session.messages.some((message: ChatMessage) =>
+        message.id === messageId && message.role === 'user' && message.kind !== 'notice')
+  }
+
+  needsEditQuestionConfirmation(messageId: number): boolean {
+    const index = this.session.messages.findIndex((message: ChatMessage) =>
+      message.id === messageId && message.role === 'user' && message.kind !== 'notice')
+    return !this.skipEditConfirmation && index >= 0 && this.session.messages.slice(index + 1)
+      .some((message: ChatMessage) => message.role === 'user' && message.kind !== 'notice')
+  }
+
+  async resendEditedQuestion(messageId: number, content: string, skipConfirmation: boolean = false): Promise<boolean> {
+    const text = content.trim()
+    if (!this.canEditQuestion(messageId) || text.length === 0) return false
+    const question = this.session.messages.find((message: ChatMessage) => message.id === messageId)
+    if (question === undefined) return false
+    if (question.imageUnavailable) {
+      this.toastCallback('原问题的图片无法读取，暂不能重发')
+      return false
+    }
+    if (question.imageUri.length > 0 && !this.currentModel().supportsImage) {
+      this.toastCallback('当前模型不支持原问题的图片，请先切换模型')
+      return false
+    }
+    if (skipConfirmation) this.rememberEditConfirmationChoice()
+    await this.generateChatMessage(text, question.imageUri, question.id, false, true)
+    return true
+  }
+
+  canRegenerateAnswer(messageId: number): boolean {
+    return this.canManageConversations() && this.loaded && !this.speechRecognitionStarting &&
+      !this.speechRecognizing && this.session.lastAnswer()?.id === messageId
+  }
+
+  async regenerateAnswer(messageId: number): Promise<void> {
+    if (!this.canRegenerateAnswer(messageId)) return
+    const question = this.session.lastQuestion()
+    if (question === undefined) return
+    if (question.imageUnavailable) {
+      this.toastCallback('原问题的图片无法读取，暂不能重新生成')
+      return
+    }
+    await this.generateChatMessage(question.content, question.imageUri, question.id, false)
+  }
+
+  updateHistorySearch(value: string): void {
+    this.historySearchText = value
+    clearTimeout(this.historySearchTimer)
+    const serial = ++this.historySearchSerial
+    this.historySearchResults = []
+    this.historySearchError = ''
+    this.historySearching = value.trim().length > 0
+    this.notify()
+    if (!this.historySearching) return
+    this.historySearchTimer = setTimeout(async () => {
+      try {
+        const results = await this.historyService.search(value)
+        if (serial === this.historySearchSerial) this.historySearchResults = results
+      } catch (_) {
+        if (serial === this.historySearchSerial) this.historySearchError = '搜索失败，请重试'
+      } finally {
+        if (serial === this.historySearchSerial) {
+          this.historySearching = false
+          this.notify()
+        }
+      }
+    }, 180)
+  }
+
   private historyFailure(action: string, error: Object): string {
     console.error(`${action}：${formatError(error)}`)
     const message = (error as Error).message ?? ''
@@ -1316,9 +1399,12 @@ export class ChatViewModel {
     }
   }
 
-  async openConversation(id: string): Promise<boolean> {
+  async openConversation(id: string, messageId: number = 0): Promise<boolean> {
     if (!this.canManageConversations()) return false
-    if (id === this.activeConversationId) return true
+    if (id === this.activeConversationId) {
+      if (messageId > 0) this.focusChatMessage(messageId)
+      return true
+    }
     this.historyBusy = true
     this.cancelSpeechRecognition(false)
     try {
@@ -1333,7 +1419,8 @@ export class ChatViewModel {
       this.historyError = ''
       await this.saveCurrentConversation()
       this.resumeChatAutoScroll()
-      this.notifyAndScroll()
+      if (messageId > 0) this.focusChatMessage(messageId)
+      else this.notifyAndScroll()
       return true
     } catch (error) {
       this.historyError = this.historyFailure('打开对话失败', error as Object)
@@ -1353,6 +1440,7 @@ export class ChatViewModel {
       if (this.activeConversation?.id === id) this.activeConversation.title = title.trim()
       this.conversations = this.historyService.list()
       this.historyError = ''
+      if (this.historySearchText.trim()) this.updateHistorySearch(this.historySearchText)
     } catch (error) {
       this.historyError = this.historyFailure('重命名对话失败', error as Object)
     } finally {
@@ -1376,6 +1464,7 @@ export class ChatViewModel {
       if (id === undefined || id === this.activeConversationId) this.startEmptyConversation(id !== undefined)
       this.conversations = this.historyService.list()
       this.historyError = ''
+      if (this.historySearchText.trim()) this.updateHistorySearch(this.historySearchText)
     } catch (error) {
       this.conversations = this.historyService.list()
       if (!this.conversations.some((item: ChatConversationSummary) => item.id === this.activeConversationId)) {
@@ -1423,6 +1512,7 @@ export class ChatViewModel {
   }
 
   private startEmptyConversation(restorePendingDraft: boolean = false): void {
+    this.resumeChatAutoScroll()
     this.cancelSpeechRecognition(false)
     this.activeConversation = undefined
     this.activeConversationId = ''
@@ -1463,6 +1553,7 @@ export class ChatViewModel {
       await this.historyService.save(conversation)
     } finally {
       this.conversations = this.historyService.list()
+      if (!this.generating && this.historySearchText.trim()) this.updateHistorySearch(this.historySearchText)
       this.notify()
     }
   }
@@ -1958,31 +2049,45 @@ export class ChatViewModel {
   }
 
   async sendMessage(): Promise<void> {
+    await this.generateChatMessage(this.inputText.trim(), this.selectedImageUri, 0, true)
+  }
+
+  private async generateChatMessage(text: string, attachedImage: string, replacingQuestionId: number,
+    consumeInput: boolean, editQuestion: boolean = false): Promise<void> {
     if (!this.historyReady || this.historyBusy) return
     if (this.rejectWhileModelScanning()) {
       return
     }
-    const text = this.inputText.trim()
-    if (!this.loaded || this.busy || text.length === 0) {
+    if (!this.loaded || this.busy || this.generating || this.modelLoading || this.apiServerStarting ||
+      this.speechRecognitionStarting || this.speechRecognizing || text.length === 0) {
       return
     }
-
-    const chatTurns = this.composeChatTurns(text)
-    const attachedImage = this.selectedImageUri
+    const question = editQuestion ? this.session.messages.find((message: ChatMessage) =>
+      message.id === replacingQuestionId && message.role === 'user' && message.kind !== 'notice') : this.session.lastQuestion()
+    if (replacingQuestionId > 0 && question?.id !== replacingQuestionId) return
     if (attachedImage.length > 0 && !this.currentModel().supportsImage) {
       this.setStatus(`${this.currentModel().shortName} 不支持图片输入，请清除图片后发送。`, 'warning')
       this.notify()
       return
     }
 
+    if (replacingQuestionId > 0) this.session.removeFromQuestion(replacingQuestionId)
+    const chatTurns = this.composeChatTurns(text)
     this.session.prepareModel(this.currentModel().id, this.currentModel().shortName)
-    this.session.appendMessage('user', text, attachedImage)
+    if (replacingQuestionId > 0 && !consumeInput && question !== undefined) {
+      if (editQuestion) question.content = text
+      this.session.messages = [...this.session.messages, question]
+    } else {
+      this.session.appendMessage('user', text, attachedImage)
+    }
     const assistantId = this.session.appendMessage('assistant', '', '')
     this.syncMessages()
     this.resumeChatAutoScroll()
-    this.conversationDrafts.delete(this.activeConversationId)
-    this.inputText = ''
-    this.selectedImageUri = ''
+    if (consumeInput) {
+      this.conversationDrafts.delete(this.activeConversationId)
+      this.inputText = ''
+      this.selectedImageUri = ''
+    }
     this.busy = true
     this.generating = true
     this.generationStopping = false
@@ -2062,12 +2167,13 @@ export class ChatViewModel {
     this.autoScrollPending = true
     setTimeout(() => {
       this.autoScrollPending = false
-      const lastIndex = this.messages.length - 1
+      const lastIndex = this.chatScrollTargetId > 0 ?
+        this.messages.findIndex((message: ChatMessage) => message.id === this.chatScrollTargetId) : this.messages.length - 1
       if (lastIndex < 0) {
         return
       }
       try {
-        this.chatScroller.scrollToIndex(lastIndex, false, ScrollAlign.END)
+        this.chatScroller.scrollToIndex(lastIndex, false, this.chatScrollTargetId > 0 ? ScrollAlign.START : ScrollAlign.END)
       } catch (err) {
         try {
           this.chatScroller.scrollEdge(Edge.Bottom)
@@ -2079,10 +2185,25 @@ export class ChatViewModel {
 
   pauseChatAutoScroll(): void {
     this.chatAutoScrollEnabled = false
+    this.chatScrollTargetId = 0
+    if (this.highlightedMessageId > 0) {
+      this.highlightedMessageId = 0
+      this.notify()
+    }
   }
 
   resumeChatAutoScroll(): void {
     this.chatAutoScrollEnabled = true
+    this.chatScrollTargetId = 0
+    this.highlightedMessageId = 0
+  }
+
+  private focusChatMessage(messageId: number): void {
+    if (!this.messages.some((message: ChatMessage) => message.id === messageId)) return
+    this.pauseChatAutoScroll()
+    this.chatScrollTargetId = messageId
+    this.highlightedMessageId = messageId
+    this.notifyAndScroll()
   }
 
   private resetLoadedModel(status: string): void {
@@ -2313,6 +2434,24 @@ export class ChatViewModel {
       this.notify()
     }).catch((_err: Error) => {
     })
+  }
+
+  private loadChatActionSettings(): void {
+    if (this.context === undefined) return
+    preferences.getPreferences(this.context, 'chat-actions').then((store: preferences.Preferences) => {
+      return store.get('skip-edit-confirmation', false)
+    }).then((value: preferences.ValueType) => {
+      this.skipEditConfirmation = value === true
+      this.notify()
+    }).catch(() => {})
+  }
+
+  private rememberEditConfirmationChoice(): void {
+    this.skipEditConfirmation = true
+    if (this.context === undefined) return
+    preferences.getPreferences(this.context, 'chat-actions').then((store: preferences.Preferences) => {
+      return store.put('skip-edit-confirmation', true).then(() => store.flush())
+    }).catch(() => {})
   }
 
   private loadStartupModelSettings(): void {

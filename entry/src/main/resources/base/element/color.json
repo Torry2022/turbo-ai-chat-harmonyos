@@ -1,5 +1,9 @@
 {
   "color": [
+    { "name": "chat_edit_primary_background", "value": "#EEF6FF" },
+    { "name": "chat_edit_primary_text", "value": "#175D91" },
+    { "name": "chat_edit_secondary_border", "value": "#ADD1EC" },
+    { "name": "chat_edit_secondary_text", "value": "#F1F7FC" },
     { "name": "nav_mobile_selected", "value": "#8DE4C3" },
     { "name": "model_ready_indicator", "value": "#32E875" },
     { "name": "page_compact", "value": "#06121F" },

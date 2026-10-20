@@ -13,8 +13,29 @@ export struct ChatHistoryPanel {
   @State private editingId: string = ''
   @State private titleInput: string = ''
 
+  private visibleItems(): ChatConversationSummary[] {
+    return this.viewModel.historySearchText.trim().length > 0 ?
+      this.viewModel.historySearchResults : this.viewModel.conversations
+  }
+
+  private excerpt(id: string): string {
+    if (!this.viewModel.historySearchText.trim()) return ''
+    const result = this.viewModel.historySearchResults.find((item) => item.id === id)
+    if (result === undefined || result.excerpt === result.title) return ''
+    return result.excerpt
+  }
+
+  private openItem(id: string): void {
+    const match = this.viewModel.historySearchText.trim() ?
+      this.viewModel.historySearchResults.find((item) => item.id === id) : undefined
+    this.getUIContext().getFocusController().clearFocus()
+    this.viewModel.openConversation(id, match?.messageId ?? 0).then((opened: boolean) => {
+      if (opened && this.closeOnSelection) this.onClose()
+    })
+  }
+
   private groupBefore(index: number): string {
-    const items = this.viewModel.conversations
+    const items = this.visibleItems()
     const group = historyGroup(items[index].updatedAt)
     return index === 0 || historyGroup(items[index - 1].updatedAt) !== group ? group : ''
   }
@@ -72,17 +93,29 @@ export struct ChatHistoryPanel {
             .accessibilityText('收起历史对话').onClick(() => this.onClose())
         }
       }.width('100%').height(this.closeOnSelection ? 44 : 36).padding({ left: 8, right: 2 })
-      if (this.viewModel.conversations.length === 0) {
+      if (this.viewModel.conversations.length > 0 || this.viewModel.historySearchText.length > 0) {
+        TextInput({ text: this.viewModel.historySearchText, placeholder: '搜索标题或消息' })
+          .attributeModifier(new InputFieldStyle()).height(36).fontSize(13)
+          .cancelButton({ style: CancelButtonStyle.INPUT })
+          .onChange((value: string) => {
+            this.editingId = ''
+            this.viewModel.updateHistorySearch(value)
+          })
+          .id('history-search').width('100%')
+      }
+      if (this.visibleItems().length === 0) {
         Column({ space: 12 }) {
-          Image($r('app.media.icon_chat_history')).width(36).height(36)
+          Image(this.viewModel.historySearchText.trim() ? $r('app.media.model_search_empty') :
+            $r('app.media.icon_chat_history')).width(36).height(36)
             .fillColor($r('app.color.text_muted')).opacity(0.65).accessibilityLevel('no')
-          Text(this.viewModel.historyReady ? '暂无对话' : '正在读取…')
+          Text(this.viewModel.historySearching ? '正在搜索…' : this.viewModel.historySearchError ||
+            (this.viewModel.historySearchText.trim() ? '未找到对话' : this.viewModel.historyReady ? '暂无对话' : '正在读取…'))
             .fontSize(13).fontColor($r('app.color.text_muted'))
         }.width('100%').layoutWeight(1).justifyContent(FlexAlign.Center)
           .alignItems(HorizontalAlign.Center)
       } else {
         List({ space: 2 }) {
-          ForEach(this.viewModel.conversations, (item: ChatConversationSummary, index: number) => {
+          ForEach(this.visibleItems(), (item: ChatConversationSummary, index: number) => {
             ListItem() {
               Column({ space: 4 }) {
                 if (this.groupBefore(index).length > 0) {
@@ -121,13 +154,14 @@ export struct ChatHistoryPanel {
                           .fontWeight(item.id === this.viewModel.activeConversationId ? FontWeight.Medium : FontWeight.Normal)
                           .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
                           .width('100%').textAlign(TextAlign.Start)
-                        Text(item.modelName).fontSize(10).fontColor($r('app.color.text_muted'))
-                          .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+                        Text(this.excerpt(item.id) || item.modelName).fontSize(this.excerpt(item.id) ? 12 : 10)
+                          .fontColor($r('app.color.text_muted'))
+                          .maxLines(this.excerpt(item.id) ? 2 : 1).textOverflow({ overflow: TextOverflow.Ellipsis })
                           .width('100%').textAlign(TextAlign.Start)
                       }.width('100%').alignItems(HorizontalAlign.Start)
                     }.layoutWeight(1).padding(0).backgroundColor(Color.Transparent)
                       .enabled(this.viewModel.canManageConversations())
-                      .onClick(() => { this.viewModel.openConversation(item.id).then((opened: boolean) => { if (opened && this.closeOnSelection) this.onClose() }) })
+                      .onClick(() => this.openItem(item.id))
                     Button({ type: ButtonType.Normal }) {
                       Text('⋯').fontSize(21).fontColor($r('app.color.text_muted'))
                     }.width(28).height(30).padding(0).borderRadius(6).backgroundColor(Color.Transparent)
@@ -143,7 +177,7 @@ export struct ChatHistoryPanel {
                 }
               }.width('100%')
             }
-          }, (item: ChatConversationSummary) => `${item.id}:${item.updatedAt}:${item.title}:${item.modelName}`)
+          }, (item: ChatConversationSummary) => `${item.id}:${item.updatedAt}:${item.title}:${item.modelName}:${this.excerpt(item.id)}`)
         }.width('100%').layoutWeight(1).scrollBar(BarState.Auto)
           .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
       }

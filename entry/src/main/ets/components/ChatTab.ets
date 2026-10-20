@@ -20,13 +20,13 @@ export struct ChatTab {
   @Prop compactHistoryManaged: boolean = false
   @Prop compactHistoryOpen: boolean = false
   @Prop leadingInset: number = 0
-  @Prop inputBottomOffset: number = 0
   @Prop inputExpanded: boolean = false
   onInputExpandedChange: (expanded: boolean) => void = (_expanded: boolean) => {}
   onRequestModel: () => void = () => {}
   onCompactHistoryChange: (open: boolean) => void = (_open: boolean) => {}
   @State private historyWidth: number = 0
   @State private historyOpen: boolean = false
+  @StorageLink('chatMouseInput') private mouseInput: boolean = false
 
   // Refresh plain message snapshots without remounting the native text selection.
   private messageForRender(previous: ChatMessage, _renderVersion: number): ChatMessage {
@@ -394,6 +394,12 @@ export struct ChatTab {
               } else {
             MessageBubble({
               message: this.messageForRender(message, this.renderVersion),
+              canRegenerate: this.viewModel.canRegenerateAnswer(message.id),
+              canEdit: this.viewModel.canEditQuestion(message.id),
+              confirmEdit: this.viewModel.needsEditQuestionConfirmation(message.id),
+              onEdit: (text: string, skip: boolean) => this.viewModel.resendEditedQuestion(message.id, text, skip),
+              highlighted: this.viewModel.highlightedMessageId === message.id,
+              onRegenerate: () => { this.viewModel.regenerateAnswer(message.id) },
               onAnswerSelection: () => this.viewModel.pauseChatAutoScroll(),
               onToggleThinking: (messageId: number) => {
                 this.viewModel.toggleMessageThinking(messageId)
@@ -581,7 +587,6 @@ export struct ChatTab {
       .width('100%')
       .flexShrink(0)
       .justifyContent(FlexAlign.End)
-      .translate({ y: this.inputBottomOffset })
       }.width('100%').backgroundColor(this.compactPage ? $r('app.color.page_compact') : $r('app.color.page'))
         .onAreaChange((_oldArea: Area, newArea: Area) => {
           if (!this.inputExpanded && this.animatedInputHeight < 0) {
@@ -629,6 +634,10 @@ export struct ChatTab {
             .animation({ duration: 220, curve: Curve.EaseInOut }))
       }
     }.width('100%').layoutWeight(1)
+      .onTouch((event: TouchEvent) => {
+        if (event.source === SourceType.TouchScreen) this.mouseInput = false
+      })
+      .onMouse(() => { this.mouseInput = true })
       .onAreaChange((_oldArea: Area, newArea: Area) => {
         const wasWide = this.wideHistory()
         this.historyWidth = Number(newArea.width)

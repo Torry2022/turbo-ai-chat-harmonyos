@@ -183,8 +183,8 @@ With a physical keyboard, Enter sends from the chat input and Shift+Enter insert
 - Adaptive navigation: bottom tabs in narrow windows and a sidebar in wider windows. On API 26 or later phones, the official immersive bar stays visible in Chat and hides or reappears while scrolling other pages.
 - The PC window title bar provides Chat, Settings, and Help menus for starting a new chat, opening appearance settings, and viewing keyboard shortcuts or the app version. Once opened, hover over another menu heading to switch menus, or press Esc to close. Phone and tablet entry points remain unchanged.
 - Chat displays app CPU, app memory, and device temperature. Message width is limited on wide screens for readability.
-- The composer keeps the model name and loading state visible. Clicking it before a model is loaded opens the model page. Long-press a message bubble on phones and tablets, or right-click it on PC, to open the Copy entire message menu.
-- Message text supports partial copying: on API 26 or later, use touch handles or a mouse to select across paragraphs, lists, code blocks, and tables within one answer; older systems support selection within one text block. Selections copy visible text, Copy entire message preserves Markdown, and code-block buttons copy code only.
+- The composer keeps the model name and loading state visible. Clicking it before a model is loaded opens the model page.
+- Message text supports partial copying: on API 26 or later, use touch handles or a mouse to select across paragraphs, lists, code blocks, and tables within one answer; older systems support selection within one text block. Selections copy visible text, the copy button below a bubble preserves Markdown, and code-block buttons copy code only.
 - The composer starts with one line, grows for long drafts, and can expand or collapse in place.
 - Wide model pages place the model list beside its settings. Long-press a handle to reorder by touch, or drag it directly with a mouse.
 - Monitoring cards switch between one and two columns according to available width, with metrics sharing the space inside each card.
@@ -202,7 +202,8 @@ With a physical keyboard, Enter sends from the chat input and Shift+Enter insert
 - Model management: download from the Model Gallery, reorder or delete installed models, and optionally load the current model when the app starts
 - Import local MNN models by selecting a folder (where supported), importing a zip, or pushing a directory and scanning it in the app; standard MNN export directories use `jinja.chat_template` from `llm_config.json`
 - OpenAI-compatible API: serve the currently loaded model to Cherry Studio and other LAN clients with streaming output and Bearer authentication
-- Chat history: save conversations and images locally; create, resume, rename, delete, or clear chats. Each reply retains its model and timestamp. Uninstalling or clearing app data removes history.
+- Message actions: copy, edit, and regenerate icons appear below message bubbles. User-message actions appear on hover or keyboard focus when using a mouse and remain visible for touch input. Long-press the text to select it. Regenerate the last answer using the currently loaded model and the original question and image, or edit and resend any question directly in its bubble. The original answer and subsequent messages are replaced; the composer draft is preserved.
+- Chat history: save conversations and images locally; create, resume, rename, delete, or clear chats. Search titles and message text, then open a result at the matching message. Each reply retains its model and timestamp. Uninstalling or clearing app data removes history.
 
 ## Screenshots
 

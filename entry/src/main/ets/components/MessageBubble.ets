@@ -1,4 +1,5 @@
-import { CompactActionStyle } from './ButtonStyles'
+import { EditQuestionConfirmDialog } from './EditQuestionConfirmDialog'
+import { ActionButtonStyle, CompactActionStyle } from './ButtonStyles'
 import { ChatMessage } from '../models/ChatTypes'
 import { MarkdownBlock, MarkdownSpan, parseInlineMarkdown, parseLightMarkdown } from '../utils/markdown'
 import { parseAssistantText } from '../utils/thinking'
@@ -20,14 +21,54 @@ export struct MessageBubble {
   }
   onToggleThinking: (messageId: number) => void = (_messageId: number) => {}
   onAnswerSelection: () => void = () => {}
+  @Prop canRegenerate: boolean = false
+  @Prop canEdit: boolean = false
+  @State private editing: boolean = false
+  @State private editText: string = ''
+  private editController: TextAreaController = new TextAreaController()
+  @Prop confirmEdit: boolean = false
+  onEdit: (text: string, skipConfirmation: boolean) => Promise<boolean> = async (_text: string, _skip: boolean) => false
+  private editDialog: CustomDialogController = new CustomDialogController({
+    builder: EditQuestionConfirmDialog({
+      onCancel: (): void => { this.editDialog.close() },
+      onConfirm: (skip: boolean) => {
+        this.editDialog.close()
+        this.submitEdit(skip)
+      }
+    }),
+    alignment: DialogAlignment.Center,
+    customStyle: true,
+    autoCancel: true,
+    maskColor: $r('app.color.scrim')
+  })
+  @Prop highlighted: boolean = false
+  onRegenerate: () => void = () => {}
   @State private selectionSnapshot: string = ''
   private answerSelection: Map<string, MessageSelectionPart> = new Map()
   private selectionController: SelectionContainerController | undefined = undefined
+  @StorageLink('chatMouseInput') private mouseInput: boolean = false
+  @State private hovered: boolean = false
+  @State private actionsFocused: boolean = false
+  @State private copied: boolean = false
+  private copiedTimer: number = -1
 
   aboutToAppear(): void {
     if (deviceInfo.apiAvailable('26.0.0')) {
       this.selectionController = new SelectionContainerController()
     }
+  }
+
+  private async submitEdit(skipConfirmation: boolean): Promise<void> {
+    if (await this.onEdit(this.editText.trim(), skipConfirmation)) {
+      this.editController.stopEditing()
+      this.editing = false
+      this.editText = ''
+    }
+  }
+
+  aboutToDisappear(): void {
+    this.editDialog.close()
+    if (this.copiedTimer >= 0) clearTimeout(this.copiedTimer)
   }
 
   private inlinePlainText(text: string): string {
@@ -51,12 +92,14 @@ export struct MessageBubble {
     this.selectionSnapshot = ''
   }
 
-  private async copyText(text: string): Promise<void> {
+  private async copyText(text: string): Promise<boolean> {
     try {
       await pasteboard.getSystemPasteboard().setData(pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, text))
       this.clearAnswerSelection()
+      return true
     } catch (_) {
       this.showLinkToast('复制失败，请重试')
+      return false
     }
   }
 
@@ -65,6 +108,70 @@ export struct MessageBubble {
     if (text === nativeText) return true
     this.copyText(text)
     return false
+  }
+
+  private async copyMessage(): Promise<void> {
+    if (await this.copyText(this.answerText())) {
+      this.copied = true
+      if (this.copiedTimer >= 0) clearTimeout(this.copiedTimer)
+      this.copiedTimer = setTimeout(() => {
+        this.copied = false
+        this.copiedTimer = -1
+      }, 1500)
+    }
+  }
+
+  private showActions(): boolean {
+    return this.message.role !== 'user' || !this.mouseInput || this.hovered || this.actionsFocused
+  }
+
+  @Builder
+  private MessageAction(icon: Resource, label: string, action: () => void) {
+    Button({ type: ButtonType.Normal }) {
+      Image(label === '复制' && this.copied ? $r('app.media.icon_message_check') : icon)
+        .width(18).height(18).fillColor($r('app.color.text_muted'))
+    }
+    .id(`message-${this.message.id}-${label}`)
+    .width(32).height(32).padding(0)
+    .margin({ left: 4, right: 4 })
+    .responseRegion({ x: -4, y: 0, width: 40, height: 40 })
+    .borderRadius($r('app.float.button_radius'))
+    .backgroundColor(Color.Transparent)
+    .hoverEffect(HoverEffect.Auto)
+    .accessibilityText(label)
+    .bindTips(label)
+    .onFocus(() => { this.actionsFocused = true })
+    .onBlur(() => { this.actionsFocused = false })
+    .onClick(action)
+  }
+
+  @Builder
+  private MessageActions() {
+    Row({ space: 2 }) {
+      if (this.message.role === 'user') Blank()
+      if (this.answerText().length > 0) {
+        this.MessageAction($r('app.media.icon_message_copy'), '复制', () => { this.copyMessage() })
+      }
+      if (this.canEdit) {
+        this.MessageAction($r('app.media.icon_message_edit'), '编辑', () => {
+          this.clearAnswerSelection()
+          this.editText = this.message.content
+          this.editing = true
+          this.onAnswerSelection()
+        })
+      }
+      if (this.canRegenerate) {
+        this.MessageAction($r('app.media.icon_message_regenerate'), '重新生成', () => {
+          this.clearAnswerSelection()
+          this.onRegenerate()
+        })
+      }
+    }
+    .width('100%').height(40)
+    .alignItems(VerticalAlign.Top)
+    // Keep the hover row in the layout so revealing it never moves messages.
+    .opacity(this.showActions() ? 1 : 0)
+    .hitTestBehavior(this.showActions() ? HitTestMode.Default : HitTestMode.None)
   }
 
   private hasThinking(): boolean {
@@ -383,84 +490,123 @@ export struct MessageBubble {
       if (this.message.role === 'user') {
         Blank()
       }
-      Column({ space: 6 }) {
-        Row() {
-          Text(this.message.role === 'user' ? '你' : (this.message.modelName?.trim().length ? this.message.modelName : '助手'))
-            .fontSize(11)
-            .fontColor(this.message.role === 'user' ? $r('app.color.chat_user_meta') : $r('app.color.text_assistant_meta'))
-            .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).layoutWeight(1)
-          Text(this.message.time)
-            .fontSize(11)
-            .fontColor(this.message.role === 'user' ? $r('app.color.chat_user_time') : $r('app.color.text_caption'))
-            .margin({ left: 8 }).flexShrink(0)
-        }.width('100%')
-        if (this.message.imageUnavailable) {
-          Text('此图片未能保存').fontSize(11).fontColor($r('app.color.text_muted'))
-        }
-        if (this.message.imageUri.length > 0) {
-          Image(this.message.imageUri)
-            .width(132)
-            .height(88)
-            .objectFit(ImageFit.Cover)
-            .borderRadius(8)
-        }
-        if (this.message.role === 'assistant' && this.hasThinking()) {
-          this.ThinkingBlock()
-        }
-        if (this.answerText().length > 0 || !this.hasThinking()) {
-          if (this.message.role === 'assistant') {
-            this.SelectableAnswer()
-          } else {
-            Text(this.answerText().length > 0 ? this.answerText() : '...')
-              .copyOption(CopyOptions.LocalDevice)
-              .textSelectable(TextSelectableMode.SELECTABLE_FOCUSABLE)
+      Column({ space: 2 }) {
+        Column({ space: 6 }) {
+          Row() {
+            Text(this.message.role === 'user' ? '你' : (this.message.modelName?.trim().length ? this.message.modelName : '助手'))
+              .fontSize(11)
+              .fontColor(this.message.role === 'user' ? $r('app.color.chat_user_meta') : $r('app.color.text_assistant_meta'))
+              .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).layoutWeight(1)
+            Text(this.message.time)
+              .fontSize(11)
+              .fontColor(this.message.role === 'user' ? $r('app.color.chat_user_time') : $r('app.color.text_caption'))
+              .margin({ left: 8 }).flexShrink(0)
+          }.width('100%')
+          if (this.message.imageUnavailable) {
+            Text('此图片未能保存').fontSize(11).fontColor($r('app.color.text_muted'))
+          }
+          if (this.message.imageUri.length > 0) {
+            Image(this.message.imageUri)
+              .width(132)
+              .height(88)
+              .objectFit(ImageFit.Cover)
+              .borderRadius(8)
+          }
+          if (this.message.role === 'assistant' && this.hasThinking()) {
+            this.ThinkingBlock()
+          }
+          if (this.answerText().length > 0 || !this.hasThinking()) {
+            if (this.message.role === 'assistant') {
+              this.SelectableAnswer()
+            } else if (this.editing) {
+              TextArea({ text: this.editText, controller: this.editController })
+                .id(`edit-question-${this.message.id}`)
+                .onAppear(() => {
+                  this.getUIContext().getFocusController().requestFocus(`edit-question-${this.message.id}`)
+                })
+                .height('auto')
+                .minLines(2)
+                .width('100%')
+                .constraintSize({ minHeight: 44, maxHeight: 240 })
+                .fontSize(15)
+                .lineHeight(22)
+                .fontColor($r('app.color.chat_user_text'))
+                .caretColor($r('app.color.chat_user_text'))
+                .backgroundColor(Color.Transparent)
+                .border({ width: 0 })
+                .borderRadius(0)
+                .padding(0)
+                .onChange((value: string) => { this.editText = value })
+              Row({ space: 8 }) {
+                Blank()
+                Button('取消', { type: ButtonType.Normal })
+                  .attributeModifier(new ActionButtonStyle(Color.Transparent, $r('app.color.chat_edit_secondary_text')))
+                  .height(32).width(64).fontSize(13)
+                  .border({ width: 1, color: $r('app.color.chat_edit_secondary_border'), radius: $r('app.float.button_radius') })
+                  .onClick(() => {
+                    this.editController.stopEditing()
+                    this.editing = false
+                    this.editText = ''
+                  })
+                Button('重发', { type: ButtonType.Normal })
+                  .attributeModifier(new ActionButtonStyle($r('app.color.chat_edit_primary_background'), $r('app.color.chat_edit_primary_text')))
+                  .height(32).width(64).fontSize(13)
+                  .enabled(this.canEdit && this.editText.trim().length > 0)
+                  .onClick(() => {
+                    if (this.confirmEdit) this.editDialog.open()
+                    else this.submitEdit(false)
+                  })
+              }.width('100%').margin({ top: 4 })
+            } else {
+              Text(this.answerText().length > 0 ? this.answerText() : '...')
+                .copyOption(CopyOptions.LocalDevice)
+                .textSelectable(TextSelectableMode.SELECTABLE_FOCUSABLE)
+                .width('100%')
+                .fontSize(15)
+                .lineHeight(22)
+                .textAlign(TextAlign.Start)
+                .fontColor($r('app.color.chat_user_text'))
+            }
+          }
+          if (this.message.generationState === 'stopped') {
+            Text('已停止生成').fontSize(11).fontColor($r('app.color.text_muted'))
+          }
+          if (this.message.generationState === 'interrupted') {
+            Text('生成已中断').fontSize(11).fontColor($r('app.color.status_warning'))
+          }
+          if (this.message.generationState === 'failed') {
+            Text(this.answerText().length > 0 ? '生成失败，已保留以上内容' : '生成失败')
+              .fontSize(11)
+              .fontColor($r('app.color.status_error'))
+          }
+          if (this.message.role === 'assistant' && this.message.perfMetrics !== undefined) {
+            Text(`TTFT ${this.message.perfMetrics.ttft}ms · ${this.message.perfMetrics.tpot}ms/tok · ${this.message.perfMetrics.tokensPerSec} tok/s · ${this.message.perfMetrics.tokens} tokens`)
+              .fontSize(10)
+              .fontColor($r('app.color.text_stats'))
+              .textAlign(TextAlign.Center)
               .width('100%')
-              .fontSize(15)
-              .lineHeight(22)
-              .textAlign(TextAlign.Start)
-              .fontColor($r('app.color.chat_user_text'))
           }
         }
-        if (this.message.generationState === 'stopped') {
-          Text('已停止生成').fontSize(11).fontColor($r('app.color.text_muted'))
-        }
-        if (this.message.generationState === 'interrupted') {
-          Text('生成已中断').fontSize(11).fontColor($r('app.color.status_warning'))
-        }
-        if (this.message.generationState === 'failed') {
-          Text(this.answerText().length > 0 ? '生成失败，已保留以上内容' : '生成失败')
-            .fontSize(11)
-            .fontColor($r('app.color.status_error'))
-        }
-        if (this.message.role === 'assistant' && this.message.perfMetrics !== undefined) {
-          Text(`TTFT ${this.message.perfMetrics.ttft}ms · ${this.message.perfMetrics.tpot}ms/tok · ${this.message.perfMetrics.tokensPerSec} tok/s · ${this.message.perfMetrics.tokens} tokens`)
-            .fontSize(10)
-            .fontColor($r('app.color.text_stats'))
-            .textAlign(TextAlign.Center)
-            .width('100%')
+        .padding({ left: 12, right: 12, top: 10, bottom: 10 })
+        .backgroundColor(this.message.role === 'user' ? $r('app.color.chat_user') : $r('app.color.chat_assistant'))
+        .borderRadius(8)
+        .border({ width: this.highlighted ? 1 : 0, color: $r('app.color.control_accent') })
+        .width('100%')
+        if (this.message.kind !== 'notice' && !this.editing &&
+          (this.answerText().length > 0 || this.canEdit || this.canRegenerate)) {
+          this.MessageActions()
         }
       }
-      .padding({ left: 12, right: 12, top: 10, bottom: 10 })
-      .backgroundColor(this.message.role === 'user' ? $r('app.color.chat_user') : $r('app.color.chat_assistant'))
-      .borderRadius(8)
       .width(this.message.role === 'user' ? '84%' : '94%')
       .constraintSize({ maxWidth: this.message.role === 'user' ? 720 : 880 })
-      .bindContextMenu(this.CopyMenuBuilder,
-        deviceInfo.deviceType === '2in1' ? ResponseType.RightClick : ResponseType.LongPress)
+      .onHover((hover: boolean, event: HoverEvent) => {
+        this.hovered = hover
+        if (hover && event.source === SourceType.Mouse) this.mouseInput = true
+      })
       if (this.message.role !== 'user') {
         Blank()
       }
     }
     .width('100%')
-  }
-
-  @Builder
-  CopyMenuBuilder() {
-    Menu() {
-      MenuItem({ content: '复制整条' })
-        .onClick(() => {
-          this.copyText(this.answerText())
-        })
-    }
   }
 }

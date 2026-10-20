@@ -23,6 +23,11 @@ export interface ChatHistoryIndex {
   conversations: ChatConversationSummary[]
 }
 
+export interface ChatHistorySearchResult extends ChatConversationSummary {
+  messageId?: number
+  excerpt: string
+}
+
 export function conversationTitle(text: string): string {
   return Array.from(text.trim().replace(/\s+/g, ' ')).slice(0, 32).join('') || '新对话'
 }

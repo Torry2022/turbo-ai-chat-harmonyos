@@ -367,7 +367,6 @@ struct Index {
           this.changeTab(1)
           this.showToast('请先加载模型', 1800)
         },
-        inputBottomOffset: this.windowWidth >= 600 && !this.keyboardVisible ? this.bottomInset : 0,
         viewModel: this.viewModel,
         renderVersion: this.stateVersion,
         active: this.activeTab === 0,
@@ -381,7 +380,8 @@ struct Index {
     }
     .width('100%')
     .height('100%')
-    .padding({ bottom: this.windowWidth >= 600 ? $r('app.float.wide_bottom_spacing') :
+    // The window handles system navigation avoidance; the chat page adds only a visual gap.
+    .padding({ bottom: this.windowWidth >= 600 ? 8 :
       (this.usePhoneTabs() || this.keyboardVisible ? 0 : this.mobileNavigationHeight() + 8) })
     .opacity(this.usePhoneTabs() || this.transitionTab === 0 ? 1 : 0)
     .visibility(this.usePhoneTabs() || (this.visibleTabs & 1) !== 0 ? Visibility.Visible : Visibility.Hidden)

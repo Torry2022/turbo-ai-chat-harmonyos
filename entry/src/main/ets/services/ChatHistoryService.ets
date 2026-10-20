@@ -1,6 +1,8 @@
 import fs from '@ohos.file.fs'
 import { ChatMessage } from '../models/ChatTypes'
-import { ChatConversation, ChatConversationSummary, ChatHistoryIndex } from '../models/ChatHistoryTypes'
+import { ChatConversation, ChatConversationSummary, ChatHistoryIndex, ChatHistorySearchResult } from '../models/ChatHistoryTypes'
+import { parseAssistantText } from '../utils/thinking'
+import { MarkdownBlock, MarkdownSpan, parseInlineMarkdown, parseLightMarkdown } from '../utils/markdown'
 
 export class ChatHistoryService {
   warning: string = ''
@@ -53,6 +55,59 @@ export class ChatHistoryService {
       await this.writeIndex()
       return record
     })
+  }
+
+  search(query: string): Promise<ChatHistorySearchResult[]> {
+    const needle = query.trim().replace(/\s+/g, ' ').toLowerCase()
+    return this.enqueue(async (): Promise<ChatHistorySearchResult[]> => {
+      if (needle.length === 0) return []
+      const results: ChatHistorySearchResult[] = []
+      for (const summary of this.list()) {
+        try {
+          const record = await this.readRecord(summary.id)
+          let match: ChatHistorySearchResult | undefined = undefined
+          for (const message of record.messages) {
+            if (message.kind === 'notice' || (message.role !== 'user' && message.role !== 'assistant')) continue
+            const text = this.searchText(message)
+            const position = text.toLowerCase().indexOf(needle)
+            if (position < 0) continue
+            const start = Math.max(0, position - 18)
+            const end = Math.min(text.length, Math.max(start + 90, position + needle.length))
+            match = {
+              id: summary.id, title: summary.title, createdAt: summary.createdAt, updatedAt: summary.updatedAt,
+              modelName: summary.modelName, messageId: message.id,
+              excerpt: `${start > 0 ? '…' : ''}${text.substring(start, end)}${end < text.length ? '…' : ''}`
+            }
+            break
+          }
+          if (match !== undefined) results.push(match)
+          else if (record.title.toLowerCase().indexOf(needle) >= 0) {
+            results.push({
+              id: summary.id, title: summary.title, createdAt: summary.createdAt, updatedAt: summary.updatedAt,
+              modelName: summary.modelName, excerpt: ''
+            })
+          }
+        } catch (_) {
+          // A damaged record must not prevent searching the remaining conversations.
+        }
+      }
+      return results
+    })
+  }
+
+  private searchText(message: ChatMessage): string {
+    if (message.role === 'user') return message.content.replace(/\s+/g, ' ').trim()
+    const inlineText = (text: string): string =>
+      parseInlineMarkdown(text).map((span: MarkdownSpan) => span.text).join('')
+    return parseLightMarkdown(parseAssistantText(message.content).answer).map((block: MarkdownBlock): string => {
+      if (block.type === 'code') return block.text
+      if (block.type === 'table') {
+        return [block.headers ?? [], ...(block.rows ?? [])]
+          .map((row: string[]) => row.map(inlineText).join(' ')).join(' ')
+      }
+      if (block.items.length > 0) return block.items.map(inlineText).join(' ')
+      return inlineText(block.text)
+    }).join(' ').replace(/\s+/g, ' ').trim()
   }
 
   save(conversation: ChatConversation): Promise<void> {

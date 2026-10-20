@@ -9,6 +9,30 @@ export class ChatSession {
   private modelId: string = ''
   private modelName: string = ''
 
+  lastQuestion(): ChatMessage | undefined {
+    for (let index = this.messages.length - 1; index >= 0; index--) {
+      if (this.messages[index].role === 'user') return this.messages[index]
+    }
+    return undefined
+  }
+
+  lastAnswer(): ChatMessage | undefined {
+    const question = this.lastQuestion()
+    if (question === undefined) return undefined
+    for (let index = this.messages.length - 1; index >= 0; index--) {
+      const message = this.messages[index]
+      if (message.id === question.id) break
+      if (message.role === 'assistant' && message.kind !== 'notice') return message
+    }
+    return undefined
+  }
+
+  removeFromQuestion(messageId: number): void {
+    const index = this.messages.findIndex((message: ChatMessage) =>
+      message.id === messageId && message.role === 'user' && message.kind !== 'notice')
+    if (index >= 0) this.messages = this.messages.slice(0, index)
+  }
+
   restore(messages: ChatMessage[]): void {
     this.messages = messages.map((message: ChatMessage) => {
       if (message.generationState === 'generating') {

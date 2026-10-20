@@ -50,6 +50,7 @@ const sdkStub = new Proxy(function () {}, {
   construct: () => sdkStub,
   apply: () => sdkStub
 });
+const preferenceStores = new Map();
 const cache = new Map();
 function load(filename) {
   filename = path.resolve(filename);
@@ -64,6 +65,12 @@ function load(filename) {
   const requireSource = name => {
     if (name.startsWith('.')) return load(path.resolve(path.dirname(filename), name + '.ets'));
     if (name === '@ohos.file.fs') return fileIo;
+    if (name === '@ohos.data.preferences') return { getPreferences: async (_context, name) => {
+      if (!preferenceStores.has(name)) preferenceStores.set(name, new Map());
+      const values = preferenceStores.get(name);
+      return { get: async (key, fallback) => values.has(key) ? values.get(key) : fallback,
+        put: async (key, value) => values.set(key, value), flush: async () => {} };
+    } };
     if (name === '@ohos/hypium') return hypium;
     if (name === '@kit.ArkTS') return { buffer: Buffer };
     return sdkStub;
@@ -71,7 +78,7 @@ function load(filename) {
   vm.runInNewContext(result.outputText, {
     module, exports: module.exports, require: requireSource, console, ArrayBuffer, Buffer,
     setTimeout, clearTimeout, setInterval, clearInterval,
-    Observed: type => type, Scroller: class {}, $r: name => name
+    Observed: type => type, Scroller: class {}, ScrollAlign: { START: 0, END: 1 }, Edge: { Bottom: 1 }, $r: name => name
   }, { filename });
   return module.exports;
 }
@@ -294,6 +301,265 @@ add('generation failures retain streamed text and failed state', async () => {
   assert.equal(savedAnswer.content, '已经生成的部分回答');
   assert.equal(savedAnswer.generationState, 'failed');
 });
+
+async function actionView(name) {
+  const { ChatViewModel } = load(path.join(ets, 'state/ChatViewModel.ets'));
+  const view = new ChatViewModel();
+  view.notify = view.notifyAndScroll = view.notifyAndMaybeScroll = view.refreshStats = () => {};
+  view.historyReady = view.loaded = true;
+  await view.historyService.initialize(path.join(temporary, name));
+  view.session.prepareModel('old-model', '旧模型');
+  view.session.appendMessage('user', '更早的问题');
+  view.session.appendMessage('assistant', '更早的回答。');
+  const image = path.join(temporary, name + '-image');
+  fs.writeFileSync(image, 'original image');
+  view.session.appendMessage('user', '最后的问题', image);
+  const answer = view.session.appendMessage('assistant', '最后的旧回答。');
+  view.session.markGeneration(answer, 'complete');
+  view.messages = view.session.messages;
+  view.currentModel = () => ({ id: 'new-model', shortName: '新模型', supportsImage: true, systemPrompt: 'system' });
+  view.currentContextMessageLimit = () => 6;
+  return view;
+}
+function finished(answer = '新的回答。') {
+  return { answer, includeInContext: true, status: '生成完成',
+    result: { stopReason: 'eos', text: answer, generatedTokens: 3 },
+    perfMetrics: { ttft: 1, tpot: 2, tokensPerSec: 3, tokens: 3 } };
+}
+add('regeneration replaces only the last answer and uses current model without duplicating context', async () => {
+  const view = await actionView('regenerate');
+  const originalQuestion = view.session.lastQuestion();
+  const oldAnswer = view.session.lastAnswer();
+  let request, resolve;
+  view.generationWorkflow = { run: value => { request = value; return new Promise(done => { resolve = done; }); } };
+  view.updateInputText('保留未发送草稿');
+  view.selectedImageUri = 'file://draft-image';
+  await view.regenerateAnswer(oldAnswer.id);
+  assert.equal(view.busy, true);
+  assert.equal(request.imageUri, originalQuestion.imageUri);
+  assert.equal(request.turns.length, 4);
+  assert.deepEqual(Array.from(request.turns, item => item.content), ['system', '更早的问题', '更早的回答。', '最后的问题']);
+  assert.equal(view.session.lastQuestion().id, originalQuestion.id);
+  assert.equal(view.session.lastQuestion().createdAt, originalQuestion.createdAt);
+  assert.equal(view.session.lastAnswer().modelId, 'new-model');
+  assert.equal(view.messages.some(item => item.id === oldAnswer.id), false);
+  assert.equal(view.inputText, '保留未发送草稿');
+  assert.equal(view.selectedImageUri, 'file://draft-image');
+  await view.regenerateAnswer(view.session.lastAnswer().id);
+  assert.equal(view.messages.filter(item => item.role === 'user').length, 2);
+  resolve(finished());
+  await new Promise(done => setTimeout(done, 0));
+  await view.flushHistory();
+  const record = await view.historyService.load(view.activeConversationId);
+  assert.equal(record.messages.at(-1).content, '新的回答。');
+  assert.equal(record.messages.at(-1).modelName, '新模型');
+  assert.equal(record.messages.at(-1).generationState, 'complete');
+});
+add('missing attachments, unavailable model and stale action IDs cannot replace a turn', async () => {
+  const view = await actionView('action-guards');
+  const before = JSON.stringify(view.messages);
+  view.generationWorkflow = { run: () => { throw Error('Must not generate'); } };
+  await view.regenerateAnswer(99999);
+  view.loaded = false;
+  await view.regenerateAnswer(view.session.lastAnswer().id);
+  view.loaded = true;
+  view.session.lastQuestion().imageUnavailable = true;
+  const missing = JSON.stringify(view.messages);
+  await view.regenerateAnswer(view.session.lastAnswer().id);
+  assert.equal(JSON.stringify(view.messages), missing);
+  assert.ok(before.length > 0);
+});
+add('inline edit replaces the last turn, retains its attachment and leaves composer drafts intact', async () => {
+  const view = await actionView('inline-edit');
+  const question = view.session.lastQuestion();
+  const oldAnswer = view.session.lastAnswer();
+  let request;
+  view.generationWorkflow = { run: value => { request = value; return Promise.resolve(finished()); } };
+  view.updateInputText('底部草稿');
+  view.selectedImageUri = 'file://draft';
+  assert.equal(await view.resendEditedQuestion(question.id, ' 修改后的问题 '), true);
+  await new Promise(done => setTimeout(done, 0));
+  assert.deepEqual(Array.from(request.turns, item => item.content), ['system', '更早的问题', '更早的回答。', '修改后的问题']);
+  assert.equal(request.imageUri, question.imageUri);
+  assert.equal(view.session.lastQuestion().id, question.id);
+  assert.equal(view.session.lastQuestion().content, '修改后的问题');
+  assert.equal(view.messages.some(item => item.id === oldAnswer.id), false);
+  assert.equal(view.inputText, '底部草稿');
+  assert.equal(view.selectedImageUri, 'file://draft');
+  await view.flushHistory();
+  const saved = await view.historyService.load(view.activeConversationId);
+  assert.equal(saved.messages.filter(item => item.role === 'user').length, 2);
+  assert.equal(saved.messages.at(-2).content, '修改后的问题');
+});
+add('editing an earlier question keeps only preceding messages and persists the replacement without later turns', async () => {
+  const view = await actionView('edit-earlier-question');
+  const firstPair = view.messages.slice(0, 2);
+  const question = view.session.lastQuestion();
+  const originalTime = question.createdAt;
+  const originalImage = question.imageUri;
+  const oldAnswer = view.session.lastAnswer().id;
+  const laterQuestion = view.session.appendMessage('user', '后续问题');
+  const laterAnswer = view.session.appendMessage('assistant', '后续回答');
+  view.session.appendMessage('notice', '后续模型切换提示', '', false);
+  view.messages = view.session.messages;
+  let request;
+  view.generationWorkflow = { run: value => { request = value; return Promise.resolve(finished()); } };
+  assert.equal(view.canEditQuestion(question.id), true);
+  assert.equal(view.canEditQuestion(oldAnswer), false);
+  assert.equal(await view.resendEditedQuestion(question.id, '修改中间的问题'), true);
+  await new Promise(done => setTimeout(done, 0));
+  assert.deepEqual(view.session.messages.slice(0, 2), firstPair);
+  assert.deepEqual(Array.from(request.turns, item => item.content), ['system', '更早的问题', '更早的回答。', '修改中间的问题']);
+  assert.equal(request.imageUri, originalImage);
+  assert.equal(view.session.lastQuestion().createdAt, originalTime);
+  assert.equal(view.messages.some(item => [oldAnswer, laterQuestion, laterAnswer].includes(item.id)), false);
+  assert.equal(view.messages.some(item => item.content === '后续模型切换提示'), false);
+  assert.equal(view.session.lastAnswer().modelId, 'new-model');
+  await view.flushHistory();
+  const saved = await view.historyService.load(view.activeConversationId);
+  assert.equal(saved.messages.some(item => item.content === '后续问题'), false);
+  assert.equal(saved.messages.at(-2).content, '修改中间的问题');
+  assert.equal(await view.resendEditedQuestion(laterQuestion, '过期提交'), false);
+});
+add('editing the first question removes all later turns and sends no discarded context', async () => {
+  const view = await actionView('edit-first-question');
+  const first = view.messages.find(item => item.role === 'user');
+  let request;
+  view.generationWorkflow = { run: value => { request = value; return Promise.resolve(finished()); } };
+  assert.equal(await view.resendEditedQuestion(first.id, '新的开场问题'), true);
+  await new Promise(done => setTimeout(done, 0));
+  assert.deepEqual(Array.from(request.turns, item => item.content), ['system', '新的开场问题']);
+  assert.equal(view.messages.filter(item => item.role === 'user').length, 1);
+  assert.equal(view.messages.filter(item => item.role === 'assistant').length, 1);
+  assert.equal(view.session.lastQuestion().id, first.id);
+});
+add('confirmation is limited to earlier questions and opting out persists only after a valid resend', async () => {
+  const view = await actionView('edit-confirmation');
+  const first = view.messages.find(item => item.role === 'user');
+  const last = view.session.lastQuestion();
+  assert.equal(view.needsEditQuestionConfirmation(first.id), true);
+  assert.equal(view.needsEditQuestionConfirmation(last.id), false);
+  assert.equal(view.needsEditQuestionConfirmation(99999), false);
+  const before = JSON.stringify(view.messages);
+  assert.equal(await view.resendEditedQuestion(first.id, ' ', true), false);
+  assert.equal(view.needsEditQuestionConfirmation(first.id), true);
+  assert.equal(JSON.stringify(view.messages), before);
+  view.context = {};
+  view.generationWorkflow = { run: () => Promise.resolve(finished()) };
+  await view.resendEditedQuestion(last.id, '修改后问题', true);
+  await new Promise(done => setTimeout(done, 0));
+  assert.equal(view.needsEditQuestionConfirmation(first.id), false);
+  const restored = await actionView('edit-confirmation-restored');
+  restored.context = {};
+  restored.loadChatActionSettings();
+  await new Promise(done => setTimeout(done, 0));
+  assert.equal(restored.needsEditQuestionConfirmation(restored.messages[0].id), false);
+  assert.equal(preferenceStores.get('chat-actions').get('skip-edit-confirmation'), true);
+  preferenceStores.clear();
+});
+add('inline edit rejects blank, stale, busy and incompatible-image submissions without changing history', async () => {
+  const view = await actionView('inline-edit-guards');
+  const id = view.session.lastQuestion().id;
+  const before = JSON.stringify(view.messages);
+  view.generationWorkflow = { run: () => { throw Error('Must not generate'); } };
+  assert.equal(await view.resendEditedQuestion(id, '  '), false);
+  assert.equal(await view.resendEditedQuestion(99999, '修改'), false);
+  view.busy = true;
+  assert.equal(await view.resendEditedQuestion(id, '修改'), false);
+  view.busy = false;
+  view.currentModel = () => ({ supportsImage: false });
+  assert.equal(await view.resendEditedQuestion(id, '修改'), false);
+  assert.equal(JSON.stringify(view.messages), before);
+});
+add('history search finds message excerpts without changing the active conversation or exposing notices and thinking', async () => {
+  const directory = path.join(temporary, 'search');
+  const service = new ChatHistoryService();
+  await service.initialize(directory);
+  const first = conversation('c-search-1');
+  first.title = '设备记录';
+  first.messages[1].content = '<think>隐藏的推理词</think>电池温度\n保持正常。';
+  first.messages.push({ ...first.messages[1], id: 3, kind: 'notice', content: '系统通知专有词' });
+  const second = conversation('c-search-2');
+  second.title = 'HarmonyOS Tips';
+  second.updatedAt = 3000;
+  second.messages[0].content = 'API 调用示例';
+  await service.save(first); await service.save(second);
+  const indexPath = path.join(directory, 'chat-history/index.json');
+  const indexBefore = fs.readFileSync(indexPath, 'utf8');
+  const body = await service.search('温度 保持');
+  assert.equal(body.length, 1);
+  assert.equal(body[0].messageId, first.messages[1].id);
+  assert.equal(body[0].excerpt, '电池温度 保持正常。');
+  assert.equal((await service.search('harmonyos'))[0].id, second.id);
+  assert.equal((await service.search('api'))[0].messageId, second.messages[0].id);
+  assert.equal((await service.search('隐藏的推理词')).length, 0);
+  assert.equal((await service.search('系统通知专有词')).length, 0);
+  assert.equal((await service.search('   ')).length, 0);
+  assert.equal((await service.search('不存在')).length, 0);
+  assert.equal(fs.readFileSync(indexPath, 'utf8'), indexBefore);
+  fs.writeFileSync(path.join(directory, 'chat-history', first.id, 'conversation.json'), '{broken');
+  assert.equal((await service.search('api'))[0].id, second.id);
+});
+add('history search uses rendered Markdown text in paragraphs, tables and code', async () => {
+  const service = new ChatHistoryService();
+  await service.initialize(path.join(temporary, 'search-markdown'));
+  const record = conversation('c-markdown');
+  record.title = 'Markdown example';
+  record.messages[1].content = '## 检索示例\n\n本地**隐私**保护与[离线运行](https://example.com)。\n\n| 名称 | 用途 |\n| --- | --- |\n| 索引 | 查询资料 |\n\n```cpp\nint count = 3;\n```';
+  await service.save(record);
+  const prose = await service.search('本地隐私保护');
+  assert.equal(prose.length, 1);
+  assert.ok(!prose[0].excerpt.includes('**'));
+  assert.ok(!prose[0].excerpt.includes('example.com'));
+  assert.ok(!prose[0].excerpt.includes('##'));
+  assert.ok((await service.search('索引 查询资料'))[0].excerpt.includes('索引 查询资料'));
+  assert.ok((await service.search('int count'))[0].excerpt.includes('int count = 3;'));
+  assert.equal((await service.search('Markdown example'))[0].excerpt, '');
+});
+
+add('a stale search completion cannot replace newer results or revive a cleared query', async () => {
+  const view = await actionView('search-race');
+  let first, second;
+  view.historyService = { search: query => new Promise(resolve => { if (query === '旧') first = resolve; else second = resolve; }) };
+  view.updateHistorySearch('旧');
+  await new Promise(done => setTimeout(done, 210));
+  view.updateHistorySearch('新');
+  await new Promise(done => setTimeout(done, 210));
+  second([{ id: 'c-new', excerpt: 'new' }]);
+  await new Promise(done => setTimeout(done, 0));
+  first([{ id: 'c-old', excerpt: 'old' }]);
+  await new Promise(done => setTimeout(done, 0));
+  assert.equal(view.historySearchResults[0].id, 'c-new');
+  view.updateHistorySearch('旧');
+  await new Promise(done => setTimeout(done, 210));
+  view.updateHistorySearch('');
+  first([{ id: 'c-old', excerpt: 'old' }]);
+  await new Promise(done => setTimeout(done, 0));
+  assert.equal(view.historySearchResults.length, 0);
+  assert.equal(view.historySearching, false);
+});
+add('search navigation targets a matching message even when a bottom scroll is pending', async () => {
+  const view = await actionView('search-focus');
+  const record = conversation('c-focus');
+  await view.historyService.save(record);
+  let target;
+  view.chatScroller = { scrollToIndex: index => { target = index; } };
+  const originalScroll = Object.getPrototypeOf(view).scrollToBottom;
+  view.notifyAndScroll = () => originalScroll.call(view);
+  originalScroll.call(view); // Queue a bottom scroll before opening the search result.
+  await view.openConversation(record.id, record.messages[0].id);
+  assert.equal(view.highlightedMessageId, record.messages[0].id);
+  assert.equal(view.chatScrollTargetId, record.messages[0].id);
+  assert.equal(view.chatAutoScrollEnabled, false);
+  await new Promise(done => setTimeout(done, 40));
+  assert.equal(target, 0);
+  await view.openConversation(record.id, record.messages[1].id);
+  await new Promise(done => setTimeout(done, 40));
+  assert.equal(target, 1);
+  view.pauseChatAutoScroll();
+  assert.equal(view.highlightedMessageId, 0);
+});
+
 for (const name of ['ChatSession', 'Thinking', 'Markdown', 'GenerationWorkflow', 'GenerationMetrics', 'OpenAiApiServer', 'Knowledge', 'KnowledgeRelations']) {
   const test = path.join(project, 'entry/src/ohosTest/ets/test', name + '.test.ets');
   if (fs.existsSync(test)) load(test).default();
