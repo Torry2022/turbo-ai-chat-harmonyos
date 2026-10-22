@@ -1,0 +1,51 @@
+name: Host regression tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: host-regression-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  host-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install the host test compiler
+        # Match the TypeScript version used by the existing DevEco host tests.
+        run: npm install --prefix "$RUNNER_TEMP/host-test-deps" --ignore-scripts --no-audit --no-fund typescript@4.9.5
+
+      - name: Run ArkTS host regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          compiler="$RUNNER_TEMP/host-test-deps/node_modules/typescript/lib/typescript.js"
+          for test in scripts/test_*.cjs; do
+            echo "::group::$test"
+            node "$test" "$compiler"
+            echo "::endgroup::"
+          done
+
+      - name: Run catalog tooling regressions
+        run: python -m unittest scripts/test_model_catalog.py scripts/test_mnn_catalog_sync.py

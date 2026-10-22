@@ -29,6 +29,7 @@ The project also includes two [MNN compatibility patches](third_party/mnn/patche
 - [Inference Backend and Performance](#inference-backend-and-performance)
 - [Architecture](#architecture)
 - [Native API](#native-api)
+- [Development checks](#development-checks)
 - [License](#license)
 
 ## Project Origin and Evolution
@@ -390,6 +391,12 @@ entry.isLoaded(): boolean
 entry.layaDecideAsync(modelPath, tokenizerPath, state, type, instruction, options): Promise<string>
 entry.layaReleaseAsync(): Promise<void>
 ```
+
+## Development checks
+
+[Host regression CI](.github/workflows/host-regression.yml) runs on pushes to `main` and pull requests targeting `main`. It covers chat history, automatic titles, message copying, model imports, API state and model catalog tooling. It can also be started manually from the Actions page.
+
+These tests run on a host computer with mocked system interfaces and require neither model weights nor a device. ArkTS compilation, HAP builds, signing and device validation still use DevEco Studio.
 
 ## License
 
