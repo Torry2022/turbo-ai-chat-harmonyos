@@ -1,3 +1,4 @@
+import { ConversationTitleService, ConversationTitleRequest, conversationTitleSignature } from '../services/ConversationTitleService'
 import { decideLaya, isLayaReady, LayaRuntimeState, observeLayaRuntime, releaseLaya } from '../services/LayaDecisionService'
 import { ChatConversation, ChatConversationSummary, ChatHistorySearchResult, conversationTitle } from '../models/ChatHistoryTypes'
 import { ChatHistoryService } from '../services/ChatHistoryService'
@@ -178,6 +179,14 @@ export class ChatViewModel {
   private session: ChatSession = new ChatSession()
   private modelManager: ModelManager = new ModelManager()
   private nativeService: NativeInferenceService = new NativeInferenceService()
+  private titleForeground: boolean = true
+  private titleService: ConversationTitleService = new ConversationTitleService(
+    () => this.canGenerateConversationTitle(),
+    (turns: ChatTurn[]) => this.nativeService.generateTitle(turns),
+    () => this.nativeService.cancelTitleGeneration(),
+    (request: ConversationTitleRequest, title: string) => this.applyConversationTitle(request, title)
+  )
+
   private imageService: ImagePayloadService = new ImagePayloadService()
   private modelCatalogService: ModelCatalogService = new ModelCatalogService()
   private builtinModelInstallService: BuiltinModelInstallService =
@@ -315,6 +324,7 @@ export class ChatViewModel {
   }
 
   dispose(): void {
+    this.titleService.dispose()
     clearTimeout(this.historySearchTimer)
     this.historySearchSerial++
     this.flushHistory().catch((error: Error) => console.error(`保存对话失败：${formatError(error as Object)}`))
@@ -630,6 +640,7 @@ export class ChatViewModel {
   }
 
   updateInputText(value: string): void {
+    if (value.trim()) this.titleService.pause()
     this.inputText = value
     this.storeDraft(this.activeConversationId, value)
     this.notify()
@@ -1255,7 +1266,7 @@ export class ChatViewModel {
     this.notify()
   }
 
-  unloadModel(): void {
+  async unloadModel(): Promise<void> {
     if (this.rejectWhileModelScanning()) {
       return
     }
@@ -1264,8 +1275,20 @@ export class ChatViewModel {
     }
     this.cancelSpeechRecognition(false)
     this.stopApiServerForModelChange(false)
-    this.modelLifecycleService.reset()
+    this.titleService.pause()
     this.loaded = false
+    this.busy = true
+    this.setStatus('正在释放模型...', 'neutral')
+    this.notify()
+    try {
+      await this.modelLifecycleService.reset()
+    } catch (error) {
+      this.busy = false
+      this.setStatus(`释放模型失败：${formatError(error as Object)}`, 'error')
+      this.notify()
+      return
+    }
+    this.busy = false
     this.setStatus('模型已释放', 'neutral')
     this.modelLoadMessage = '模型已从内存中释放，可重新加载。'
     this.session.appendMessage('assistant',
@@ -1288,7 +1311,7 @@ export class ChatViewModel {
     return this.historyCloseHandler()
   }
 
-  currentConversationTitle(): string {
+  currentConversationTitle(_renderVersion: number = 0): string {
     return this.activeConversation?.title ?? '新对话'
   }
 
@@ -1376,6 +1399,35 @@ export class ChatViewModel {
     return `${action}，请重试。`
   }
 
+  setConversationTitleActive(active: boolean): void {
+    this.titleForeground = active
+    if (!active) this.titleService.pause()
+    else this.titleService.resume()
+  }
+
+  private canGenerateConversationTitle(): boolean {
+    return this.titleForeground && this.historyReady && !this.historyBusy && this.loaded &&
+      !this.busy && !this.generating && !this.modelLoading && !this.modelScanning &&
+      !this.apiServerRunning && !this.apiServerStarting && !this.modelImporting && !this.builtinModelInstalling &&
+      !this.speechRecognitionStarting && !this.speechRecognizing && !this.inputText.trim() && !this.selectedImageUri
+  }
+
+  private async applyConversationTitle(request: ConversationTitleRequest, title: string): Promise<void> {
+    const applied = await this.historyService.applyGeneratedTitle(request.id, request.signature, title,
+      () => !request.cancelled && !request.discarded)
+    if (!applied) return
+    if (this.activeConversation?.id === request.id && this.activeConversation.titleSource === 'temporary' &&
+      conversationTitleSignature(this.activeConversation) === request.signature) {
+      const current = this.activeConversation
+      this.activeConversation = {
+        version: current.version, id: current.id, title, titleSource: 'generated',
+        createdAt: current.createdAt, updatedAt: current.updatedAt, messages: current.messages
+      }
+    }
+    this.conversations = this.historyService.list()
+    this.notify()
+  }
+
   private async initializeHistory(): Promise<void> {
     this.historyBusy = true
     try {
@@ -1401,6 +1453,7 @@ export class ChatViewModel {
 
   async openConversation(id: string, messageId: number = 0): Promise<boolean> {
     if (!this.canManageConversations()) return false
+    this.titleService.pause()
     if (id === this.activeConversationId) {
       if (messageId > 0) this.focusChatMessage(messageId)
       return true
@@ -1433,11 +1486,16 @@ export class ChatViewModel {
 
   async renameConversation(id: string, title: string): Promise<void> {
     if (!this.canManageConversations() || title.trim().length === 0) return
+    this.titleService.forget(id)
     this.historyBusy = true
     try {
       await this.flushHistory()
+      this.titleService.forget(id)
       await this.historyService.rename(id, title)
-      if (this.activeConversation?.id === id) this.activeConversation.title = title.trim()
+      if (this.activeConversation?.id === id) {
+        this.activeConversation.title = title.trim()
+        this.activeConversation.titleSource = 'manual'
+      }
       this.conversations = this.historyService.list()
       this.historyError = ''
       if (this.historySearchText.trim()) this.updateHistorySearch(this.historySearchText)
@@ -1451,9 +1509,11 @@ export class ChatViewModel {
 
   async deleteConversation(id?: string): Promise<void> {
     if (!this.canManageConversations()) return
+    this.titleService.forget(id)
     this.historyBusy = true
     try {
       await this.flushHistory()
+      this.titleService.forget(id)
       if (id === undefined) {
         await this.historyService.clear()
         this.conversationDrafts.clear()
@@ -1496,6 +1556,7 @@ export class ChatViewModel {
   }
 
   private async beginNewConversation(): Promise<void> {
+    this.titleService.pause()
     this.historyBusy = true
     try {
       await this.flushHistory()
@@ -1540,7 +1601,7 @@ export class ChatViewModel {
       const now = Date.now()
       this.activeConversation = {
         version: 1, id: `c-${now.toString(36)}-${Math.random().toString(36).substring(2, 10)}`,
-        title: conversationTitle(userMessages[0].content), createdAt: userMessages[0].createdAt ?? now,
+        title: conversationTitle(userMessages[0].content), titleSource: 'temporary', createdAt: userMessages[0].createdAt ?? now,
         updatedAt: now, messages: []
       }
       this.activeConversationId = this.activeConversation.id
@@ -1551,6 +1612,7 @@ export class ChatViewModel {
       Math.max(latest, message.completedAt ?? message.createdAt ?? 0), conversation.updatedAt)
     try {
       await this.historyService.save(conversation)
+      this.titleService.enqueue(conversation)
     } finally {
       this.conversations = this.historyService.list()
       if (!this.generating && this.historySearchText.trim()) this.updateHistorySearch(this.historySearchText)
@@ -2638,6 +2700,7 @@ export class ChatViewModel {
   }
 
   private notify(): void {
+    this.titleService.resume()
     this.notifyCallback()
   }
 }

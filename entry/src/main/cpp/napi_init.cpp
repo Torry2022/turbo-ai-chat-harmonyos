@@ -15,6 +15,8 @@
 namespace {
 
 MnnLlmRunner g_runner;
+std::mutex g_titleMutex;
+std::shared_ptr<std::atomic_bool> g_titleCancellation;
 
 struct StreamChunk {
     std::string value;
@@ -33,6 +35,7 @@ struct StreamWork {
     MnnLlmRunner::ImageData image;
     MnnLlmRunner::SamplingConfig sampling;
     MnnLlmRunner::GenerationResult output;
+    std::shared_ptr<std::atomic_bool> titleCancellation;
     std::string error;
 };
 
@@ -664,8 +667,8 @@ napi_value GenerateRawPromptStream(napi_env env, napi_callback_info info) {
 }
 
 napi_value GenerateChatStream(napi_env env, napi_callback_info info) {
-    size_t argc = 4;
-    napi_value args[4] = {nullptr};
+    size_t argc = 5;
+    napi_value args[5] = {nullptr};
     napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
 
     if (argc < 1 || args[0] == nullptr) {
@@ -695,6 +698,20 @@ napi_value GenerateChatStream(napi_env env, napi_callback_info info) {
         delete streamWork;
         napi_throw_error(env, nullptr, readError.c_str());
         return nullptr;
+    }
+
+    bool backgroundTitle = false;
+    if (argc > 4) napi_get_value_bool(env, args[4], &backgroundTitle);
+    if (backgroundTitle) {
+        std::lock_guard<std::mutex> lock(g_titleMutex);
+        if (g_titleCancellation != nullptr) {
+            delete streamWork;
+            napi_throw_error(env, nullptr, "a title task is already running");
+            return nullptr;
+        }
+        streamWork->sampling.maxNewTokens = std::min(streamWork->sampling.maxNewTokens, 48);
+        streamWork->titleCancellation = std::make_shared<std::atomic_bool>(false);
+        g_titleCancellation = streamWork->titleCancellation;
     }
 
     napi_value promise = nullptr;
@@ -731,7 +748,7 @@ napi_value GenerateChatStream(napi_env env, napi_callback_info info) {
                     auto* streamChunk = new StreamChunk{chunk};
                     napi_call_threadsafe_function(work->callback, streamChunk, napi_tsfn_nonblocking);
                 },
-                work->error);
+                work->error, work->titleCancellation.get());
         },
         [](napi_env env, napi_status, void* data) {
             auto* work = static_cast<StreamWork*>(data);
@@ -741,6 +758,10 @@ napi_value GenerateChatStream(napi_env env, napi_callback_info info) {
             } else {
                 napi_value result = MakeGenerationResult(env, work->output);
                 napi_resolve_deferred(env, work->deferred, result);
+            }
+            if (work->titleCancellation != nullptr) {
+                std::lock_guard<std::mutex> lock(g_titleMutex);
+                if (g_titleCancellation == work->titleCancellation) g_titleCancellation.reset();
             }
             napi_release_threadsafe_function(work->callback, napi_tsfn_release);
             napi_delete_async_work(env, work->work);
@@ -944,6 +965,14 @@ napi_value LayaReleaseAsync(napi_env env, napi_callback_info info) {
     return promise;
 }
 
+napi_value CancelTitleGeneration(napi_env env, napi_callback_info) {
+    std::lock_guard<std::mutex> lock(g_titleMutex);
+    if (g_titleCancellation != nullptr) g_titleCancellation->store(true);
+    napi_value result = nullptr;
+    napi_get_undefined(env, &result);
+    return result;
+}
+
 static napi_value Init(napi_env env, napi_value exports) {
     napi_property_descriptor desc[] = {
         {"layaDecideAsync", nullptr, LayaDecideAsync, nullptr, nullptr, nullptr, napi_default, nullptr},
@@ -956,6 +985,7 @@ static napi_value Init(napi_env env, napi_value exports) {
         {"generateRawPromptStream", nullptr, GenerateRawPromptStream, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"generateChatStream", nullptr, GenerateChatStream, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"generateImageChatStream", nullptr, GenerateImageChatStream, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"cancelTitleGeneration", nullptr, CancelTitleGeneration, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"stopGeneration", nullptr, StopGeneration, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"reset", nullptr, Reset, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"isLoaded", nullptr, IsLoaded, nullptr, nullptr, nullptr, napi_default, nullptr},

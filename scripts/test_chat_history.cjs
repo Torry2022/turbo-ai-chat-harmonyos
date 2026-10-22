@@ -560,6 +560,110 @@ add('search navigation targets a matching message even when a bottom scroll is p
   assert.equal(view.highlightedMessageId, 0);
 });
 
+
+const { conversationTitleSignature } = load(path.join(ets, 'services/ConversationTitleService.ets'));
+function pendingTitleRecord(id) {
+  const record = conversation(id);
+  record.titleSource = 'temporary';
+  record.messages[1].generationState = 'complete';
+  record.messages[1].completedAt = 2000;
+  return record;
+}
+add('background title persists without selecting or reordering its conversation', async () => {
+  const service = new ChatHistoryService();
+  await service.initialize(path.join(temporary, 'title-active'));
+  const old = pendingTitleRecord('c-title-old');
+  const current = pendingTitleRecord('c-title-current');
+  await service.save(old);
+  await service.save(current);
+  assert.equal(await service.applyGeneratedTitle(old.id, conversationTitleSignature(old), '概括标题', () => true), true);
+  const index = JSON.parse(fs.readFileSync(path.join(temporary, 'title-active/chat-history/index.json'), 'utf8'));
+  assert.equal(index.activeId, current.id);
+  const saved = await service.load(old.id);
+  assert.equal(saved.title, '概括标题');
+  assert.equal(saved.titleSource, 'generated');
+  assert.equal(saved.updatedAt, old.updatedAt);
+});
+add('title completion refreshes the active snapshot without adding messages or changing chat status', async () => {
+  const { ChatViewModel } = load(path.join(ets, 'state/ChatViewModel.ets'));
+  const view = new ChatViewModel();
+  await view.historyService.initialize(path.join(temporary, 'title-view'));
+  const record = pendingTitleRecord('c-title-view');
+  await view.historyService.save(record);
+  view.activeConversation = record;
+  view.activeConversationId = record.id;
+  view.messages = record.messages;
+  view.status = '原回答生成完成';
+  const messages = view.messages;
+  await view.applyConversationTitle({id:record.id, signature:conversationTitleSignature(record), cancelled:false}, '新标题');
+  assert.notEqual(view.activeConversation, record);
+  assert.equal(view.currentConversationTitle(), '新标题');
+  assert.equal(view.messages, messages);
+  assert.equal(view.status, '原回答生成完成');
+  view.titleService.dispose();
+});
+add('manual title survives stale autosave and automatic completion', async () => {
+  const service = new ChatHistoryService();
+  await service.initialize(path.join(temporary, 'title-manual'));
+  const record = pendingTitleRecord('c-title-manual');
+  await service.save(record);
+  await service.rename(record.id, '用户命名');
+  await service.save(record);
+  assert.equal(await service.applyGeneratedTitle(record.id, conversationTitleSignature(record), '不应覆盖', () => true), false);
+  const saved = await service.load(record.id);
+  assert.equal(saved.title, '用户命名');
+  assert.equal(saved.titleSource, 'manual');
+});
+add('manual renames survive stale generated, manual and legacy autosave snapshots', async () => {
+  const service = new ChatHistoryService();
+  await service.initialize(path.join(temporary, 'title-manual-stale'));
+  for (const source of [undefined, 'generated', 'manual']) {
+    const record = pendingTitleRecord('c-title-stale-' + (source || 'legacy'));
+    record.titleSource = source;
+    record.title = '旧名称';
+    await service.save(record);
+    await service.rename(record.id, '手动新名称');
+    await service.save(record);
+    const saved = await service.load(record.id);
+    assert.equal(saved.title, '手动新名称');
+    assert.equal(saved.titleSource, 'manual');
+  }
+});
+add('title completion rejects changed content, cancelled work and legacy titles', async () => {
+  const service = new ChatHistoryService();
+  await service.initialize(path.join(temporary, 'title-stale'));
+  const record = pendingTitleRecord('c-title-stale');
+  const signature = conversationTitleSignature(record);
+  record.messages[0].content += ' 已编辑';
+  await service.save(record);
+  assert.equal(await service.applyGeneratedTitle(record.id, signature, '旧结果', () => true), false);
+  assert.equal(await service.applyGeneratedTitle(record.id, conversationTitleSignature(record), '已取消', () => false), false);
+  const legacy = conversation('c-title-legacy');
+  await service.save(legacy);
+  assert.equal(await service.applyGeneratedTitle(legacy.id, conversationTitleSignature(legacy), '旧对话不覆盖', () => true), false);
+});
+add('late title cannot resurrect deleted conversation or clear operation', async () => {
+  const service = new ChatHistoryService();
+  await service.initialize(path.join(temporary, 'title-delete'));
+  const record = pendingTitleRecord('c-title-delete');
+  await service.save(record);
+  await service.remove(record.id);
+  assert.equal(await service.applyGeneratedTitle(record.id, conversationTitleSignature(record), '已删除', () => true), false);
+  assert.equal(service.list().length, 0);
+});
+add('stale autosave retains generated title only for the same first-turn version', async () => {
+  const service = new ChatHistoryService();
+  await service.initialize(path.join(temporary, 'title-snapshot'));
+  const record = pendingTitleRecord('c-title-snapshot');
+  await service.save(record);
+  await service.applyGeneratedTitle(record.id, conversationTitleSignature(record), '自动标题', () => true);
+  await service.save(record);
+  assert.equal((await service.load(record.id)).title, '自动标题');
+  record.messages[0].content = '完全不同的问题';
+  await service.save(record);
+  assert.equal((await service.load(record.id)).titleSource, 'temporary');
+});
+
 for (const name of ['ChatSession', 'Thinking', 'Markdown', 'GenerationWorkflow', 'GenerationMetrics', 'OpenAiApiServer', 'Knowledge', 'KnowledgeRelations']) {
   const test = path.join(project, 'entry/src/ohosTest/ets/test', name + '.test.ets');
   if (fs.existsSync(test)) load(test).default();

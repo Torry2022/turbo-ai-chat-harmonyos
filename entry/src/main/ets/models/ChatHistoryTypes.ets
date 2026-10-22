@@ -4,6 +4,7 @@ export interface ChatConversation {
   version: number
   id: string
   title: string
+  titleSource?: 'temporary' | 'generated' | 'manual'
   createdAt: number
   updatedAt: number
   messages: ChatMessage[]
@@ -12,6 +13,7 @@ export interface ChatConversation {
 export interface ChatConversationSummary {
   id: string
   title: string
+  titleSource?: 'temporary' | 'generated' | 'manual'
   createdAt: number
   updatedAt: number
   modelName: string

@@ -153,6 +153,14 @@ struct Index {
     }, 1200)
   }
 
+  onPageShow(): void {
+    this.viewModel.setConversationTitleActive(true)
+  }
+
+  onPageHide(): void {
+    this.viewModel.setConversationTitleActive(false)
+  }
+
   aboutToDisappear(): void {
     if (this.desktopTitleVisible) {
       this.mainWindow?.off('windowTitleButtonRectChange', this.onTitleButtonRectChange)
@@ -374,14 +382,13 @@ struct Index {
           this.viewModel.showModelMarketDialog || this.viewModel.showDeleteModelDialog
       })
       .padding({ left: this.usePhoneTabs() || this.windowWidth >= 840 ? 0 : this.pagePadding(), right: this.usePhoneTabs() ? 0 : this.pagePadding() })
-      .width(Math.max(1, Math.min(1280 + 2 * this.pagePadding(), this.windowWidth -
-        (this.windowWidth >= 840 ? 160 : this.windowWidth >= 600 ? 88 : 0))))
+      .width('100%')
       .layoutWeight(1)
     }
     .width('100%')
     .height('100%')
     // The window handles system navigation avoidance; the chat page adds only a visual gap.
-    .padding({ bottom: this.windowWidth >= 600 ? 8 :
+    .padding({ bottom: this.windowWidth >= 600 ? $r('app.float.wide_bottom_spacing') :
       (this.usePhoneTabs() || this.keyboardVisible ? 0 : this.mobileNavigationHeight() + 8) })
     .opacity(this.usePhoneTabs() || this.transitionTab === 0 ? 1 : 0)
     .visibility(this.usePhoneTabs() || (this.visibleTabs & 1) !== 0 ? Visibility.Visible : Visibility.Hidden)

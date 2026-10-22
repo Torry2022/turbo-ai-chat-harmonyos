@@ -124,7 +124,6 @@ export struct BottomTabs {
         .backgroundColor($r('app.color.nav_idle'))
         .hoverEffect(HoverEffect.Auto)
         .accessibilityText('设置')
-        .translate({ y: this.bottomInset })
         .onClick(() => this.onSettings())
       }
     }

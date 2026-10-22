@@ -55,7 +55,7 @@ export class ModelLifecycleService {
       }
       return true
     } catch (err) {
-      this.nativeService.reset()
+      await this.nativeService.reset()
       throw new Error(formatError(err as Object))
     }
   }
@@ -86,7 +86,7 @@ export class ModelLifecycleService {
     resetLoadedModel: boolean
   ): Promise<ModelDeleteResult> {
     if (resetLoadedModel) {
-      this.nativeService.reset()
+      await this.nativeService.reset()
     }
     if (profile.source === 'imported') {
       return {
@@ -122,8 +122,8 @@ export class ModelLifecycleService {
     return this.importService.updateImportedProfile(filesDir, updated)
   }
 
-  reset(): void {
-    this.nativeService.reset()
+  reset(): Promise<void> {
+    return this.nativeService.reset()
   }
 
   isLoaded(): boolean {

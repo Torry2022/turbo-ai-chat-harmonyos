@@ -134,13 +134,14 @@ export struct ChatHistoryPanel {
                       .onKeyEvent((event: KeyEvent): boolean => this.handleRenameKey(event))
                       .onAppear(() => this.getUIContext().getFocusController().requestFocus('history-rename-input'))
                     Row({ space: 8 }) {
-                      Button('取消')
+                      Button('取消', { type: ButtonType.Normal })
                         .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
-                        .layoutWeight(1).height(30).fontSize(12).borderRadius(6)
+                        .layoutWeight(1).height(32).fontSize(12).borderRadius(8)
+                        .border({ width: 0.5, color: $r('app.color.text_muted'), radius: 8 })
                         .enabled(!this.viewModel.historyBusy).onClick(() => { this.editingId = '' })
-                      Button(this.viewModel.historyBusy ? '保存中…' : '保存')
+                      Button(this.viewModel.historyBusy ? '保存中…' : '保存', { type: ButtonType.Normal })
                         .attributeModifier(new ActionButtonStyle($r('app.color.button_primary_background'), $r('app.color.button_primary_text')))
-                        .layoutWeight(1).height(30).fontSize(12).borderRadius(6)
+                        .layoutWeight(1).height(32).fontSize(12).borderRadius(8)
                         .enabled(this.titleInput.trim().length > 0 && this.viewModel.canManageConversations())
                         .onClick(() => this.saveTitle())
                     }.width('100%')
@@ -181,6 +182,7 @@ export struct ChatHistoryPanel {
         }.width('100%').layoutWeight(1).scrollBar(BarState.Auto)
           .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
       }
-    }.width('100%').height('100%').padding({ left: 8, right: 8, top: 2, bottom: 4 })
+    }.width('100%').height('100%').padding({ left: this.closeOnSelection ? 8 : 12,
+      right: this.closeOnSelection ? 8 : 12, top: 2, bottom: 4 })
   }
 }

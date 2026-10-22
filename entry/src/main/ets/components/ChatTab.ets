@@ -84,6 +84,10 @@ export struct ChatTab {
     return this.historyWidth >= 872
   }
 
+  private historyPanelWidth(): number {
+    return this.historyWidth >= 1200 ? 280 : 220
+  }
+
   private isHistoryOpen(): boolean {
     return this.compactHistoryManaged && !this.wideHistory() ? this.compactHistoryOpen : this.historyOpen
   }
@@ -366,7 +370,7 @@ export struct ChatTab {
             this.inputController.stopEditing()
             this.setHistoryOpen(!this.isHistoryOpen())
           })
-        Text(this.viewModel.currentConversationTitle())
+        Text(this.viewModel.currentConversationTitle(this.renderVersion))
           .fontSize(15).fontWeight(FontWeight.Medium).fontColor($r('app.color.text_title'))
           .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).layoutWeight(1)
       }.width('100%').height(34)
@@ -606,8 +610,8 @@ export struct ChatTab {
       Row() {
         Column() {
           ChatHistoryPanel({ viewModel: this.viewModel, renderVersion: this.renderVersion })
-            .width(220).height('100%')
-        }.width(this.wideHistory() && this.historyOpen ? 220 : 0).height('100%')
+            .width(this.historyPanelWidth()).height('100%')
+        }.width(this.wideHistory() && this.historyOpen ? this.historyPanelWidth() : 0).height('100%')
           .alignItems(HorizontalAlign.Start).clip(true)
           .opacity(this.wideHistory() && this.historyOpen ? 1 : 0)
           .border({ width: { right: 0.5 }, color: $r('app.color.divider') })

@@ -42,8 +42,10 @@ export const generateChatStream: (
   messages: ChatTurn[],
   maxNewTokens: number,
   settings: GenerationSettings,
-  onChunk: (chunk: string) => void
+  onChunk: (chunk: string) => void,
+  backgroundTitle?: boolean
 ) => Promise<GenerationResult>;
+export const cancelTitleGeneration: () => void;
 export const generateImageChatStream: (
   messages: ChatTurn[],
   rgbaPixels: ArrayBuffer,

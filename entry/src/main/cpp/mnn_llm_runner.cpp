@@ -412,9 +412,15 @@ MnnLlmRunner::GenerationResult MnnLlmRunner::generateChatStreaming(
     const std::vector<ChatTurn>& messages,
     const SamplingConfig& sampling,
     const std::function<void(const std::string&)>& onChunk,
-    std::string& error) {
+    std::string& error,
+    const std::atomic_bool* cancellation) {
     std::lock_guard<std::mutex> lock(mutex_);
     error.clear();
+    if (cancellation != nullptr && cancellation->load()) {
+        GenerationResult cancelled;
+        cancelled.stopReason = "user_stop";
+        return cancelled;
+    }
 
     if (!llm_) {
         error = "model is not loaded";
@@ -447,14 +453,37 @@ MnnLlmRunner::GenerationResult MnnLlmRunner::generateChatStreaming(
     }
 
     stopRequested_.store(false);
-    ChunkStreamBuffer buffer(onChunk, [this]() {
+    ChunkStreamBuffer buffer(onChunk, [this, cancellation]() {
+        if (cancellation != nullptr && cancellation->load()) stopRequested_.store(true);
         return CancelGenerationIfRequested(llm_.get(), stopRequested_);
     }, AssistantOutputPrefix(llm_->apply_chat_template(chatMessages)));
     std::ostream output(&buffer);
     output.exceptions(std::ios::badbit | std::ios::failbit);
     ResetForGeneration(llm_.get());
     try {
-        llm_->response(chatMessages, &output, nullptr, sampling.maxNewTokens);
+        if (cancellation == nullptr) {
+            llm_->response(chatMessages, &output, nullptr, sampling.maxNewTokens);
+        } else {
+            // Title-only prefill: use MNN's token/chunk API so cancellation can
+            // be observed between chunks, before any output token is produced.
+            const auto tokens = llm_->tokenizer_encode(llm_->apply_chat_template(chatMessages));
+            if (tokens.empty()) {
+                error = "title prompt contains no tokens";
+                return {};
+            }
+            llm_->generate_init(&output, "\n");
+            constexpr size_t chunkSize = 32;
+            for (size_t offset = 0; offset < tokens.size(); offset += chunkSize) {
+                if (CancelGenerationIfRequested(llm_.get(), *cancellation)) break;
+                const auto end = std::min(offset + chunkSize, tokens.size());
+                llm_->generate(std::vector<int>(tokens.begin() + offset, tokens.begin() + end), 0);
+                if (llm_->getContext()->status != LlmStatus::RUNNING) break;
+            }
+            if (!CancelGenerationIfRequested(llm_.get(), *cancellation) &&
+                llm_->getContext()->status == LlmStatus::RUNNING) {
+                llm_->generate(sampling.maxNewTokens);
+            }
+        }
         output.flush();
     } catch (const std::ios_base::failure& ex) {
         if (!stopRequested_.load()) {
@@ -464,10 +493,10 @@ MnnLlmRunner::GenerationResult MnnLlmRunner::generateChatStreaming(
     }
     const std::string rawOutput = buffer.output();
     GenerationResult result = BuildGenerationResult(llm_.get(), rawOutput, sampling.maxNewTokens);
-    const bool stopped = stopRequested_.load();
+    const bool stopped = stopRequested_.load() || (cancellation != nullptr && cancellation->load());
     ApplyUserStop(result, stopped);
     stopRequested_.store(false);
-    DumpRawPromptDebug(
+    if (cancellation == nullptr) DumpRawPromptDebug(
         debugPrompt.str(),
         buffer.rawOutput(),
         llm_->tokenizer_encode(debugPrompt.str()),

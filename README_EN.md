@@ -54,6 +54,11 @@ In the HarmonyOS ecosystem, on-device AI inference today largely depends on Andr
 
 ## Recent Highlights
 
+**Conversation naming and sidebar refinements (v1.15.0)**
+
+- Generate titles with the loaded model when idle after the first reply. Questions and model changes take priority, and manual names are preserved.
+- Refine wide-window history placement, width, spacing and rename buttons, and align the settings button with the composer on tablets and PCs.
+
 **Chat history and on-device decisions (v1.13.0)**
 
 - Save and manage conversations locally, retaining reply models and model-switch records.
@@ -203,7 +208,7 @@ With a physical keyboard, Enter sends from the chat input and Shift+Enter insert
 - Import local MNN models by selecting a folder (where supported), importing a zip, or pushing a directory and scanning it in the app; standard MNN export directories use `jinja.chat_template` from `llm_config.json`
 - OpenAI-compatible API: serve the currently loaded model to Cherry Studio and other LAN clients with streaming output and Bearer authentication
 - Message actions: copy, edit, and regenerate icons appear below message bubbles. User-message actions appear on hover or keyboard focus when using a mouse and remain visible for touch input. Long-press the text to select it. Regenerate the last answer using the currently loaded model and the original question and image, or edit and resend any question directly in its bubble. The original answer and subsequent messages are replaced; the composer draft is preserved.
-- Chat history: save conversations and images locally; create, resume, rename, delete, or clear chats. Search titles and message text, then open a result at the matching message. Each reply retains its model and timestamp. Uninstalling or clearing app data removes history.
+- Chat history: save conversations and images locally; create, resume, rename, delete, or clear chats. Search titles and message text, then open a result at the matching message. After the first reply in a new chat, the loaded model generates a title when idle. If naming fails, the existing title stays; manual names are preserved. Each reply retains its model and timestamp. Uninstalling or clearing app data removes history.
 
 ## Screenshots
 

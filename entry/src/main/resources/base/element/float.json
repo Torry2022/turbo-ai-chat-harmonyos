@@ -2,7 +2,7 @@
   "float": [
     {
       "name": "wide_bottom_spacing",
-      "value": "20vp"
+      "value": "8vp"
     },
     {
       "name": "page_scroll_bottom_padding",

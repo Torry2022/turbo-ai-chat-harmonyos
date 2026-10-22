@@ -63,7 +63,8 @@ public:
         const std::vector<ChatTurn>& messages,
         const SamplingConfig& sampling,
         const std::function<void(const std::string&)>& onChunk,
-        std::string& error);
+        std::string& error,
+        const std::atomic_bool* cancellation = nullptr);
     GenerationResult generateImageChatStreaming(
         const std::vector<ChatTurn>& messages,
         const ImageData& image,

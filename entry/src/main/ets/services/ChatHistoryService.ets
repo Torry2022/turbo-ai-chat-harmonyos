@@ -2,6 +2,7 @@ import fs from '@ohos.file.fs'
 import { ChatMessage } from '../models/ChatTypes'
 import { ChatConversation, ChatConversationSummary, ChatHistoryIndex, ChatHistorySearchResult } from '../models/ChatHistoryTypes'
 import { parseAssistantText } from '../utils/thinking'
+import { conversationTitleSignature } from './ConversationTitleService'
 import { MarkdownBlock, MarkdownSpan, parseInlineMarkdown, parseLightMarkdown } from '../utils/markdown'
 
 export class ChatHistoryService {
@@ -115,6 +116,16 @@ export class ChatHistoryService {
     const snapshot = JSON.parse(JSON.stringify(conversation)) as ChatConversation
     return this.enqueue(async (): Promise<void> => {
       if (this.retiredIds.has(snapshot.id)) throw new Error('该对话已删除')
+      const savedTitle = this.summaries.find((item: ChatConversationSummary) => item.id === snapshot.id)
+      if (savedTitle?.titleSource === 'manual' ||
+        (snapshot.titleSource === 'temporary' && savedTitle?.titleSource === 'generated')) {
+        const latest = await this.readRecord(snapshot.id)
+        if (latest.titleSource === 'manual' ||
+          conversationTitleSignature(latest) === conversationTitleSignature(snapshot)) {
+          snapshot.title = latest.title
+          snapshot.titleSource = latest.titleSource
+        }
+      }
       let attachmentFailed = false
       const directory = this.directory(snapshot.id)
       await this.ensureDirectory(directory)
@@ -151,6 +162,7 @@ export class ChatHistoryService {
     return this.enqueue(async (): Promise<void> => {
       const record = await this.readRecord(id)
       record.title = title.trim()
+      record.titleSource = 'manual'
       if (!record.title) throw new Error('请输入对话名称')
       await this.atomicWrite(`${this.directory(id)}/conversation.json`, JSON.stringify(record))
       this.upsertSummary(record)
@@ -162,6 +174,21 @@ export class ChatHistoryService {
     return this.enqueue(async (): Promise<void> => {
       await this.removeRecord(id)
       await this.writeIndex()
+    })
+  }
+
+  applyGeneratedTitle(id: string, signature: string, title: string, canApply: () => boolean): Promise<boolean> {
+    return this.enqueue(async (): Promise<boolean> => {
+      if (this.retiredIds.has(id) || !canApply()) return false
+      const record = await this.readRecord(id)
+      if (record.titleSource !== 'temporary' || conversationTitleSignature(record) !== signature || !canApply()) return false
+      record.title = title
+      record.titleSource = 'generated'
+      await this.atomicWrite(`${this.directory(id)}/conversation.json`, JSON.stringify(record))
+      this.upsertSummary(record)
+      // Background naming must not change activeId or conversation chronology.
+      await this.writeIndex()
+      return true
     })
   }
 
@@ -233,7 +260,7 @@ export class ChatHistoryService {
   private upsertSummary(record: ChatConversation): void {
     const replies = record.messages.filter((message: ChatMessage) => message.kind === 'message' && message.role === 'assistant')
     const summary: ChatConversationSummary = {
-      id: record.id, title: record.title, createdAt: record.createdAt, updatedAt: record.updatedAt,
+      id: record.id, title: record.title, titleSource: record.titleSource, createdAt: record.createdAt, updatedAt: record.updatedAt,
       modelName: replies.length > 0 ? replies[replies.length - 1].modelName ?? '' : ''
     }
     this.summaries = [...this.summaries.filter((item: ChatConversationSummary) => item.id !== record.id), summary]
