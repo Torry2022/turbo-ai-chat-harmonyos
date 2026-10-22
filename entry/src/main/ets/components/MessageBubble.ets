@@ -129,17 +129,17 @@ export struct MessageBubble {
   private MessageAction(icon: Resource, label: string, action: () => void) {
     Button({ type: ButtonType.Normal }) {
       Image(label === '复制' && this.copied ? $r('app.media.icon_message_check') : icon)
-        .width(18).height(18).fillColor($r('app.color.text_muted'))
+        .width(16).height(16).fillColor(this.message.role === 'user' ?
+          $r('app.color.chat_user_meta') : $r('app.color.text_muted'))
     }
     .id(`message-${this.message.id}-${label}`)
-    .width(32).height(32).padding(0)
-    .margin({ left: 4, right: 4 })
-    .responseRegion({ x: -4, y: 0, width: 40, height: 40 })
+    .width(20).height(20).padding(0)
+    .responseRegion({ x: -6, y: -10, width: 32, height: 40 })
     .borderRadius($r('app.float.button_radius'))
     .backgroundColor(Color.Transparent)
     .hoverEffect(HoverEffect.Auto)
     .accessibilityText(label)
-    .bindTips(label)
+    .bindTips(label, { enableArrow: false })
     .onFocus(() => { this.actionsFocused = true })
     .onBlur(() => { this.actionsFocused = false })
     .onClick(action)
@@ -147,8 +147,7 @@ export struct MessageBubble {
 
   @Builder
   private MessageActions() {
-    Row({ space: 2 }) {
-      if (this.message.role === 'user') Blank()
+    Row({ space: 12 }) {
       if (this.answerText().length > 0) {
         this.MessageAction($r('app.media.icon_message_copy'), '复制', () => { this.copyMessage() })
       }
@@ -167,9 +166,9 @@ export struct MessageBubble {
         })
       }
     }
-    .width('100%').height(40)
-    .alignItems(VerticalAlign.Top)
-    // Keep the hover row in the layout so revealing it never moves messages.
+    .height(20).flexShrink(0)
+    .alignItems(VerticalAlign.Center)
+    // Reserve the header actions so hover and keyboard focus never move the text.
     .opacity(this.showActions() ? 1 : 0)
     .hitTestBehavior(this.showActions() ? HitTestMode.Default : HitTestMode.None)
   }
@@ -491,17 +490,23 @@ export struct MessageBubble {
         Blank()
       }
       Column({ space: 2 }) {
-        Column({ space: 6 }) {
-          Row() {
-            Text(this.message.role === 'user' ? '你' : (this.message.modelName?.trim().length ? this.message.modelName : '助手'))
-              .fontSize(11)
-              .fontColor(this.message.role === 'user' ? $r('app.color.chat_user_meta') : $r('app.color.text_assistant_meta'))
-              .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).layoutWeight(1)
-            Text(this.message.time)
-              .fontSize(11)
-              .fontColor(this.message.role === 'user' ? $r('app.color.chat_user_time') : $r('app.color.text_caption'))
-              .margin({ left: 8 }).flexShrink(0)
-          }.width('100%')
+        Column({ space: this.editing ? 6 : 4 }) {
+          if (!this.editing) {
+            Row() {
+              Text(this.message.role === 'user' ? '你' : (this.message.modelName?.trim().length ? this.message.modelName : '助手'))
+                .fontSize(11)
+                .fontColor(this.message.role === 'user' ? $r('app.color.chat_user_meta') : $r('app.color.text_assistant_meta'))
+                .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).layoutWeight(1)
+              if (this.message.kind !== 'notice' &&
+                (this.answerText().length > 0 || this.canEdit || this.canRegenerate)) {
+                this.MessageActions()
+              }
+              Text(this.message.time)
+                .fontSize(11)
+                .fontColor(this.message.role === 'user' ? $r('app.color.chat_user_time') : $r('app.color.text_caption'))
+                .margin({ left: 16 }).flexShrink(0)
+            }.width('100%').height(20)
+          }
           if (this.message.imageUnavailable) {
             Text('此图片未能保存').fontSize(11).fontColor($r('app.color.text_muted'))
           }
@@ -530,8 +535,8 @@ export struct MessageBubble {
                 .constraintSize({ minHeight: 44, maxHeight: 240 })
                 .fontSize(15)
                 .lineHeight(22)
-                .fontColor($r('app.color.chat_user_text'))
-                .caretColor($r('app.color.chat_user_text'))
+                .fontColor($r('app.color.input_text'))
+                .caretColor($r('app.color.control_accent'))
                 .backgroundColor(Color.Transparent)
                 .border({ width: 0 })
                 .borderRadius(0)
@@ -540,16 +545,16 @@ export struct MessageBubble {
               Row({ space: 8 }) {
                 Blank()
                 Button('取消', { type: ButtonType.Normal })
-                  .attributeModifier(new ActionButtonStyle(Color.Transparent, $r('app.color.chat_edit_secondary_text')))
+                  .attributeModifier(new ActionButtonStyle(Color.Transparent, $r('app.color.button_secondary_text')))
                   .height(32).width(64).fontSize(13)
-                  .border({ width: 1, color: $r('app.color.chat_edit_secondary_border'), radius: $r('app.float.button_radius') })
+                  .border({ width: 1, color: $r('app.color.text_muted'), radius: $r('app.float.button_radius') })
                   .onClick(() => {
                     this.editController.stopEditing()
                     this.editing = false
                     this.editText = ''
                   })
-                Button('重发', { type: ButtonType.Normal })
-                  .attributeModifier(new ActionButtonStyle($r('app.color.chat_edit_primary_background'), $r('app.color.chat_edit_primary_text')))
+                Button('发送', { type: ButtonType.Normal })
+                  .attributeModifier(new ActionButtonStyle($r('app.color.button_primary_background'), $r('app.color.button_primary_text')))
                   .height(32).width(64).fontSize(13)
                   .enabled(this.canEdit && this.editText.trim().length > 0)
                   .onClick(() => {
@@ -588,17 +593,14 @@ export struct MessageBubble {
           }
         }
         .padding({ left: 12, right: 12, top: 10, bottom: 10 })
-        .backgroundColor(this.message.role === 'user' ? $r('app.color.chat_user') : $r('app.color.chat_assistant'))
+        .backgroundColor(this.editing ? $r('app.color.input_background') :
+          (this.message.role === 'user' ? $r('app.color.chat_user') : $r('app.color.chat_assistant')))
         .borderRadius(8)
-        .border({ width: this.highlighted ? 1 : 0, color: $r('app.color.control_accent') })
+        .border({ width: this.highlighted || this.editing ? 1 : 0, color: $r('app.color.control_accent') })
         .width('100%')
-        if (this.message.kind !== 'notice' && !this.editing &&
-          (this.answerText().length > 0 || this.canEdit || this.canRegenerate)) {
-          this.MessageActions()
-        }
       }
-      .width(this.message.role === 'user' ? '84%' : '94%')
-      .constraintSize({ maxWidth: this.message.role === 'user' ? 720 : 880 })
+      .width(this.editing ? '100%' : (this.message.role === 'user' ? '84%' : '94%'))
+      .constraintSize({ maxWidth: this.editing ? 900 : (this.message.role === 'user' ? 720 : 880) })
       .onHover((hover: boolean, event: HoverEvent) => {
         this.hovered = hover
         if (hover && event.source === SourceType.Mouse) this.mouseInput = true

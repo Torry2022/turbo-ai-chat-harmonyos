@@ -6,6 +6,7 @@ import { ChatMessage } from '../models/ChatTypes'
 import { ChatViewModel } from '../state/ChatViewModel'
 import { MessageBubble } from './MessageBubble'
 import { KeyCode } from '@kit.InputKit'
+import { InputFieldStyle } from './ControlStyles'
 
 @Component
 export struct ChatTab {
@@ -26,6 +27,17 @@ export struct ChatTab {
   onCompactHistoryChange: (open: boolean) => void = (_open: boolean) => {}
   @State private historyWidth: number = 0
   @State private historyOpen: boolean = false
+  @State private renamingId: string = ''
+  @State private conversationTitleInput: string = ''
+
+  private saveConversationTitle(): void {
+    const id = this.renamingId
+    if (!id || id !== this.viewModel.activeConversationId || !this.conversationTitleInput.trim() ||
+      !this.viewModel.canManageConversations()) return
+    this.viewModel.renameConversation(id, this.conversationTitleInput).then(() => {
+      if (this.renamingId === id && !this.viewModel.historyError) this.renamingId = ''
+    })
+  }
   @StorageLink('chatMouseInput') private mouseInput: boolean = false
 
   // Refresh plain message snapshots without remounting the native text selection.
@@ -112,6 +124,7 @@ export struct ChatTab {
 
   private onActiveChange(): void {
     if (!this.active) {
+      this.renamingId = ''
       if (!this.wideHistory()) this.setHistoryOpen(false)
       this.inputController.stopEditing()
       this.composerAnimationSerial++
@@ -370,9 +383,46 @@ export struct ChatTab {
             this.inputController.stopEditing()
             this.setHistoryOpen(!this.isHistoryOpen())
           })
-        Text(this.viewModel.currentConversationTitle(this.renderVersion))
-          .fontSize(15).fontWeight(FontWeight.Medium).fontColor($r('app.color.text_title'))
-          .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).layoutWeight(1)
+        if (this.renamingId.length > 0 && this.renamingId === this.viewModel.activeConversationId) {
+          TextInput({ text: this.conversationTitleInput })
+            .id('conversation-title-input')
+            .attributeModifier(new InputFieldStyle())
+            .fontSize(15).height(32).layoutWeight(1).maxLength(100)
+            .padding({ left: 10, right: 10 })
+            .border({ width: 1, color: $r('app.color.control_accent') })
+            .enabled(!this.viewModel.historyBusy)
+            .onChange((value: string) => { this.conversationTitleInput = value })
+            .onSubmit(() => this.saveConversationTitle())
+            .onKeyEvent((event: KeyEvent) => {
+              if (event.type === KeyType.Down && event.keyCode === KeyCode.KEYCODE_ESCAPE && !this.viewModel.historyBusy) {
+                this.renamingId = ''
+                return true
+              }
+              return false
+            })
+            .onAppear(() => this.getUIContext().getFocusController().requestFocus('conversation-title-input'))
+            .onDisAppear(() => { this.renamingId = '' })
+          Button('取消', { type: ButtonType.Normal })
+            .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
+            .height(32).fontSize(13).padding({ left: 12, right: 12 })
+            .enabled(!this.viewModel.historyBusy)
+            .onClick(() => { this.renamingId = '' })
+          Button('保存', { type: ButtonType.Normal })
+            .attributeModifier(new ActionButtonStyle($r('app.color.button_primary_background'), $r('app.color.button_primary_text')))
+            .height(32).fontSize(13).padding({ left: 12, right: 12 })
+            .enabled(this.viewModel.canManageConversations() && this.conversationTitleInput.trim().length > 0)
+            .onClick(() => this.saveConversationTitle())
+        } else {
+          Text(this.viewModel.currentConversationTitle(this.renderVersion))
+            .fontSize(15).fontWeight(FontWeight.Medium).fontColor($r('app.color.text_title'))
+            .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).layoutWeight(1)
+            .gesture(TapGesture({ count: 2 }).onAction((event: GestureEvent) => {
+              if (event.source !== SourceType.Mouse || !this.viewModel.activeConversationId ||
+                !this.viewModel.canManageConversations()) return
+              this.conversationTitleInput = this.viewModel.currentConversationTitle(this.renderVersion)
+              this.renamingId = this.viewModel.activeConversationId
+            }))
+        }
       }.width('100%').height(34)
       if (this.viewModel.historyError.length > 0) {
         Row({ space: 8 }) {
@@ -384,7 +434,7 @@ export struct ChatTab {
       }
       Stack({ alignContent: Alignment.Bottom }) {
       Column() {
-      List({ space: 10, scroller: this.viewModel.chatScroller }) {
+      List({ space: 12, scroller: this.viewModel.chatScroller }) {
         ForEach(this.viewModel.messages, (message: ChatMessage, index: number) => {
           ListItem() {
             Column({ space: 8 }) {
