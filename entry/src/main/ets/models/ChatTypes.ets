@@ -12,6 +12,7 @@ export interface ChatMessage {
   modelName?: string
   kind?: 'message' | 'notice'
   generationState?: 'generating' | 'complete' | 'interrupted' | 'stopped' | 'failed'
+  stopReason?: GenerationStopReason
   imageUnavailable?: boolean
   perfMetrics?: PerfMetrics
   answerVersions?: ChatAnswerVersion[]
@@ -27,6 +28,7 @@ export interface ChatAnswerVersion {
   modelId?: string
   modelName?: string
   generationState?: 'generating' | 'complete' | 'interrupted' | 'stopped' | 'failed'
+  stopReason?: GenerationStopReason
   includeInContext: boolean
   thinkingExpanded: boolean
   perfMetrics?: PerfMetrics

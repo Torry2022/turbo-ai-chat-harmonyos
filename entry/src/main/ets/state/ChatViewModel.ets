@@ -1458,10 +1458,11 @@ export class ChatViewModel {
     }
   }
 
-  async openConversation(id: string, messageId: number = 0): Promise<boolean> {
+  async openConversation(id: string, messageId: number = 0, answerVersionIndex?: number): Promise<boolean> {
     if (!this.canManageConversations()) return false
     this.titleService.pause()
     if (id === this.activeConversationId) {
+      if (answerVersionIndex !== undefined) this.selectAnswerVersion(messageId, answerVersionIndex)
       if (messageId > 0) this.focusChatMessage(messageId)
       return true
     }
@@ -1473,6 +1474,7 @@ export class ChatViewModel {
       this.activeConversation = conversation
       this.activeConversationId = id
       this.session.restore(conversation.messages)
+      if (answerVersionIndex !== undefined) this.session.selectAnswerVersion(messageId, answerVersionIndex)
       this.messages = this.session.messages
       this.restoreDraft(id)
       this.selectedImageUri = ''
@@ -2203,7 +2205,8 @@ export class ChatViewModel {
         outcome.result.stopReason === 'user_stop' ? undefined : outcome.perfMetrics
       )
       this.session.markGeneration(assistantId, outcome.result.stopReason === 'user_stop' ? 'stopped' :
-        (outcome.result.stopReason === 'timeout' || outcome.result.stopReason === 'internal_error' ? 'failed' : 'complete'))
+        (outcome.result.stopReason === 'timeout' || outcome.result.stopReason === 'internal_error' ? 'failed' : 'complete'),
+        outcome.result.stopReason)
       this.syncMessages()
       this.setStatus(outcome.status, outcome.includeInContext ? 'success' : 'warning')
       this.busy = false
@@ -2215,7 +2218,7 @@ export class ChatViewModel {
       const message = `生成失败：${formatError(err as Object)}`
       const partialAnswer = this.session.messages.find((item: ChatMessage) => item.id === assistantId)?.content ?? ''
       this.session.updateMessage(assistantId, partialAnswer, false)
-      this.session.markGeneration(assistantId, 'failed')
+      this.session.markGeneration(assistantId, 'failed', 'internal_error')
       this.syncMessages()
       this.setStatus(message, 'error')
       this.latestPerfMetrics = undefined

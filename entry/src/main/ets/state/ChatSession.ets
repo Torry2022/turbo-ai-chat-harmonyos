@@ -1,4 +1,4 @@
-import { ChatAnswerVersion, ChatMessage, ChatTurn, CONTEXT_MESSAGE_LIMIT, PerfMetrics } from '../models/ChatTypes'
+import { ChatAnswerVersion, ChatMessage, ChatTurn, CONTEXT_MESSAGE_LIMIT, GenerationStopReason, PerfMetrics } from '../models/ChatTypes'
 import { nowTime } from '../utils/formatters'
 import { sanitizeAssistantText, sanitizeStreamingAssistantText } from '../utils/generationText'
 import { answerTextForContext, isLikelyIncompleteAssistantText } from '../utils/thinking'
@@ -37,7 +37,7 @@ export class ChatSession {
     return {
       content: message.content, time: message.time, createdAt: message.createdAt,
       completedAt: message.completedAt, modelId: message.modelId, modelName: message.modelName,
-      generationState: message.generationState, includeInContext: message.includeInContext,
+      generationState: message.generationState, stopReason: message.stopReason, includeInContext: message.includeInContext,
       thinkingExpanded: message.thinkingExpanded, perfMetrics: message.perfMetrics
     }
   }
@@ -73,7 +73,7 @@ export class ChatSession {
       id: item.id, role: item.role, content: selected.content, imageUri: item.imageUri,
       time: selected.time, createdAt: selected.createdAt, completedAt: selected.completedAt,
       modelId: selected.modelId, modelName: selected.modelName, kind: item.kind,
-      generationState: selected.generationState, includeInContext: selected.includeInContext,
+      generationState: selected.generationState, stopReason: selected.stopReason, includeInContext: selected.includeInContext,
       thinkingExpanded: selected.thinkingExpanded, perfMetrics: selected.perfMetrics,
       answerVersions: versions, answerVersionIndex: index
     })
@@ -178,6 +178,7 @@ export class ChatSession {
           modelName: message.modelName,
           kind: message.kind,
           generationState: message.generationState,
+          stopReason: message.stopReason,
           imageUnavailable: message.imageUnavailable,
           includeInContext: includeInContext === undefined ? message.includeInContext : includeInContext,
           thinkingExpanded: message.thinkingExpanded,
@@ -205,6 +206,7 @@ export class ChatSession {
           modelName: message.modelName,
           kind: message.kind,
           generationState: message.generationState,
+          stopReason: message.stopReason,
           imageUnavailable: message.imageUnavailable,
           includeInContext: message.includeInContext,
           thinkingExpanded: message.thinkingExpanded,
@@ -232,6 +234,7 @@ export class ChatSession {
           modelName: message.modelName,
           kind: message.kind,
           generationState: message.generationState,
+          stopReason: message.stopReason,
           imageUnavailable: message.imageUnavailable,
           includeInContext: message.includeInContext,
           thinkingExpanded: !message.thinkingExpanded,
@@ -244,10 +247,11 @@ export class ChatSession {
     })
   }
 
-  markGeneration(id: number, state: 'complete' | 'interrupted' | 'stopped' | 'failed'): void {
+  markGeneration(id: number, state: 'complete' | 'interrupted' | 'stopped' | 'failed', stopReason?: GenerationStopReason): void {
     this.messages.forEach((message: ChatMessage) => {
       if (message.id === id) {
         message.generationState = state
+        message.stopReason = stopReason
         message.completedAt = Date.now()
         if (message.answerVersions) {
           message.answerVersions[message.answerVersionIndex ?? 0] = this.answerSnapshot(message)

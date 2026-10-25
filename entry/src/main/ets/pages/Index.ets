@@ -614,7 +614,7 @@ struct Index {
         .width(Math.max(1, Math.min(280, this.windowWidth - 40)))
         .height('100%')
         .padding({ top: this.topInset, bottom: this.bottomInset })
-        .backgroundColor($r('app.color.page'))
+        .backgroundColor($r('app.color.history_background'))
         .border({ width: { right: 0.5 }, color: $r('app.color.divider') })
         .hitTestBehavior(HitTestMode.BLOCK_HIERARCHY)
         .gesture(PanGesture({ direction: PanDirection.Horizontal, distance: 12 })

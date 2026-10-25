@@ -1,5 +1,6 @@
 {
   "color": [
+    { "name": "history_background", "value": "#040E19" },
     { "name": "chat_edit_primary_background", "value": "#EEF6FF" },
     { "name": "chat_edit_primary_text", "value": "#175D91" },
     { "name": "chat_edit_secondary_border", "value": "#ADD1EC" },

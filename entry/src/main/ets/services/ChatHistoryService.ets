@@ -69,17 +69,27 @@ export class ChatHistoryService {
           let match: ChatHistorySearchResult | undefined = undefined
           for (const message of record.messages) {
             if (message.kind === 'notice' || (message.role !== 'user' && message.role !== 'assistant')) continue
-            const text = this.searchText(message)
-            const position = text.toLowerCase().indexOf(needle)
-            if (position < 0) continue
-            const start = Math.max(0, position - 18)
-            const end = Math.min(text.length, Math.max(start + 90, position + needle.length))
-            match = {
-              id: summary.id, title: summary.title, createdAt: summary.createdAt, updatedAt: summary.updatedAt,
-              modelName: summary.modelName, messageId: message.id,
-              excerpt: `${start > 0 ? '…' : ''}${text.substring(start, end)}${end < text.length ? '…' : ''}`
+            const versions = message.answerVersions
+            const currentIndex = message.answerVersionIndex ?? 0
+            // Search the visible text first; its streaming checkpoint may be newer than the snapshot.
+            for (let index = -1; index < (versions?.length ?? 0); index++) {
+              if (index === currentIndex) continue
+              const content = index < 0 ? message.content : versions![index].content
+              const text = this.searchText(message, content)
+              const position = text.toLowerCase().indexOf(needle)
+              if (position < 0) continue
+              const start = Math.max(0, position - 18)
+              const end = Math.min(text.length, Math.max(start + 90, position + needle.length))
+              const prefix = index >= 0 ? `第 ${index + 1} 版：` : ''
+              match = {
+                id: summary.id, title: summary.title, createdAt: summary.createdAt, updatedAt: summary.updatedAt,
+                modelName: summary.modelName, messageId: message.id,
+                answerVersionIndex: versions === undefined ? undefined : index < 0 ? currentIndex : index,
+                excerpt: `${prefix}${start > 0 ? '…' : ''}${text.substring(start, end)}${end < text.length ? '…' : ''}`
+              }
+              break
             }
-            break
+            if (match !== undefined) break
           }
           if (match !== undefined) results.push(match)
           else if (record.title.toLowerCase().indexOf(needle) >= 0) {
@@ -96,11 +106,11 @@ export class ChatHistoryService {
     })
   }
 
-  private searchText(message: ChatMessage): string {
-    if (message.role === 'user') return message.content.replace(/\s+/g, ' ').trim()
+  private searchText(message: ChatMessage, content: string): string {
+    if (message.role === 'user') return content.replace(/\s+/g, ' ').trim()
     const inlineText = (text: string): string =>
       parseInlineMarkdown(text).map((span: MarkdownSpan) => span.text).join('')
-    return parseLightMarkdown(parseAssistantText(message.content).answer).map((block: MarkdownBlock): string => {
+    return parseLightMarkdown(parseAssistantText(content).answer).map((block: MarkdownBlock): string => {
       if (block.type === 'code') return block.text
       if (block.type === 'table') {
         return [block.headers ?? [], ...(block.rows ?? [])]

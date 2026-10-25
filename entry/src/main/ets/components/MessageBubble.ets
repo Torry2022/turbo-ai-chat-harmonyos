@@ -217,6 +217,37 @@ export struct MessageBubble {
     .height(20).flexShrink(0).alignItems(VerticalAlign.Center)
   }
 
+  @Builder
+  private GenerationStatusTag(text: string, detail: string, color: ResourceColor, background: ResourceColor) {
+    Text(text)
+      .fontSize(11).fontColor(color).maxLines(1)
+      .padding({ left: 7, right: 7, top: 2, bottom: 2 })
+      .backgroundColor(background).borderRadius(4)
+      .margin({ left: 8 }).flexShrink(0)
+      .bindTips(detail, { enableArrow: false })
+      .accessibilityText(detail)
+  }
+
+  @Builder
+  private GenerationStatus() {
+    if (this.message.generationState === 'stopped') {
+      this.GenerationStatusTag('已停止生成', '已停止生成',
+        $r('app.color.text_muted'), $r('app.color.button_secondary_background'))
+    } else if (this.message.generationState === 'interrupted') {
+      this.GenerationStatusTag('生成已中断', '生成已中断',
+        $r('app.color.tag_amber_text'), $r('app.color.tag_amber_background'))
+    } else if (this.message.stopReason === 'max_tokens') {
+      this.GenerationStatusTag('达到输出上限', '已达到输出上限，回答可能未完成',
+        $r('app.color.tag_amber_text'), $r('app.color.tag_amber_background'))
+    } else if (this.message.stopReason === 'timeout') {
+      this.GenerationStatusTag('生成超时', '生成超时，回答可能未完成',
+        $r('app.color.tag_amber_text'), $r('app.color.tag_amber_background'))
+    } else if (this.message.generationState === 'failed') {
+      this.GenerationStatusTag('生成失败', this.answerText().length > 0 ? '生成失败，已保留以上内容' : '生成失败',
+        $r('app.color.status_error'), $r('app.color.button_danger_background'))
+    }
+  }
+
   private hasThinking(): boolean {
     return parseAssistantText(this.message.content).hasThinking
   }
@@ -537,10 +568,16 @@ export struct MessageBubble {
         Column({ space: this.editing ? 6 : 4 }) {
           if (!this.editing) {
             Row() {
-              Text(this.message.role === 'user' ? '你' : (this.message.modelName?.trim().length ? this.message.modelName : '助手'))
-                .fontSize(11)
-                .fontColor(this.message.role === 'user' ? $r('app.color.chat_user_meta') : $r('app.color.text_assistant_meta'))
-                .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).layoutWeight(1)
+              Row() {
+                Text(this.message.role === 'user' ? '你' : (this.message.modelName?.trim().length ? this.message.modelName : '助手'))
+                  .fontSize(11)
+                  .fontColor(this.message.role === 'user' ? $r('app.color.chat_user_meta') : $r('app.color.text_assistant_meta'))
+                  .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).flexShrink(1)
+                if (this.message.role === 'assistant') {
+                  this.GenerationStatus()
+                }
+                Blank().layoutWeight(1)
+              }.layoutWeight(1).alignItems(VerticalAlign.Center)
               if (this.message.kind !== 'notice' &&
                 (this.answerText().length > 0 || this.canEdit || this.canRegenerate ||
                   (this.message.answerVersions?.length ?? 0) > 1)) {
@@ -617,17 +654,6 @@ export struct MessageBubble {
                 .textAlign(TextAlign.Start)
                 .fontColor($r('app.color.chat_user_text'))
             }
-          }
-          if (this.message.generationState === 'stopped') {
-            Text('已停止生成').fontSize(11).fontColor($r('app.color.text_muted'))
-          }
-          if (this.message.generationState === 'interrupted') {
-            Text('生成已中断').fontSize(11).fontColor($r('app.color.status_warning'))
-          }
-          if (this.message.generationState === 'failed') {
-            Text(this.answerText().length > 0 ? '生成失败，已保留以上内容' : '生成失败')
-              .fontSize(11)
-              .fontColor($r('app.color.status_error'))
           }
           if (this.message.role === 'assistant' && this.message.perfMetrics !== undefined) {
             Text(`TTFT ${this.message.perfMetrics.ttft}ms · ${this.message.perfMetrics.tpot}ms/tok · ${this.message.perfMetrics.tokensPerSec} tok/s · ${this.message.perfMetrics.tokens} tokens`)

@@ -57,6 +57,7 @@ export struct ChatTab {
       modelName: message.modelName,
       kind: message.kind,
       generationState: message.generationState,
+      stopReason: message.stopReason,
       imageUnavailable: message.imageUnavailable,
       perfMetrics: message.perfMetrics,
       answerVersions: message.answerVersions,
@@ -664,11 +665,11 @@ export struct ChatTab {
       Row() {
         Column() {
           ChatHistoryPanel({ viewModel: this.viewModel, renderVersion: this.renderVersion })
-            .width(this.historyPanelWidth()).height('100%')
+            .width('100%').height('100%').borderRadius(8).clip(true)
         }.width(this.wideHistory() && this.historyOpen ? this.historyPanelWidth() : 0).height('100%')
+          .padding({ left: this.wideHistory() && this.historyOpen ? 12 : 0 })
           .alignItems(HorizontalAlign.Start).clip(true)
           .opacity(this.wideHistory() && this.historyOpen ? 1 : 0)
-          .border({ width: { right: 0.5 }, color: $r('app.color.divider') })
           .hitTestBehavior(this.wideHistory() && this.historyOpen ? HitTestMode.Default : HitTestMode.None)
           .accessibilityLevel(this.wideHistory() && this.historyOpen ? 'auto' : 'no-hide-descendants')
         Column() {
@@ -687,7 +688,7 @@ export struct ChatTab {
         }.width(Math.max(1, Math.min(280, this.historyWidth - 40))).height('100%')
           .padding({ bottom: 8 })
           .border({ width: { right: 0.5 }, color: $r('app.color.divider') })
-          .backgroundColor($r('app.color.page')).hitTestBehavior(HitTestMode.BLOCK_HIERARCHY)
+          .backgroundColor($r('app.color.history_background')).hitTestBehavior(HitTestMode.BLOCK_HIERARCHY)
           .transition(TransitionEffect.move(TransitionEdge.START).combine(TransitionEffect.OPACITY)
             .animation({ duration: 220, curve: Curve.EaseInOut }))
       }

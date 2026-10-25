@@ -27,6 +27,7 @@ export interface ChatHistoryIndex {
 
 export interface ChatHistorySearchResult extends ChatConversationSummary {
   messageId?: number
+  answerVersionIndex?: number
   excerpt: string
 }
 

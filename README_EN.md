@@ -55,6 +55,11 @@ In the HarmonyOS ecosystem, on-device AI inference today largely depends on Andr
 
 ## Recent Highlights
 
+**Answer versions and history search (v1.16.0)**
+
+- Retain earlier answers when regenerating and switch versions within the bubble. Follow-up questions use the selected answer as context, and history search can locate earlier versions.
+- Show compact header tags for stopped, interrupted, timed-out, or output-limited answers, retaining each version's status. Give the wide history sidebar a subtle background and rounded corners.
+
 **Conversation naming and sidebar refinements (v1.15.0)**
 
 - Generate titles with the loaded model when idle after the first reply. Questions and model changes take priority, and manual names are preserved.
@@ -197,7 +202,7 @@ With a physical keyboard, Enter sends from the chat input and Shift+Enter insert
 - Dialogs fit the available window width and allow long body text to scroll. The Model Gallery shrinks when the on-screen keyboard opens to keep content visible.
 - Local inference: models run on-device, no network required
 - Streaming output: displays the answer as it is generated, without waiting for the full response
-- Stop generation: interrupt the current response while it is streaming
+- Stop generation: interrupt the current response while it is streaming. Output-limit and timeout notices appear in the answer and are saved with chat history
 - Voice input: offline Mandarin recognition through Core Speech Kit, with live partial results and manual stop
 - Model switching: switch between preset models, installed market models, and imported models
 - Thinking blocks: separate reasoning from the final answer, including models whose chat template already supplies the opening `<think>` tag. The model's default thinking setting is preserved. Reasoning counts toward the maximum output length, so reaching the limit may cut the answer short.
@@ -209,7 +214,7 @@ With a physical keyboard, Enter sends from the chat input and Shift+Enter insert
 - Import local MNN models by selecting a folder (where supported), importing a zip, or pushing a directory and scanning it in the app; standard MNN export directories use `jinja.chat_template` from `llm_config.json`
 - OpenAI-compatible API: serve the currently loaded model to Cherry Studio and other LAN clients with streaming output and Bearer authentication
 - Message actions: copy, edit, and regenerate icons appear in message bubble headers. User-message actions appear on hover or keyboard focus when using a mouse and remain visible for touch input. Long-press the text to select it. Regenerate the last answer using the currently loaded model and the original question and image. Earlier answers are retained and can be selected within the bubble; follow-up questions use the selected answer as context. You can also edit and resend any question directly in its bubble, replacing its answer and subsequent messages while preserving the composer draft.
-- Chat history: save conversations and images locally; create, resume, rename, delete, or clear chats. Search titles and message text, then open a result at the matching message. Double-click the title at the top of the chat with a mouse to rename it. After the first reply in a new chat, the loaded model generates a title when idle. If naming fails, the existing title stays; manual names are preserved. Each reply retains its model and timestamp. Uninstalling or clearing app data removes history.
+- Chat history: save conversations and images locally; create, resume, rename, delete, or clear chats. Search titles and message text, including earlier answer versions, then open a result at the matching message and version. Double-click the title at the top of the chat with a mouse to rename it. After the first reply in a new chat, the loaded model generates a title when idle. If naming fails, the existing title stays; manual names are preserved. Each reply retains its model and timestamp. Uninstalling or clearing app data removes history.
 
 ## Screenshots
 

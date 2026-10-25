@@ -29,7 +29,7 @@ export struct ChatHistoryPanel {
     const match = this.viewModel.historySearchText.trim() ?
       this.viewModel.historySearchResults.find((item) => item.id === id) : undefined
     this.getUIContext().getFocusController().clearFocus()
-    this.viewModel.openConversation(id, match?.messageId ?? 0).then((opened: boolean) => {
+    this.viewModel.openConversation(id, match?.messageId ?? 0, match?.answerVersionIndex).then((opened: boolean) => {
       if (opened && this.closeOnSelection) this.onClose()
     })
   }
@@ -184,5 +184,6 @@ export struct ChatHistoryPanel {
       }
     }.width('100%').height('100%').padding({ left: this.closeOnSelection ? 8 : 12,
       right: this.closeOnSelection ? 8 : 12, top: 2, bottom: 4 })
+      .backgroundColor($r('app.color.history_background'))
   }
 }
