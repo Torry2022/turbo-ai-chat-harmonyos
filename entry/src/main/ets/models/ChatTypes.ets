@@ -14,6 +14,22 @@ export interface ChatMessage {
   generationState?: 'generating' | 'complete' | 'interrupted' | 'stopped' | 'failed'
   imageUnavailable?: boolean
   perfMetrics?: PerfMetrics
+  answerVersions?: ChatAnswerVersion[]
+  answerVersionIndex?: number
+}
+
+// A reply version keeps its own text, model, timestamps and generation outcome.
+export interface ChatAnswerVersion {
+  content: string
+  time: string
+  createdAt?: number
+  completedAt?: number
+  modelId?: string
+  modelName?: string
+  generationState?: 'generating' | 'complete' | 'interrupted' | 'stopped' | 'failed'
+  includeInContext: boolean
+  thinkingExpanded: boolean
+  perfMetrics?: PerfMetrics
 }
 
 export interface PerfMetrics {

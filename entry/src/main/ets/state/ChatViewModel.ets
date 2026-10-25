@@ -1367,6 +1367,13 @@ export class ChatViewModel {
     await this.generateChatMessage(question.content, question.imageUri, question.id, false)
   }
 
+  selectAnswerVersion(messageId: number, index: number): void {
+    if (!this.canManageConversations() || !this.session.selectAnswerVersion(messageId, index)) return
+    this.pauseChatAutoScroll()
+    this.syncMessages()
+    this.notify()
+  }
+
   updateHistorySearch(value: string): void {
     this.historySearchText = value
     clearTimeout(this.historySearchTimer)
@@ -2133,6 +2140,7 @@ export class ChatViewModel {
       return
     }
 
+    const previousAnswer = replacingQuestionId > 0 && !editQuestion ? this.session.lastAnswer() : undefined
     if (replacingQuestionId > 0) this.session.removeFromQuestion(replacingQuestionId)
     const chatTurns = this.composeChatTurns(text)
     this.session.prepareModel(this.currentModel().id, this.currentModel().shortName)
@@ -2142,7 +2150,14 @@ export class ChatViewModel {
     } else {
       this.session.appendMessage('user', text, attachedImage)
     }
-    const assistantId = this.session.appendMessage('assistant', '', '')
+    let assistantId: number
+    if (previousAnswer !== undefined) {
+      this.session.messages = [...this.session.messages, previousAnswer]
+      this.session.startAnswerVersion(previousAnswer.id)
+      assistantId = previousAnswer.id
+    } else {
+      assistantId = this.session.appendMessage('assistant', '', '')
+    }
     this.syncMessages()
     this.resumeChatAutoScroll()
     if (consumeInput) {

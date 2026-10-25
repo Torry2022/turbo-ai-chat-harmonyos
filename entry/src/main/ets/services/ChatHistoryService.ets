@@ -1,5 +1,5 @@
 import fs from '@ohos.file.fs'
-import { ChatMessage } from '../models/ChatTypes'
+import { ChatAnswerVersion, ChatMessage } from '../models/ChatTypes'
 import { ChatConversation, ChatConversationSummary, ChatHistoryIndex, ChatHistorySearchResult } from '../models/ChatHistoryTypes'
 import { parseAssistantText } from '../utils/thinking'
 import { conversationTitleSignature } from './ConversationTitleService'
@@ -252,6 +252,20 @@ export class ChatHistoryService {
       if (!Number.isInteger(message.id) || message.id < 1 || typeof message.content !== 'string' ||
         typeof message.role !== 'string' || typeof message.imageUri !== 'string') {
         throw new Error('历史消息格式不兼容')
+      }
+      if (message.answerVersions !== undefined) {
+        if (message.role !== 'assistant' || message.kind === 'notice' || !Array.isArray(message.answerVersions) ||
+          message.answerVersions.length < 2 || !Number.isInteger(message.answerVersionIndex) ||
+          (message.answerVersionIndex ?? -1) < 0 ||
+          (message.answerVersionIndex ?? -1) >= message.answerVersions.length) {
+          throw new Error('回答版本格式不兼容')
+        }
+        message.answerVersions.forEach((version: ChatAnswerVersion) => {
+          if (!version || typeof version.content !== 'string' || typeof version.time !== 'string' ||
+            typeof version.includeInContext !== 'boolean' || typeof version.thinkingExpanded !== 'boolean') {
+            throw new Error('回答版本格式不兼容')
+          }
+        })
       }
     })
     return record

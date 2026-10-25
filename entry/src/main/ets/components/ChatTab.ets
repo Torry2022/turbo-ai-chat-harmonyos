@@ -58,7 +58,9 @@ export struct ChatTab {
       kind: message.kind,
       generationState: message.generationState,
       imageUnavailable: message.imageUnavailable,
-      perfMetrics: message.perfMetrics
+      perfMetrics: message.perfMetrics,
+      answerVersions: message.answerVersions,
+      answerVersionIndex: message.answerVersionIndex
     }
   }
 
@@ -449,6 +451,8 @@ export struct ChatTab {
             MessageBubble({
               message: this.messageForRender(message, this.renderVersion),
               canRegenerate: this.viewModel.canRegenerateAnswer(message.id),
+              canSelectVersion: this.viewModel.canManageConversations(),
+              onSelectVersion: (index: number) => this.viewModel.selectAnswerVersion(message.id, index),
               canEdit: this.viewModel.canEditQuestion(message.id),
               confirmEdit: this.viewModel.needsEditQuestionConfirmation(message.id),
               onEdit: (text: string, skip: boolean) => this.viewModel.resendEditedQuestion(message.id, text, skip),

@@ -326,7 +326,7 @@ function finished(answer = '新的回答。') {
     result: { stopReason: 'eos', text: answer, generatedTokens: 3 },
     perfMetrics: { ttft: 1, tpot: 2, tokensPerSec: 3, tokens: 3 } };
 }
-add('regeneration replaces only the last answer and uses current model without duplicating context', async () => {
+add('regeneration retains answer versions and uses current model without duplicating context', async () => {
   const view = await actionView('regenerate');
   const originalQuestion = view.session.lastQuestion();
   const oldAnswer = view.session.lastAnswer();
@@ -342,7 +342,10 @@ add('regeneration replaces only the last answer and uses current model without d
   assert.equal(view.session.lastQuestion().id, originalQuestion.id);
   assert.equal(view.session.lastQuestion().createdAt, originalQuestion.createdAt);
   assert.equal(view.session.lastAnswer().modelId, 'new-model');
-  assert.equal(view.messages.some(item => item.id === oldAnswer.id), false);
+  assert.equal(view.session.lastAnswer().id, oldAnswer.id);
+  assert.equal(view.session.lastAnswer().answerVersions[0].content, '最后的旧回答。');
+  assert.equal(view.session.lastAnswer().answerVersions.length, 2);
+  assert.equal(view.session.lastAnswer().answerVersionIndex, 1);
   assert.equal(view.inputText, '保留未发送草稿');
   assert.equal(view.selectedImageUri, 'file://draft-image');
   await view.regenerateAnswer(view.session.lastAnswer().id);
@@ -354,6 +357,169 @@ add('regeneration replaces only the last answer and uses current model without d
   assert.equal(record.messages.at(-1).content, '新的回答。');
   assert.equal(record.messages.at(-1).modelName, '新模型');
   assert.equal(record.messages.at(-1).generationState, 'complete');
+});
+add('version selection restores metadata, thinking state and metrics across a restart', async () => {
+  const view = await actionView('version-roundtrip');
+  const first = view.session.lastAnswer();
+  view.session.updateMessage(first.id, '<think>原思考</think>原回答。', true,
+    { ttft: 10, tpot: 20, tokensPerSec: 30, tokens: 40 });
+  view.session.toggleThinkingExpanded(first.id);
+  const original = JSON.parse(JSON.stringify(view.session.lastAnswer()));
+  view.generationWorkflow = { run: () => Promise.resolve(finished('第二版回答。')) };
+  await view.regenerateAnswer(first.id);
+  await new Promise(done => setTimeout(done, 0));
+  view.selectAnswerVersion(first.id, 0);
+  const selected = view.session.lastAnswer();
+  for (const key of ['content', 'modelId', 'modelName', 'createdAt', 'completedAt', 'time',
+    'generationState', 'includeInContext', 'thinkingExpanded']) assert.equal(selected[key], original[key], key);
+  assert.equal(selected.perfMetrics.tokens, 40);
+  await view.flushHistory();
+  const restarted = new ChatHistoryService();
+  await restarted.initialize(path.join(temporary, 'version-roundtrip'));
+  const record = await restarted.load(view.activeConversationId);
+  const session = new ChatSession();
+  session.restore(record.messages);
+  assert.equal(session.lastAnswer().answerVersionIndex, 0);
+  assert.equal(session.lastAnswer().content, original.content);
+  assert.equal(session.selectAnswerVersion(first.id, 1), true);
+  assert.equal(session.lastAnswer().content, '第二版回答。');
+  assert.equal(session.lastAnswer().modelName, '新模型');
+  assert.equal(session.lastAnswer().perfMetrics.tokens, 3);
+});
+add('regenerating from an older selection appends a version rather than replacing alternatives', async () => {
+  const view = await actionView('version-append');
+  const id = view.session.lastAnswer().id;
+  view.generationWorkflow = { run: () => Promise.resolve(finished('第二版。')) };
+  await view.regenerateAnswer(id);
+  await new Promise(done => setTimeout(done, 0));
+  view.selectAnswerVersion(id, 0);
+  view.generationWorkflow = { run: () => Promise.resolve(finished('第三版。')) };
+  await view.regenerateAnswer(id);
+  await new Promise(done => setTimeout(done, 0));
+  const answer = view.session.lastAnswer();
+  assert.deepEqual(Array.from(answer.answerVersions, x => x.content), ['最后的旧回答。', '第二版。', '第三版。']);
+  assert.equal(answer.answerVersionIndex, 2);
+  assert.equal(view.messages.filter(x => x.role === 'user').length, 2);
+});
+add('follow-up context uses the selected reply while keeping later messages and composer drafts', async () => {
+  const view = await actionView('selected-context');
+  const id = view.session.lastAnswer().id;
+  view.generationWorkflow = { run: () => Promise.resolve(finished('不要进入上下文的另一版。')) };
+  await view.regenerateAnswer(id);
+  await new Promise(done => setTimeout(done, 0));
+  view.updateInputText('后续问题');
+  view.selectAnswerVersion(id, 0);
+  assert.equal(view.inputText, '后续问题');
+  let request;
+  view.generationWorkflow = { run: value => { request = value; return Promise.resolve(finished('后续回答。')); } };
+  await view.sendMessage();
+  await new Promise(done => setTimeout(done, 0));
+  assert.deepEqual(Array.from(request.turns, x => x.content),
+    ['system', '更早的问题', '更早的回答。', '最后的问题', '最后的旧回答。', '后续问题']);
+  const followingIds = Array.from(view.messages.slice(-2), x => x.id);
+  view.selectAnswerVersion(id, 1);
+  assert.deepEqual(Array.from(view.messages.slice(-2), x => x.id), followingIds);
+  assert.ok(view.session.composeChatTurns('system', '再问', 6)
+    .some(x => x.content === '不要进入上下文的另一版。'));
+});
+add('busy, generating, invalid and user-message version switches are ignored', async () => {
+  const view = await actionView('version-guards');
+  const id = view.session.lastAnswer().id;
+  let resolve;
+  view.generationWorkflow = { run: () => new Promise(done => { resolve = done; }) };
+  await view.regenerateAnswer(id);
+  const before = JSON.stringify(view.messages);
+  view.selectAnswerVersion(id, 0);
+  assert.equal(view.session.selectAnswerVersion(id, 0), false);
+  assert.equal(JSON.stringify(view.messages), before);
+  resolve(finished());
+  await new Promise(done => setTimeout(done, 0));
+  const after = JSON.stringify(view.messages);
+  for (const index of [-1, 2, 0.5, NaN]) view.selectAnswerVersion(id, index);
+  view.selectAnswerVersion(view.session.lastQuestion().id, 0);
+  view.selectAnswerVersion(99999, 0);
+  view.busy = true;
+  view.selectAnswerVersion(id, 0);
+  assert.equal(JSON.stringify(view.messages), after);
+  view.busy = false;
+});
+add('failed and stopped alternatives preserve the original reply and its usable context', async () => {
+  const view = await actionView('version-failure-stop');
+  const id = view.session.lastAnswer().id;
+  view.generationWorkflow = { run: (_request, callbacks) => {
+    callbacks.onStream({ text: '失败前的内容', characterCount: 6 });
+    return Promise.reject(new Error('故障'));
+  } };
+  await view.regenerateAnswer(id);
+  await new Promise(done => setTimeout(done, 0));
+  assert.equal(view.session.lastAnswer().generationState, 'failed');
+  view.selectAnswerVersion(id, 0);
+  assert.equal(view.session.lastAnswer().content, '最后的旧回答。');
+  assert.ok(view.session.composeChatTurns('system', '继续', 6).some(x => x.content === '最后的旧回答。'));
+  view.generationWorkflow = { run: () => Promise.resolve({ ...finished('停止前的内容'), includeInContext: false,
+    result: { stopReason: 'user_stop', text: '停止前的内容', generatedTokens: 2 } }) };
+  await view.regenerateAnswer(id);
+  await new Promise(done => setTimeout(done, 0));
+  assert.equal(view.session.lastAnswer().generationState, 'stopped');
+  assert.equal(view.session.lastAnswer().answerVersions.length, 3);
+  assert.equal(view.session.composeChatTurns('system', '继续', 6).length, 4);
+  await view.flushHistory();
+  const record = await view.historyService.load(view.activeConversationId);
+  const restored = new ChatSession();
+  restored.restore(record.messages);
+  assert.equal(restored.selectAnswerVersion(id, 1), true);
+  assert.equal(restored.lastAnswer().generationState, 'failed');
+  assert.equal(restored.lastAnswer().content, '失败前的内容');
+  assert.equal(restored.lastAnswer().includeInContext, false);
+  assert.equal(restored.selectAnswerVersion(id, 0), true);
+  assert.equal(restored.lastAnswer().content, '最后的旧回答。');
+});
+add('restart during a new version keeps the newest stream checkpoint and the original answer', () => {
+  const session = new ChatSession();
+  session.appendMessage('user', '问题');
+  const id = session.appendMessage('assistant', '原回答。');
+  session.startAnswerVersion(id);
+  session.updateMessage(id, '<think>思考</think>最新片段', true);
+  session.appendToMessage(id, '。');
+  const restored = new ChatSession();
+  restored.restore(JSON.parse(JSON.stringify(session.messages)));
+  assert.equal(restored.lastAnswer().generationState, 'interrupted');
+  assert.equal(restored.lastAnswer().content, '<think>思考</think>最新片段。');
+  assert.equal(restored.lastAnswer().includeInContext, false);
+  assert.equal(restored.selectAnswerVersion(id, 0), true);
+  assert.equal(restored.lastAnswer().content, '原回答。');
+  assert.equal(restored.selectAnswerVersion(id, 1), true);
+  assert.equal(restored.lastAnswer().generationState, 'interrupted');
+});
+add('editing a question discards its answer alternatives and later turns', async () => {
+  const view = await actionView('edit-versioned-question');
+  const id = view.session.lastAnswer().id;
+  const questionId = view.session.lastQuestion().id;
+  view.generationWorkflow = { run: () => Promise.resolve(finished('第二版。')) };
+  await view.regenerateAnswer(id);
+  await new Promise(done => setTimeout(done, 0));
+  view.session.appendMessage('user', '后续问题');
+  view.session.appendMessage('assistant', '后续回答');
+  view.messages = view.session.messages;
+  assert.equal(await view.resendEditedQuestion(questionId, '改后的问题'), true);
+  await new Promise(done => setTimeout(done, 0));
+  assert.equal(view.messages.some(x => x.id === id), false);
+  assert.equal(view.messages.some(x => x.content === '后续问题'), false);
+  assert.equal(view.session.lastAnswer().answerVersions, undefined);
+  await view.flushHistory();
+  const saved = await view.historyService.load(view.activeConversationId);
+  assert.equal(saved.messages.filter(x => x.answerVersions).length, 0);
+});
+add('invalid stored version records are rejected without changing the old-record format', () => {
+  const service = new ChatHistoryService();
+  const record = conversation('c-invalid-versions');
+  assert.equal(service.parseRecord(JSON.stringify(record), record.id).messages.length, 2);
+  const reply = record.messages[1];
+  reply.answerVersions = [{ content: 'a' }, { content: 'b' }];
+  reply.answerVersionIndex = 9;
+  assert.throws(() => service.parseRecord(JSON.stringify(record), record.id), /版本格式/);
+  reply.answerVersionIndex = 0;
+  assert.throws(() => service.parseRecord(JSON.stringify(record), record.id), /版本格式/);
 });
 add('missing attachments, unavailable model and stale action IDs cannot replace a turn', async () => {
   const view = await actionView('action-guards');

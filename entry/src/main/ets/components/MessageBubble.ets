@@ -21,6 +21,8 @@ export struct MessageBubble {
   }
   onToggleThinking: (messageId: number) => void = (_messageId: number) => {}
   onAnswerSelection: () => void = () => {}
+  @Prop canSelectVersion: boolean = false
+  onSelectVersion: (index: number) => void = (_index: number) => {}
   @Prop canRegenerate: boolean = false
   @Prop canEdit: boolean = false
   @State private editing: boolean = false
@@ -148,6 +150,9 @@ export struct MessageBubble {
   @Builder
   private MessageActions() {
     Row({ space: 12 }) {
+      if (this.message.role === 'assistant' && (this.message.answerVersions?.length ?? 0) > 1) {
+        this.AnswerVersions()
+      }
       if (this.answerText().length > 0) {
         this.MessageAction($r('app.media.icon_message_copy'), '复制', () => { this.copyMessage() })
       }
@@ -171,6 +176,45 @@ export struct MessageBubble {
     // Reserve the header actions so hover and keyboard focus never move the text.
     .opacity(this.showActions() ? 1 : 0)
     .hitTestBehavior(this.showActions() ? HitTestMode.Default : HitTestMode.None)
+  }
+
+  @Builder
+  private VersionButton(forward: boolean) {
+    Button({ type: ButtonType.Normal }) {
+      Image($r('app.media.icon_message_previous'))
+        .width(16).height(16).fillColor($r('app.color.text_muted'))
+        .rotate({ angle: forward ? 180 : 0 })
+    }
+    .id(`message-${this.message.id}-version-${forward ? 'next' : 'previous'}`)
+    .width(20).height(20).padding(0)
+    .responseRegion({ x: -6, y: -10, width: 32, height: 40 })
+    .borderRadius($r('app.float.button_radius'))
+    .backgroundColor(Color.Transparent)
+    .hoverEffect(HoverEffect.Auto)
+    .enabled(this.canSelectVersion && (forward ?
+      (this.message.answerVersionIndex ?? 0) < (this.message.answerVersions?.length ?? 1) - 1 :
+      (this.message.answerVersionIndex ?? 0) > 0))
+    .accessibilityText(forward ? '下一个回答' : '上一个回答')
+    .bindTips(forward ? '下一个回答' : '上一个回答', { enableArrow: false })
+    .onClick(() => {
+      this.clearAnswerSelection()
+      this.copied = false
+      this.onAnswerSelection()
+      this.onSelectVersion((this.message.answerVersionIndex ?? 0) + (forward ? 1 : -1))
+    })
+  }
+
+  @Builder
+  private AnswerVersions() {
+    Row({ space: 2 }) {
+      this.VersionButton(false)
+      Text(`${(this.message.answerVersionIndex ?? 0) + 1} / ${this.message.answerVersions?.length ?? 1}`)
+        .fontSize(11).fontColor($r('app.color.text_muted'))
+        .textAlign(TextAlign.Center).constraintSize({ minWidth: 28 })
+        .accessibilityText(`第 ${(this.message.answerVersionIndex ?? 0) + 1} 个回答，共 ${this.message.answerVersions?.length ?? 1} 个`)
+      this.VersionButton(true)
+    }
+    .height(20).flexShrink(0).alignItems(VerticalAlign.Center)
   }
 
   private hasThinking(): boolean {
@@ -498,7 +542,8 @@ export struct MessageBubble {
                 .fontColor(this.message.role === 'user' ? $r('app.color.chat_user_meta') : $r('app.color.text_assistant_meta'))
                 .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).layoutWeight(1)
               if (this.message.kind !== 'notice' &&
-                (this.answerText().length > 0 || this.canEdit || this.canRegenerate)) {
+                (this.answerText().length > 0 || this.canEdit || this.canRegenerate ||
+                  (this.message.answerVersions?.length ?? 0) > 1)) {
                 this.MessageActions()
               }
               Text(this.message.time)

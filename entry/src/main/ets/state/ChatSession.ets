@@ -1,4 +1,4 @@
-import { ChatMessage, ChatTurn, CONTEXT_MESSAGE_LIMIT, PerfMetrics } from '../models/ChatTypes'
+import { ChatAnswerVersion, ChatMessage, ChatTurn, CONTEXT_MESSAGE_LIMIT, PerfMetrics } from '../models/ChatTypes'
 import { nowTime } from '../utils/formatters'
 import { sanitizeAssistantText, sanitizeStreamingAssistantText } from '../utils/generationText'
 import { answerTextForContext, isLikelyIncompleteAssistantText } from '../utils/thinking'
@@ -33,11 +33,68 @@ export class ChatSession {
     if (index >= 0) this.messages = this.messages.slice(0, index)
   }
 
+  private answerSnapshot(message: ChatMessage): ChatAnswerVersion {
+    return {
+      content: message.content, time: message.time, createdAt: message.createdAt,
+      completedAt: message.completedAt, modelId: message.modelId, modelName: message.modelName,
+      generationState: message.generationState, includeInContext: message.includeInContext,
+      thinkingExpanded: message.thinkingExpanded, perfMetrics: message.perfMetrics
+    }
+  }
+
+  startAnswerVersion(messageId: number): void {
+    this.messages = this.messages.map((message: ChatMessage) => {
+      if (message.id !== messageId || message.role !== 'assistant' || message.kind === 'notice') return message
+      const versions = message.answerVersions?.slice() ?? [this.answerSnapshot(message)]
+      versions[message.answerVersionIndex ?? 0] = this.answerSnapshot(message)
+      const next: ChatAnswerVersion = {
+        content: '', time: nowTime(), createdAt: Date.now(), modelId: this.modelId, modelName: this.modelName,
+        generationState: 'generating', includeInContext: true, thinkingExpanded: false
+      }
+      versions.push(next)
+      return {
+        id: message.id, role: message.role, content: next.content, imageUri: message.imageUri,
+        time: next.time, createdAt: next.createdAt, modelId: next.modelId, modelName: next.modelName,
+        kind: message.kind, generationState: next.generationState, includeInContext: next.includeInContext,
+        thinkingExpanded: next.thinkingExpanded, answerVersions: versions, answerVersionIndex: versions.length - 1
+      }
+    })
+  }
+
+  selectAnswerVersion(messageId: number, index: number): boolean {
+    const message = this.messages.find((item: ChatMessage) => item.id === messageId)
+    if (message === undefined || message.role !== 'assistant' || message.kind === 'notice' ||
+      !message.answerVersions || !Number.isInteger(index) || index < 0 || index >= message.answerVersions.length ||
+      index === message.answerVersionIndex || message.generationState === 'generating') return false
+    const versions = message.answerVersions.slice()
+    versions[message.answerVersionIndex ?? 0] = this.answerSnapshot(message)
+    const selected = versions[index]
+    this.messages = this.messages.map((item: ChatMessage) => item.id !== messageId ? item : {
+      id: item.id, role: item.role, content: selected.content, imageUri: item.imageUri,
+      time: selected.time, createdAt: selected.createdAt, completedAt: selected.completedAt,
+      modelId: selected.modelId, modelName: selected.modelName, kind: item.kind,
+      generationState: selected.generationState, includeInContext: selected.includeInContext,
+      thinkingExpanded: selected.thinkingExpanded, perfMetrics: selected.perfMetrics,
+      answerVersions: versions, answerVersionIndex: index
+    })
+    return true
+  }
+
   restore(messages: ChatMessage[]): void {
     this.messages = messages.map((message: ChatMessage) => {
       if (message.generationState === 'generating') {
         message.generationState = 'interrupted'
         message.includeInContext = false
+      }
+      if (message.answerVersions) {
+        message.answerVersions.forEach((version: ChatAnswerVersion) => {
+          if (version.generationState === 'generating') {
+            version.generationState = 'interrupted'
+            version.includeInContext = false
+          }
+        })
+        // The visible fields may contain a newer streaming checkpoint than its version snapshot.
+        message.answerVersions[message.answerVersionIndex ?? 0] = this.answerSnapshot(message)
       }
       return message
     })
@@ -124,6 +181,8 @@ export class ChatSession {
           imageUnavailable: message.imageUnavailable,
           includeInContext: includeInContext === undefined ? message.includeInContext : includeInContext,
           thinkingExpanded: message.thinkingExpanded,
+          answerVersions: message.answerVersions,
+          answerVersionIndex: message.answerVersionIndex,
           perfMetrics: perfMetrics ?? message.perfMetrics
         }
       }
@@ -149,6 +208,8 @@ export class ChatSession {
           imageUnavailable: message.imageUnavailable,
           includeInContext: message.includeInContext,
           thinkingExpanded: message.thinkingExpanded,
+          answerVersions: message.answerVersions,
+          answerVersionIndex: message.answerVersionIndex,
           perfMetrics: message.perfMetrics
         }
       }
@@ -174,6 +235,8 @@ export class ChatSession {
           imageUnavailable: message.imageUnavailable,
           includeInContext: message.includeInContext,
           thinkingExpanded: !message.thinkingExpanded,
+          answerVersions: message.answerVersions,
+          answerVersionIndex: message.answerVersionIndex,
           perfMetrics: message.perfMetrics
         }
       }
@@ -186,6 +249,9 @@ export class ChatSession {
       if (message.id === id) {
         message.generationState = state
         message.completedAt = Date.now()
+        if (message.answerVersions) {
+          message.answerVersions[message.answerVersionIndex ?? 0] = this.answerSnapshot(message)
+        }
       }
     })
   }
