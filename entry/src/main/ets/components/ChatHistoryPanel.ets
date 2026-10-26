@@ -13,7 +13,7 @@ export struct ChatHistoryPanel {
   @State private editingId: string = ''
   @State private titleInput: string = ''
 
-  private visibleItems(): ChatConversationSummary[] {
+  private visibleItems(_renderVersion: number): ChatConversationSummary[] {
     return this.viewModel.historySearchText.trim().length > 0 ?
       this.viewModel.historySearchResults : this.viewModel.conversations
   }
@@ -35,7 +35,7 @@ export struct ChatHistoryPanel {
   }
 
   private groupBefore(index: number): string {
-    const items = this.visibleItems()
+    const items = this.visibleItems(this.renderVersion)
     const group = historyGroup(items[index].updatedAt)
     return index === 0 || historyGroup(items[index - 1].updatedAt) !== group ? group : ''
   }
@@ -103,7 +103,7 @@ export struct ChatHistoryPanel {
           })
           .id('history-search').width('100%')
       }
-      if (this.visibleItems().length === 0) {
+      if (this.visibleItems(this.renderVersion).length === 0) {
         Column({ space: 12 }) {
           Image(this.viewModel.historySearchText.trim() ? $r('app.media.model_search_empty') :
             $r('app.media.icon_chat_history')).width(36).height(36)
@@ -115,7 +115,7 @@ export struct ChatHistoryPanel {
           .alignItems(HorizontalAlign.Center)
       } else {
         List({ space: 2 }) {
-          ForEach(this.visibleItems(), (item: ChatConversationSummary, index: number) => {
+          ForEach(this.visibleItems(this.renderVersion), (item: ChatConversationSummary, index: number) => {
             ListItem() {
               Column({ space: 4 }) {
                 if (this.groupBefore(index).length > 0) {

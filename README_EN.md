@@ -59,6 +59,7 @@ In the HarmonyOS ecosystem, on-device AI inference today largely depends on Andr
 
 - Retain earlier answers when regenerating and switch versions within the bubble. Follow-up questions use the selected answer as context, and history search can locate earlier versions.
 - Show compact header tags for stopped, interrupted, timed-out, or output-limited answers, retaining each version's status. Give the wide history sidebar a subtle background and rounded corners.
+- Improve automatic naming with context from both ends of long questions and better English titles. Keep the chat heading and history list in sync after naming.
 
 **Conversation naming and sidebar refinements (v1.15.0)**
 

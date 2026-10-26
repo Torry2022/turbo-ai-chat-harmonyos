@@ -18,6 +18,27 @@ using MNN::Transformer::PromptImagePart;
 
 namespace {
 
+class ScopedTitleTemplate {
+public:
+    ScopedTitleTemplate(Llm* llm, bool enabled) : llm_(enabled ? llm : nullptr) {
+        if (llm_ == nullptr) return;
+        originalConfig_ = llm_->dump_config();
+        llm_->set_config(R"({"jinja":{"context":{"enable_thinking":false}}})");
+    }
+
+    ~ScopedTitleTemplate() {
+        if (llm_ == nullptr) return;
+        // set_config merges objects: clear the temporary context before restoring
+        // it, including models whose original context had no thinking option.
+        llm_->set_config(R"({"jinja":{"context":null}})");
+        llm_->set_config(originalConfig_);
+    }
+
+private:
+    Llm* llm_;
+    std::string originalConfig_;
+};
+
 void ResetForGeneration(Llm* llm) {
     llm->reset();
     // reset() clears history, but retains USER_CANCEL. Newer MNN response()
@@ -452,6 +473,7 @@ MnnLlmRunner::GenerationResult MnnLlmRunner::generateChatStreaming(
         return {};
     }
 
+    ScopedTitleTemplate titleTemplate(llm_.get(), cancellation != nullptr);
     stopRequested_.store(false);
     ChunkStreamBuffer buffer(onChunk, [this, cancellation]() {
         if (cancellation != nullptr && cancellation->load()) stopRequested_.store(true);

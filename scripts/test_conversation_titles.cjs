@@ -78,6 +78,35 @@ test('only complete first turns qualify; legacy and manual names stay untouched'
   assert.equal(cleanConversationTitle({...finished,text:'<think>内部思考</think>简洁标题'}),'简洁标题');
   assert.equal(cleanConversationTitle({...finished,stopReason:'max_tokens'}),'');
   assert.equal(cleanConversationTitle({...finished,text:'第一行\n解释'}),'');
+  const englishTitle='Reduce Android Battery Drain Without Disabling Notifications';
+  assert.equal(cleanConversationTitle({...finished,text:englishTitle}),englishTitle);
+  const modelTitle='bge-small-zh-v1.5、bge-large-zh-v1.5 和 bge-m3 区别';
+  assert.equal(cleanConversationTitle({...finished,text:modelTitle}),modelTitle);
+  assert.equal(cleanConversationTitle({...finished,text:'中'.repeat(33)}),'');
+  assert.equal(cleanConversationTitle({...finished,text:'a'.repeat(101)}),'');
+});
+test('long questions retain both the opening and final request within a bounded excerpt',()=>{
+  const r=record();
+  r.messages[0].content='问题开头：'+ '😀背景材料'.repeat(180)+'最后请求：比较两款手机的续航。';
+  r.messages[1].content='<think>不应进入标题材料</think>'+'回答开头：'+'详细说明'.repeat(100)+'最后结论：优先选择续航更长的一款。';
+  const prompt=prepareConversationTitle(r).turns[1].content;
+  const question=prompt.split('<用户问题>\n')[1].split('\n</用户问题>')[0];
+  const answer=prompt.split('<助手回答>\n')[1].split('\n</助手回答>')[0];
+  for(const [value,limit,opening,ending] of [
+    [question,512,'问题开头：','最后请求：比较两款手机的续航。'],
+    [answer,256,'回答开头：','最后结论：优先选择续航更长的一款。']
+  ]) {
+    assert.ok(value.startsWith(opening)&&value.endsWith(ending));
+    assert.equal(Array.from(value.replace('\n[中间内容省略]\n','')).length,limit);
+    assert.ok(!/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u.test(value));
+  }
+  assert.ok(!prompt.includes('不应进入标题材料'));
+});
+test('short first turns are complete and unrelated later turns are excluded',()=>{
+  const r=record();r.messages.push({id:3,role:'user',kind:'message',content:'不相关的第二个问题'});
+  const prompt=prepareConversationTitle(r).turns[1].content;
+  assert.ok(prompt.includes(r.messages[0].content)&&prompt.includes(r.messages[1].content));
+  assert.ok(!prompt.includes('[中间内容省略]')&&!prompt.includes('不相关的第二个问题'));
 });
 test('idle delay and repeated notifications never create duplicate jobs',async()=>{
   const h=scheduler();h.service.enqueue(record());advance(900);h.service.resume();advance(899);assert.equal(h.jobs.length,0);
