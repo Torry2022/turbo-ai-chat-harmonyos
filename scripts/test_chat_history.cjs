@@ -78,7 +78,7 @@ function load(filename) {
   vm.runInNewContext(result.outputText, {
     module, exports: module.exports, require: requireSource, console, ArrayBuffer, Buffer,
     setTimeout, clearTimeout, setInterval, clearInterval,
-    Observed: type => type, Scroller: class {}, ScrollAlign: { START: 0, END: 1 }, Edge: { Bottom: 1 }, $r: name => name
+    Observed: type => type, Scroller: class { isAtEnd() { return false; } }, ScrollAlign: { START: 0, END: 1 }, Edge: { Bottom: 1 }, $r: name => name
   }, { filename });
   return module.exports;
 }
@@ -421,6 +421,31 @@ add('follow-up context uses the selected reply while keeping later messages and 
   assert.deepEqual(Array.from(view.messages.slice(-2), x => x.id), followingIds);
   assert.ok(view.session.composeChatTurns('system', '再问', 6)
     .some(x => x.content === '不要进入上下文的另一版。'));
+});
+add('answer version switching follows the pre-switch bottom position rather than the auto-follow flag', async () => {
+  const view = await actionView('version-scroll');
+  const id = view.session.lastAnswer().id;
+  view.generationWorkflow = { run: () => Promise.resolve(finished('另一版。')) };
+  await view.regenerateAnswer(id);
+  await new Promise(done => setTimeout(done, 0));
+  let atBottom = true;
+  let scrolls = 0;
+  view.chatScroller = { isAtEnd: () => atBottom };
+  view.notifyAndMaybeScroll = Object.getPrototypeOf(view).notifyAndMaybeScroll;
+  view.scrollToBottom = () => { scrolls++; };
+  view.pauseChatAutoScroll(); // A touch on the version button also pauses auto-follow.
+  view.selectAnswerVersion(id, 0);
+  assert.equal(scrolls, 1);
+  assert.equal(view.chatAutoScrollEnabled, true);
+  atBottom = false;
+  view.selectAnswerVersion(id, 1);
+  assert.equal(scrolls, 1);
+  assert.equal(view.chatAutoScrollEnabled, false);
+  atBottom = true;
+  view.selectAnswerVersion(id, 1); // Selecting the active version must not change scroll state.
+  assert.equal(scrolls, 1);
+  assert.equal(view.chatAutoScrollEnabled, false);
+  await view.flushHistory();
 });
 add('busy, generating, invalid and user-message version switches are ignored', async () => {
   const view = await actionView('version-guards');

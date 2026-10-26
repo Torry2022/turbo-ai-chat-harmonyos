@@ -1368,10 +1368,13 @@ export class ChatViewModel {
   }
 
   selectAnswerVersion(messageId: number, index: number): void {
-    if (!this.canManageConversations() || !this.session.selectAnswerVersion(messageId, index)) return
-    this.pauseChatAutoScroll()
+    if (!this.canManageConversations()) return
+    const keepAtBottom = this.chatScroller.isAtEnd()
+    if (!this.session.selectAnswerVersion(messageId, index)) return
+    if (keepAtBottom) this.resumeChatAutoScroll()
+    else this.pauseChatAutoScroll()
     this.syncMessages()
-    this.notify()
+    this.notifyAndMaybeScroll()
   }
 
   updateHistorySearch(value: string): void {
