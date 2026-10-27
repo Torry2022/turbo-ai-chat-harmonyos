@@ -41,6 +41,7 @@ import { catalogCompatibilityMessage } from '../utils/modelCatalog'
 import { NativeInferenceService } from '../services/NativeInferenceService'
 import {
   ApiGenerationRequest,
+  ApiRuntimeSnapshot,
   PreparedApiDecision,
   ApiServerModel,
   OpenAiApiServer
@@ -202,6 +203,7 @@ export class ChatViewModel {
     currentModel: () => this.apiServerModel(),
     currentSettings: () => this.currentGenerationSettings(),
     currentMaxNewTokens: () => this.maxNewTokens,
+    runtimeSnapshot: () => this.readApiRuntimeSnapshot(),
     generate: (request: ApiGenerationRequest, onChunk: (chunk: string) => void) => {
       return this.runApiGeneration(request, onChunk)
     },
@@ -1724,6 +1726,25 @@ export class ChatViewModel {
   refreshStats(): void {
     this.stats = this.statsService.readStats()
     this.notify()
+  }
+
+  private async readApiRuntimeSnapshot(): Promise<ApiRuntimeSnapshot> {
+    const model = this.currentModel()
+    const modelConfig = this.modelPath
+    const metrics = await this.statsService.readSample()
+    const modelDir = modelConfig.length > 0 ? modelConfig.substring(0, modelConfig.lastIndexOf('/')) : ''
+    const storage = await this.statsService.readStorageSample(this.filesDir, modelDir)
+    return {
+      chatModel: {
+        id: model.id,
+        name: model.name,
+        loaded: this.loaded,
+        loading: this.modelLoading,
+        generating: this.generating
+      },
+      metrics,
+      storage
+    }
   }
 
   private refreshStorageStats(): void {

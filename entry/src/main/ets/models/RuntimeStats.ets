@@ -1,7 +1,6 @@
 export interface RuntimeStats {
   appCpu: string
   systemCpu: string
-  appPss: string
   appRss: string
   nativeHeapAllocated: string
   nativeHeapTotal: string
@@ -16,10 +15,30 @@ export interface StorageStats {
   currentModel: string
 }
 
+export interface RuntimeSample {
+  sampledAt: number
+  appCpuPercent: number
+  systemCpuPercent: number
+  pssWithSwapBytes: number
+  rssBytes: number
+  swapBytes: number | null
+  nativeHeapAllocatedBytes: number
+  nativeHeapTotalBytes: number
+  systemMemTotalBytes: number
+  systemMemAvailableBytes: number
+  batteryTemperatureC: number
+  threadCount: number
+}
+
+export interface StorageSample {
+  sampledAt: number
+  appBytes: number
+  currentModelBytes: number
+}
+
 export const EMPTY_RUNTIME_STATS: RuntimeStats = {
   appCpu: '--',
   systemCpu: '--',
-  appPss: '--',
   appRss: '--',
   nativeHeapAllocated: '--',
   nativeHeapTotal: '--',

@@ -211,10 +211,10 @@ export struct MonitorTab {
             this.SectionTitle('应用内存')
             Row({ space: 8 }) {
               MonitorStatItem({
-                label: '进程占用',
-                value: this.stats.appPss,
+                label: '常驻内存',
+                value: this.stats.appRss,
                 itemWeight: 1,
-                valueColor: colorForMemoryUsage(this.stats.appPss)
+                valueColor: colorForMemoryUsage(this.stats.appRss)
               })
               MonitorStatItem({
                 label: '原生堆占用',

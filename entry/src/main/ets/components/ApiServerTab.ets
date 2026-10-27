@@ -166,6 +166,7 @@ export struct ApiServerTab {
         this.Endpoint('POST', '/v1/decisions', $r('app.color.link'))
 
       }
+      this.Endpoint('GET', '/turbo/runtime', $r('app.color.endpoint_post'))
       Text(this.apiServerRunning ? '切换服务内容前，请先关闭服务。' : '服务启动后，只接收所选内容的请求。')
         .fontSize(12).lineHeight(18).fontColor($r('app.color.text_hint')).width('100%')
     }
