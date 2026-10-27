@@ -8,6 +8,7 @@ export struct ModelLoadDialog {
   @ObjectLink viewModel: ChatViewModel
   @Prop availableWidth: number = 360
   @Prop availableHeight: number = 640
+  @State private loadingSweep: boolean = false
 
   build() {
     Stack({ alignContent: Alignment.Center }) {
@@ -49,28 +50,31 @@ export struct ModelLoadDialog {
               .fontColor($r('app.color.text_secondary'))
               .width('100%')
 
-            if (this.viewModel.modelLoadProgress <= 0) {
-              Row()
-                .width('100%')
-                .height(8)
-                .backgroundColor($r('app.color.control_track'))
-                .borderRadius(4)
-            } else {
-              Progress({ value: this.viewModel.modelLoadProgress, total: 100, type: ProgressType.Linear })
-                .width('100%')
-                .height(8)
-                .color($r('app.color.status_good'))
-                .style({ strokeWidth: 8, strokeRadius: 4, enableScanEffect: this.viewModel.modelLoading })
+            Stack({ alignContent: Alignment.Start }) {
+              if (this.viewModel.modelLoading) {
+                Row()
+                  .width('50%')
+                  .height(8)
+                  .linearGradient({ direction: GradientDirection.Right,
+                    colors: [[Color.Transparent, 0], [$r('app.color.status_good'), 0.5], [Color.Transparent, 1]] })
+                  .borderRadius(4)
+                  .translate({ x: this.loadingSweep ? '200%' : '-100%' })
+                  .animation({ duration: 1800, curve: Curve.Linear, iterations: -1 })
+                  .onAppear(() => { this.loadingSweep = true })
+                  .onDisAppear(() => { this.loadingSweep = false })
+              }
             }
+            .width('100%')
+            .height(8)
+            .backgroundColor($r('app.color.control_track'))
+            .borderRadius(4)
+            .clip(true)
 
             Row() {
-              Text(`${Math.round(this.viewModel.modelLoadProgress)}%`)
+              Text(this.viewModel.modelLoading ? `加载用时 ${this.viewModel.modelLoadElapsedSeconds} 秒` :
+                (this.viewModel.loaded ? '已完成' : '等待操作'))
                 .fontSize(12)
                 .fontColor($r('app.color.text_muted'))
-                .layoutWeight(1)
-              Text(this.viewModel.modelLoading ? '加载中' : (this.viewModel.loaded ? '已完成' : '等待操作'))
-                .fontSize(12)
-                .fontColor(this.viewModel.loaded ? $r('app.color.status_good') : $r('app.color.status_warning'))
             }
             .width('100%')
 

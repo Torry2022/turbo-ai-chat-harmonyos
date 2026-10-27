@@ -116,7 +116,7 @@ export class ChatViewModel {
   startupModelId: string = ''
   showModelLoadDialog: boolean = false
   modelLoading: boolean = false
-  modelLoadProgress: number = 0
+  modelLoadElapsedSeconds: number = 0
   modelLoadMessage: string = '准备加载本地模型'
   showBuiltinModelInstallDialog: boolean = false
   builtinModelInstalling: boolean = false
@@ -171,6 +171,7 @@ export class ChatViewModel {
   private filesDir: string = ''
   private context?: common.UIAbilityContext
   private modelLoadTimer: number = -1
+  private modelLoadStartedAt: number = 0
   private autoScrollPending: boolean = false
   private chatScrollTargetId: number = 0
   private chatAutoScrollEnabled: boolean = true
@@ -328,7 +329,7 @@ export class ChatViewModel {
     clearTimeout(this.historySearchTimer)
     this.historySearchSerial++
     this.flushHistory().catch((error: Error) => console.error(`保存对话失败：${formatError(error as Object)}`))
-    this.stopModelLoadProgress()
+    this.stopModelLoadTimer()
     this.speechRecognitionService.shutdown()
     this.resetSpeechRecognitionState()
     this.apiServer.stop().catch((_err: Error) => {
@@ -1794,7 +1795,7 @@ export class ChatViewModel {
         return
       }
       this.showModelLoadDialog = true
-      this.modelLoadProgress = this.loaded ? 100 : 0
+      this.modelLoadElapsedSeconds = 0
       this.modelLoadMessage = this.loaded ? `${this.currentModel().shortName} 已加载，可以开始聊天。` : `${this.currentModel().shortName} 尚未加载，点击加载模型开始。`
       this.notify()
       if (autoStart) {
@@ -1880,7 +1881,7 @@ export class ChatViewModel {
     this.showModelLoadDialog = showProgressDialog
     this.setStatus(`正在加载 ${this.currentModel().shortName}...`, 'neutral')
     this.modelLoadMessage = '正在加载模型权重，请保持应用在前台。'
-    this.startModelLoadProgress()
+    this.startModelLoadTimer()
     this.notify()
 
     this.modelLifecycleService.loadModel(
@@ -1898,8 +1899,8 @@ export class ChatViewModel {
       this.runtimeConfigDirty = false
       this.setStatus(`${this.currentModel().shortName} 已加载`, 'success')
       this.modelLoadMessage = `${this.currentModel().shortName} 加载完成，可以开始聊天。`
-      this.stopModelLoadProgress()
-      this.modelLoadProgress = 100
+      this.stopModelLoadTimer()
+      this.modelLoadElapsedSeconds = Math.floor((Date.now() - this.modelLoadStartedAt) / 1000)
       if (announceReady) {
         this.session.appendMessage('assistant', `${this.currentModel().shortName} 加载完成，现在可以开始提问。`, '', false)
         this.syncMessages()
@@ -1924,8 +1925,8 @@ export class ChatViewModel {
       this.loaded = false
       this.setStatus(`加载失败：${formatError(err as Object)}`, 'error')
       const loadErrorMessage = `${this.currentModel().shortName} 加载失败，可能是设备可用内存不足。请关闭后台应用、释放其他模型或重启 App 后重试。\n\n${this.status}`
-      this.stopModelLoadProgress()
-      this.modelLoadProgress = 0
+      this.stopModelLoadTimer()
+      this.modelLoadElapsedSeconds = 0
       this.modelLoadMessage = loadErrorMessage
       this.busy = false
       this.modelLoading = false
@@ -2296,7 +2297,7 @@ export class ChatViewModel {
     }
     this.loaded = false
     this.setStatus(status, 'neutral')
-    this.modelLoadProgress = 0
+    this.modelLoadElapsedSeconds = 0
     this.modelLoadMessage = status
   }
 
@@ -2362,8 +2363,8 @@ export class ChatViewModel {
 
   private openBuiltinModelInstallDialog(spec: BuiltinModelDownloadSpec, autoLoadAfterInstall: boolean = false): void {
     this.showModelLoadDialog = false
-    this.stopModelLoadProgress()
-    this.modelLoadProgress = 0
+    this.stopModelLoadTimer()
+    this.modelLoadElapsedSeconds = 0
     this.showBuiltinModelInstallDialog = true
     this.builtinModelInstalling = false
     this.builtinModelInstallCanceled = false
@@ -2683,18 +2684,17 @@ export class ChatViewModel {
     }
   }
 
-  private startModelLoadProgress(): void {
-    this.stopModelLoadProgress()
-    this.modelLoadProgress = 8
+  private startModelLoadTimer(): void {
+    this.stopModelLoadTimer()
+    this.modelLoadStartedAt = Date.now()
+    this.modelLoadElapsedSeconds = 0
     this.modelLoadTimer = setInterval(() => {
-      if (this.modelLoadProgress < 88) {
-        this.modelLoadProgress = Math.min(88, this.modelLoadProgress + 4)
-        this.notify()
-      }
-    }, 160)
+      this.modelLoadElapsedSeconds = Math.floor((Date.now() - this.modelLoadStartedAt) / 1000)
+      this.notify()
+    }, 1000)
   }
 
-  private stopModelLoadProgress(): void {
+  private stopModelLoadTimer(): void {
     if (this.modelLoadTimer >= 0) {
       clearInterval(this.modelLoadTimer)
       this.modelLoadTimer = -1
