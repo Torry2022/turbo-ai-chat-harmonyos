@@ -1,11 +1,11 @@
 param(
-  [string]$MnnRoot = "$PSScriptRoot\..\.codex_mnn_source_2edeef91",
-  [string]$BuildDir = "$PSScriptRoot\..\.codex_mnn_build_2edeef91",
+  [string]$MnnRoot = "$PSScriptRoot\..\.codex_mnn_source_f0b6105c",
+  [string]$BuildDir = "$PSScriptRoot\..\.codex_mnn_build_f0b6105c",
   [string]$HarmonyNativeHome = $env:HARMONY_NATIVE_HOME
 )
 
 $ErrorActionPreference = 'Stop'
-$expectedCommit = '2edeef91b425e98a93707840b6fffdd97980bdbe'
+$expectedCommit = 'f0b6105c5c7f901b1531dd4c23afa8a00b454db3'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $MnnRoot = [IO.Path]::GetFullPath($MnnRoot)
 $BuildDir = [IO.Path]::GetFullPath($BuildDir)
@@ -18,7 +18,7 @@ if ($LASTEXITCODE -ne 0 -or $actualCommit -ne $expectedCommit) {
   throw "Expected MNN $expectedCommit, found $actualCommit"
 }
 if (-not (Test-Path $library)) { throw "Missing $library" }
-$patchNames = @('0001-omni-generation-attention-mask.patch', '0002-omni-text-prefill-ple.patch')
+$patchNames = @('0003-tokenizer-nfc.patch', '0004-streaming-added-token.patch')
 foreach ($patchName in $patchNames) {
   & git -C $MnnRoot apply --reverse --check (Join-Path $root "third_party\mnn\patches\$patchName")
   if ($LASTEXITCODE -ne 0) { throw "Required MNN patch is missing: $patchName" }
@@ -51,7 +51,7 @@ $manifest = [ordered]@{
       sha256 = (Get-FileHash (Join-Path $root "third_party\mnn\patches\$_") -Algorithm SHA256).Hash.ToLowerInvariant()
     }
   })
-  version = '3.6.1-dev+2edeef91'
+  version = '3.6.1-dev+f0b6105c'
   commit = $expectedCommit
   architecture = 'arm64-v8a'
   stl = 'c++_shared'
@@ -73,4 +73,4 @@ $manifest = [ordered]@{
   libMnnSha256 = (Get-FileHash $libraryOutput -Algorithm SHA256).Hash.ToLowerInvariant()
 }
 $manifest | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $root 'third_party\mnn\BUILD_INFO.json')
-Write-Output 'Staged MNN development snapshot 2edeef91 runtime and headers.'
+Write-Output 'Staged MNN development snapshot f0b6105c runtime and headers.'

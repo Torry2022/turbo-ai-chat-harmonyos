@@ -1,0 +1,80 @@
+diff --git a/transformers/llm/engine/CMakeLists.txt b/transformers/llm/engine/CMakeLists.txt
+index 6e04afccd..7e6632d1e 100644
+--- a/transformers/llm/engine/CMakeLists.txt
++++ b/transformers/llm/engine/CMakeLists.txt
+@@ -42,6 +42,9 @@ include_directories(${CMAKE_CURRENT_LIST_DIR}/include/)
+ 
+ # source files
+ FILE(GLOB_RECURSE SRCS ${CMAKE_CURRENT_LIST_DIR}/src/*)
++set(UTF8PROC_DIR ${CMAKE_CURRENT_LIST_DIR}/../../../3rd_party/utf8proc)
++include_directories(${UTF8PROC_DIR})
++list(APPEND SRCS ${UTF8PROC_DIR}/utf8proc.c)
+ 
+ if (MNN_SEP_BUILD)
+     if (MNN_BUILD_SHARED_LIBS)
+@@ -59,6 +62,7 @@ else()
+ endif()
+ # jinja.cpp template engine (always enabled, header-only)
+ target_compile_definitions(llm PRIVATE LLM_USE_JINJA)
++target_compile_definitions(llm PRIVATE UTF8PROC_STATIC)
+ if(MNN_LLM_TOKEN_COMPRESS)
+     target_compile_definitions(llm PRIVATE MNN_LLM_TOKEN_COMPRESS)
+ endif()
+@@ -113,7 +117,8 @@ if(MNN_LLM_BUILD_DEMO)
+         add_executable(qwen3_tts_demo ${CMAKE_CURRENT_LIST_DIR}/demo/qwen3_tts_demo.cpp)
+     endif()
+     FILE(GLOB TOKENIZER_SRCS ${CMAKE_CURRENT_LIST_DIR}/src/tokenizer/*.cpp)
+-    add_executable(tokenizer_demo ${CMAKE_CURRENT_LIST_DIR}/demo/tokenizer_demo.cpp ${TOKENIZER_SRCS})
++    add_executable(tokenizer_demo ${CMAKE_CURRENT_LIST_DIR}/demo/tokenizer_demo.cpp ${TOKENIZER_SRCS} ${UTF8PROC_DIR}/utf8proc.c)
++    target_compile_definitions(tokenizer_demo PRIVATE UTF8PROC_STATIC)
+     target_include_directories(tokenizer_demo PRIVATE ${CMAKE_CURRENT_LIST_DIR}/src/tokenizer/ ${CMAKE_CURRENT_LIST_DIR}/src/)
+ 
+     if(MNN_LLM_TOKEN_COMPRESS)
+diff --git a/transformers/llm/engine/src/tokenizer/tokenizer.cpp b/transformers/llm/engine/src/tokenizer/tokenizer.cpp
+index 152881c17..40dc91b97 100644
+--- a/transformers/llm/engine/src/tokenizer/tokenizer.cpp
++++ b/transformers/llm/engine/src/tokenizer/tokenizer.cpp
+@@ -24,6 +24,8 @@
+ #include <climits>
+ #include <cctype>
+ #include <cstring>
++#include <cstdlib>
++#include "utf8proc.h"
+ namespace MNN {
+ namespace Transformer {
+ 
+@@ -1121,6 +1123,25 @@ static std::vector<std::string> create_bytes_char_map() {
+ // Normalizer Implementations
+ // ==========================================
+ 
++class NFCNormalizer : public Normalizer {
++public:
++    std::string normalize(const std::string& text) const override {
++        if (text.empty()) return text;
++        utf8proc_uint8_t* buffer = nullptr;
++        const auto size = utf8proc_map(reinterpret_cast<const utf8proc_uint8_t*>(text.data()),
++            static_cast<utf8proc_ssize_t>(text.size()), &buffer,
++            static_cast<utf8proc_option_t>(UTF8PROC_STABLE | UTF8PROC_COMPOSE));
++        if (size < 0) {
++            MNN_ERROR("[Tokenizer] NFC normalization failed: %s\n", utf8proc_errmsg(size));
++            std::free(buffer);
++            return text;
++        }
++        std::string result(reinterpret_cast<const char*>(buffer), static_cast<size_t>(size));
++        std::free(buffer);
++        return result;
++    }
++};
++
+ class NFKCNormalizer : public Normalizer {
+     std::vector<std::pair<uint32_t, std::string>> table_;
+     bool clean_controls_ = true;
+@@ -2291,7 +2312,7 @@ bool PipelineTokenizer::load_vocab_binary(std::ifstream& file) {
+             }
+             case 9: { // NFC preserves control/format characters, unlike SentencePiece cleanup.
+                 auto table = read_norm_table(p);
+-                return make_unique_<NFKCNormalizer>(std::move(table), false);
++                return make_unique_<NFCNormalizer>();
+             }
+             case 7: {  // new BertNormalizer with embedded NFD
+                 uint8_t clean = read_u8(p);

@@ -1,12 +1,12 @@
 param(
-  [string]$MnnRoot = "$PSScriptRoot\..\.codex_mnn_source_2edeef91",
-  [string]$BuildDir = "$PSScriptRoot\..\.codex_mnn_build_2edeef91",
+  [string]$MnnRoot = "$PSScriptRoot\..\.codex_mnn_source_f0b6105c",
+  [string]$BuildDir = "$PSScriptRoot\..\.codex_mnn_build_f0b6105c",
   [string]$HarmonyNativeHome = $env:HARMONY_NATIVE_HOME,
   [int]$Jobs = [Environment]::ProcessorCount
 )
 
 $ErrorActionPreference = 'Stop'
-$expectedCommit = '2edeef91b425e98a93707840b6fffdd97980bdbe'
+$expectedCommit = 'f0b6105c5c7f901b1531dd4c23afa8a00b454db3'
 $MnnRoot = [IO.Path]::GetFullPath($MnnRoot)
 $BuildDir = [IO.Path]::GetFullPath($BuildDir)
 
@@ -28,8 +28,12 @@ if ($LASTEXITCODE -ne 0 -or $actualCommit -ne $expectedCommit) {
   throw "Expected MNN $expectedCommit, found $actualCommit"
 }
 
+$utf8proc = Join-Path $MnnRoot '3rd_party\utf8proc'
+New-Item -ItemType Directory -Force -Path $utf8proc | Out-Null
+Copy-Item -Path (Join-Path $PSScriptRoot '..\third_party\mnn\utf8proc\*') -Destination $utf8proc -Force
+
 $cmake = Join-Path $HarmonyNativeHome 'build-tools\cmake\bin\cmake.exe'
-foreach ($patchName in @('0001-omni-generation-attention-mask.patch', '0002-omni-text-prefill-ple.patch')) {
+foreach ($patchName in @('0003-tokenizer-nfc.patch', '0004-streaming-added-token.patch')) {
   $patch = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\third_party\mnn\patches\$patchName"))
   $patchApplied = $false
   try {

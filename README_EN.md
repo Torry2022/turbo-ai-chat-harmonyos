@@ -10,9 +10,9 @@
 
 **Turbo AI Chat is a HarmonyOS NEXT native on-device LLM chat application** for validating a complete local-inference pipeline on HarmonyOS devices. It is built with ArkTS, C++ N-API, and MNN Runtime, ships profiles for Qwen3-4B-Instruct, MiniCPM5-1B, and Gemma-4-E2B-it, and can add compatible text and multimodal MNN models through the Model Gallery or local import. The app also includes streaming chat, model switching, image understanding, runtime monitoring, and an OpenAI-compatible LAN API.
 
-> This version is built on MNN development snapshot [`2edeef91`](https://github.com/alibaba/MNN/commit/2edeef91b425e98a93707840b6fffdd97980bdbe), adding support for the official MiniCPM5-2B MNN package with offline validation on physical HarmonyOS devices. MiniCPM5-2B requires app version v1.10.1 or later.
+> This version is built on MNN development snapshot [`f0b6105c`](https://github.com/alibaba/MNN/commit/f0b6105c5c7f901b1531dd4c23afa8a00b454db3), adding support for the official MiniCPM5-2B MNN package with offline validation on physical HarmonyOS devices. MiniCPM5-2B requires app version v1.10.1 or later.
 
-The project also includes two [MNN compatibility patches](third_party/mnn/patches/README.md) for incorrect attention masks in multimodal generation and stale PLE embeddings across successive text requests. The build scripts apply these patches automatically.
+The project includes two [MNN compatibility patches](third_party/mnn/patches/README.md) for NFC text normalization and preserving model-defined token text in streaming output. The build scripts apply these patches automatically.
 
 ## Table of Contents
 

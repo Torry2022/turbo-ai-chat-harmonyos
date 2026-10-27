@@ -10,9 +10,9 @@
 
 **Turbo AI Chat 是一个 HarmonyOS NEXT 原生端侧大模型聊天应用**，用于验证在鸿蒙设备上直接运行本地 LLM 的完整链路。项目基于 ArkTS、C++ N-API 和 MNN Runtime 构建，预置 Qwen3-4B-Instruct、MiniCPM5-1B 和 Gemma-4-E2B-it，并可通过模型广场或本地导入扩展兼容的文本与多模态 MNN 模型；同时提供流式对话、模型切换、图片理解、运行监控和局域网 OpenAI 兼容 API。
 
-> 当前版本基于 MNN 开发快照 [`2edeef91`](https://github.com/alibaba/MNN/commit/2edeef91b425e98a93707840b6fffdd97980bdbe) 构建，已支持 MiniCPM5-2B 官方 MNN 模型包，并完成鸿蒙真机离线验证。使用 MiniCPM5-2B 需安装 v1.10.1 或更高版本。
+> 当前版本基于 MNN 开发快照 [`f0b6105c`](https://github.com/alibaba/MNN/commit/f0b6105c5c7f901b1531dd4c23afa8a00b454db3) 构建，已支持 MiniCPM5-2B 官方 MNN 模型包，并完成鸿蒙真机离线验证。使用 MiniCPM5-2B 需安装 v1.10.1 或更高版本。
 
-项目还包含两项 [MNN 兼容性补丁](third_party/mnn/patches/README.md)，分别修复多模态生成的注意力掩码错误和连续文本请求中的 PLE 嵌入复用问题。构建脚本会自动应用这些补丁。
+项目包含两项 [MNN 兼容性补丁](third_party/mnn/patches/README.md)，用于正确处理 NFC 文本规范化，并保留流式输出中模型自定义标记的原文。构建脚本会自动应用这些补丁。
 
 ## 目录
 

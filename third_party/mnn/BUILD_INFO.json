@@ -1,21 +1,21 @@
 ﻿{
     "patches":  [
                     {
-                        "file":  "patches/0001-omni-generation-attention-mask.patch",
-                        "sha256":  "6893e872cb923c0ad8a1183fac8bf1f278bb8f2884bd9ef26737496f8e349544"
+                        "file":  "patches/0003-tokenizer-nfc.patch",
+                        "sha256":  "476f131e241576446fcf62b13fd6c79b9176860899579d541a44da96824b782e"
                     },
                     {
-                        "file":  "patches/0002-omni-text-prefill-ple.patch",
-                        "sha256":  "338a4893dd563175484e344761b4ebf8a9cee74e8d97e98ecce90e09406ade64"
+                        "file":  "patches/0004-streaming-added-token.patch",
+                        "sha256":  "6012c3c2016aee81ca13cdd5b244df4f6858605f0c3aeba98bd7b956662c5535"
                     }
                 ],
-    "version":  "3.6.1-dev+2edeef91",
-    "commit":  "2edeef91b425e98a93707840b6fffdd97980bdbe",
+    "version":  "3.6.1-dev+f0b6105c",
+    "commit":  "f0b6105c5c7f901b1531dd4c23afa8a00b454db3",
     "architecture":  "arm64-v8a",
     "stl":  "c++_shared",
     "ohosPlatformLevel":  9,
-    "harmonySdkApiVersion":  "24",
-    "harmonySdkVersion":  "6.1.1.125",
+    "harmonySdkApiVersion":  "26",
+    "harmonySdkVersion":  "26.0.0.105",
     "features":  {
                      "sharedLibraries":  true,
                      "llm":  true,
@@ -28,5 +28,5 @@
                      "imageCodecs":  true,
                      "opencl":  false
                  },
-    "libMnnSha256":  "45d6a8a33056179fe61d20a2c4430310fdc9fb230d55ab8672729ada9b76d24f"
+    "libMnnSha256":  "8cec684728f2773ddb896b5b27bec8458d69b376d6a211bb25ddf7e4dd966ec7"
 }

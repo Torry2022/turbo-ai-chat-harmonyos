@@ -1,0 +1,13 @@
+--- a/transformers/llm/engine/src/tokenizer/tokenizer.cpp
++++ b/transformers/llm/engine/src/tokenizer/tokenizer.cpp
+@@ -2094,6 +2094,10 @@
+ 
+ std::string PipelineTokenizer::decode(int id) {
+     if (!model_) return "";
++    // Added tokens contain literal text and may be absent from the model vocabulary.
++    for (const auto& token : added_tokens_) {
++        if (token.id == id) return token.content;
++    }
+     std::string token = model_->id_to_token(id);
+     // For single-token decode (streaming), apply Replace/ByteFallback/ByteLevel
+     // but not Strip/Fuse which are meant for full-sequence decode.

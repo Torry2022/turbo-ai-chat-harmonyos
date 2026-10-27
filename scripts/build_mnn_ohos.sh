@@ -5,9 +5,9 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-MNN_ROOT="${MNN_ROOT:-$ROOT_DIR/.codex_mnn_source_2edeef91}"
-BUILD_DIR="${BUILD_DIR:-$ROOT_DIR/.codex_mnn_build_2edeef91}"
-EXPECTED_COMMIT="2edeef91b425e98a93707840b6fffdd97980bdbe"
+MNN_ROOT="${MNN_ROOT:-$ROOT_DIR/.codex_mnn_source_f0b6105c}"
+BUILD_DIR="${BUILD_DIR:-$ROOT_DIR/.codex_mnn_build_f0b6105c}"
+EXPECTED_COMMIT="f0b6105c5c7f901b1531dd4c23afa8a00b454db3"
 JOBS="${JOBS:-4}"
 
 find_native_home() {
@@ -24,7 +24,7 @@ find_native_home() {
   exit 1
 }
 
-if [[ ! -d "$MNN_ROOT/.git" ]]; then
+if [[ ! -e "$MNN_ROOT/.git" ]]; then
   echo "Missing MNN source checkout: $MNN_ROOT" >&2
   echo "Clone MNN and check out $EXPECTED_COMMIT before building." >&2
   exit 1
@@ -37,7 +37,9 @@ if [[ "$actual_commit" != "$EXPECTED_COMMIT" ]]; then
 fi
 
 native_home="$(find_native_home)"
-for patch_name in 0001-omni-generation-attention-mask.patch 0002-omni-text-prefill-ple.patch; do
+mkdir -p "$MNN_ROOT/3rd_party/utf8proc"
+cp "$ROOT_DIR/third_party/mnn/utf8proc/"* "$MNN_ROOT/3rd_party/utf8proc/"
+for patch_name in 0003-tokenizer-nfc.patch 0004-streaming-added-token.patch; do
   patch="$ROOT_DIR/third_party/mnn/patches/$patch_name"
   if ! git -C "$MNN_ROOT" apply --reverse --check "$patch" 2>/dev/null; then
     git -C "$MNN_ROOT" apply --check "$patch"
