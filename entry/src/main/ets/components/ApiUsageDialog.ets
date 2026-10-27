@@ -61,6 +61,8 @@ export struct ApiUsageDialog {
                 .width('100%').padding(14)
                 .backgroundColor($r('app.color.inset')).borderRadius($r('app.float.card_radius'))
             }
+            Text('运行状态：GET /turbo/runtime 返回 CPU、内存、温度、存储占用和聊天模型状态。生成期间也可查询，无需切换到监控页。')
+              .fontSize(13).lineHeight(21).fontColor($r('app.color.text_secondary')).width('100%')
             Text('启用 API 认证时，请使用服务页的 API Key。请求头格式为 Authorization: Bearer <API Key>。')
               .fontSize(12).lineHeight(20).fontColor($r('app.color.text_muted')).width('100%')
           }.width('100%').alignItems(HorizontalAlign.Start)

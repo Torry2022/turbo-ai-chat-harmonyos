@@ -3,6 +3,7 @@ import socket from '@ohos.net.socket'
 import util from '@ohos.util'
 import { ChatTurn, GenerationResult, GenerationSettings } from '../models/ChatTypes'
 import { MAX_GENERATION_TOKENS } from '../models/ModelProfile'
+import { RuntimeSample, StorageSample } from '../models/RuntimeStats'
 import { parseAssistantText, stripModelSpecialTokens } from '../utils/thinking'
 
 const MAX_REQUEST_BYTES: number = 1024 * 1024
@@ -21,6 +22,28 @@ export interface ApiServerModel {
   name: string
 }
 
+export interface ApiRuntimeModel extends ApiServerModel {
+  loaded: boolean
+  loading: boolean
+  generating: boolean
+}
+
+export interface ApiRuntimeSnapshot {
+  chatModel: ApiRuntimeModel
+  metrics: RuntimeSample
+  storage: StorageSample
+}
+
+interface ApiRuntimeService {
+  target: string
+  inferenceBusy: boolean
+}
+
+interface ApiRuntimeResponse extends ApiRuntimeSnapshot {
+  object: string
+  service: ApiRuntimeService
+}
+
 export interface ApiGenerationRequest {
   turns: ChatTurn[]
   maxNewTokens: number
@@ -34,6 +57,7 @@ export interface ApiServerCallbacks {
   currentModel: () => ApiServerModel
   currentSettings: () => GenerationSettings
   currentMaxNewTokens: () => number
+  runtimeSnapshot: () => Promise<ApiRuntimeSnapshot>
   generate: (request: ApiGenerationRequest, onChunk: (chunk: string) => void) => Promise<GenerationResult>
   decide: (request: PreparedApiDecision) => Promise<string>
   stopGeneration: () => void
@@ -551,7 +575,9 @@ export class OpenAiApiServer {
   }
 
   private route(state: HttpConnectionState, request: ParsedHttpRequest): void {
-    this.callbacks.onLog('REQ', `${request.method} ${request.path}`)
+    if (request.path !== '/turbo/runtime') {
+      this.callbacks.onLog('REQ', `${request.method} ${request.path}`)
+    }
     if (request.method === 'OPTIONS') {
       this.sendEmpty(state, 204)
       this.callbacks.onLog('RESP', `204 OPTIONS ${request.path}`)
@@ -564,6 +590,10 @@ export class OpenAiApiServer {
     }
     if (request.method === 'GET' && request.path === '/v1/models') {
       this.sendModels(state)
+      return
+    }
+    if (request.method === 'GET' && request.path === '/turbo/runtime') {
+      this.sendRuntime(state)
       return
     }
     const decisionService = this.config.target === 'decision'
@@ -613,6 +643,24 @@ export class OpenAiApiServer {
     const payload: ApiModelList = { object: 'list', data }
     this.sendJson(state, 200, payload)
     this.callbacks.onLog('RESP', '200 GET /v1/models')
+  }
+
+  private sendRuntime(state: HttpConnectionState): void {
+    this.callbacks.runtimeSnapshot().then((snapshot: ApiRuntimeSnapshot) => {
+      if (state.closed) return
+      const payload: ApiRuntimeResponse = {
+        object: 'turbo.runtime',
+        service: { target: this.config.target ?? 'chat', inferenceBusy: this.activeClientId >= 0 },
+        chatModel: snapshot.chatModel,
+        metrics: snapshot.metrics,
+        storage: snapshot.storage
+      }
+      this.sendJson(state, 200, payload)
+    }).catch((_err: Error) => {
+      if (state.closed) return
+      this.sendError(state, 503, 'runtime_unavailable', '暂时无法读取运行状态，请稍后重试。')
+      this.callbacks.onLog('ERROR', '503 GET /turbo/runtime · 读取运行状态失败')
+    })
   }
 
   private handleChatCompletions(state: HttpConnectionState, bodyText: string): void {

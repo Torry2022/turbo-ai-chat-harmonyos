@@ -55,6 +55,12 @@ In the HarmonyOS ecosystem, on-device AI inference today largely depends on Andr
 
 ## Recent Highlights
 
+**Model compatibility and runtime monitoring (v1.17.0)**
+
+- Update MNN for newer text and multimodal models and preserve model-defined markers in streaming output.
+- Show an indeterminate loading bar and elapsed time, and correct the image attachment badge fill in both themes.
+- Add a runtime status API available during generation and use RSS consistently in the Monitor page and chat memory indicator.
+
 **Answer versions and history search (v1.16.0)**
 
 - Retain earlier answers when regenerating and switch versions within the bubble. Follow-up questions use the selected answer as context, and history search can locate earlier versions.
@@ -248,6 +254,10 @@ The Service tab shows operational logs for server lifecycle, request paths, mode
 Wide windows place service settings beside the API logs. Narrowing the window restores a single column without restarting an active server.
 
 The chat API accepts text input, serves the currently loaded chat model, and processes one generation request at a time. For models that emit `<think>`, `/v1/chat/completions` returns reasoning in `reasoning_content`, while `/v1/responses` returns a separate reasoning output item; the final answer remains in the regular text field. For now, `usage` accurately reports only the total generated-token count; exact input and reasoning breakdowns are not available. The server runs with the app and stops when the app exits; the device and client must be reachable on the same LAN.
+
+### Runtime status
+
+`GET /turbo/runtime` exposes CPU, memory, temperature, threads, storage and chat-model state using the same server authentication. It remains available during generation without opening the Monitor page. Numeric fields have explicit units and sample timestamps; see the [runtime API reference](docs/runtime-api_EN.md). Both the Monitor page and chat memory indicator use RSS (resident memory).
 
 ### Laya Decision API
 
