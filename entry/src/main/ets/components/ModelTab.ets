@@ -241,6 +241,9 @@ export struct ModelTab {
             .fontWeight(FontWeight.Medium)
             .fontColor(this.viewModel.selectedModelId === profile.id ? $r('app.color.text_title') : $r('app.color.text_secondary'))
             .layoutWeight(1)
+          if (this.viewModel.loaded && this.viewModel.selectedModelId === profile.id) {
+            this.CapabilityTag('已加载', $r('app.color.tag_green_text'), $r('app.color.tag_green_background'))
+          }
           if (profile.source === 'imported') {
             this.CapabilityTag('导入', $r('app.color.tag_import_text'), $r('app.color.tag_green_background'))
           }
@@ -350,6 +353,8 @@ export struct ModelTab {
         }
       })
       .width('100%')
+      Text('各类模型独立加载，切换分类不影响已加载模型。')
+        .fontSize(11).lineHeight(17).fontColor($r('app.color.text_muted')).width('100%')
       if (this.modelCategory === 1) {
         this.DecisionModelCard()
       } else if (this.modelCategory === 2) {
@@ -441,16 +446,21 @@ export struct ModelTab {
           .fontSize(12).lineHeight(18).fontColor($r('app.color.text_note')).width('100%')
       }
       .width('100%').padding(10).backgroundColor($r('app.color.selected_background')).borderRadius(8)
+      if (this.layaReady) {
+        Button(this.layaStatus === '已加载' ? '释放模型' : this.layaStatus === '正在加载决策模型' ? '加载中…' : '加载当前模型')
+          .attributeModifier(new ActionButtonStyle(this.layaStatus === '已加载' ? $r('app.color.button_secondary_background') : $r('app.color.button_primary_background'),
+            this.layaStatus === '已加载' ? $r('app.color.button_secondary_text') : $r('app.color.button_primary_text')))
+          .enabled(this.controlsEnabled())
+          .width('100%')
+          .onClick(() => {
+            if (this.layaStatus === '已加载') this.viewModel.releaseDecisionModel()
+            else this.viewModel.loadDecisionModel()
+          })
+      }
       Button(this.layaReady ? '进入决策' : '下载模型')
         .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
         .width('100%')
         .onClick(() => this.onLayaDecision())
-      if (this.layaStatus === '已加载') {
-        Button('释放模型')
-          .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
-          .width('100%')
-          .onClick(() => { this.viewModel.releaseDecisionModel() })
-      }
     }
     .width('100%')
   }
@@ -465,7 +475,7 @@ export struct ModelTab {
         .fontSize(12).fontColor($r('app.color.text_secondary')).width('100%')
       Text('是非判断：回答一个是或否的问题')
         .fontSize(12).fontColor($r('app.color.text_secondary')).width('100%')
-      Text('进入决策界面后填写输入和任务说明。首次运行会加载模型，后续决策会复用。')
+      Text('先加载决策模型，再进入决策界面填写输入和任务说明，或通过 API 调用。使用完毕可释放模型。')
         .fontSize(11).lineHeight(17).fontColor($r('app.color.text_muted')).width('100%')
     }
     .width('100%').alignItems(HorizontalAlign.Start).padding(12)

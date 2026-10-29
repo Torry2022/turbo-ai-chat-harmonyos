@@ -33,7 +33,7 @@ export struct ModelLoadDialog {
               .fontSize(20)
               .fontWeight(FontWeight.Bold)
               .fontColor($r('app.color.text_title'))
-            Text(`${this.viewModel.currentModel().shortName} · MNN`)
+            Text(this.viewModel.modelLoadDialogName())
               .fontSize(12)
               .fontColor($r('app.color.dialog_subtitle'))
           }
@@ -51,7 +51,7 @@ export struct ModelLoadDialog {
               .width('100%')
 
             Stack({ alignContent: Alignment.Start }) {
-              if (this.viewModel.modelLoading) {
+              if (this.viewModel.modelLoadDialogBusy()) {
                 Row()
                   .width('50%')
                   .height(8)
@@ -71,8 +71,8 @@ export struct ModelLoadDialog {
             .clip(true)
 
             Row() {
-              Text(this.viewModel.modelLoading ? `加载用时 ${this.viewModel.modelLoadElapsedSeconds} 秒` :
-                (this.viewModel.loaded ? '已完成' : '等待操作'))
+              Text(this.viewModel.modelLoadDialogBusy() ? `加载用时 ${this.viewModel.modelLoadElapsedSeconds} 秒` :
+                (this.viewModel.modelLoadDialogComplete() ? '已完成' : '等待操作'))
                 .fontSize(12)
                 .fontColor($r('app.color.text_muted'))
             }
@@ -85,7 +85,7 @@ export struct ModelLoadDialog {
         .constraintSize({ maxHeight: Math.max(40, this.availableHeight - 220) })
         .scrollBar(BarState.Auto)
 
-        if (!this.viewModel.modelLoading && !this.viewModel.loaded) {
+        if (!this.viewModel.modelLoadDialogBusy() && !this.viewModel.modelLoadDialogComplete()) {
           Row({ space: 10 }) {
             Button('关闭')
               .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
@@ -93,12 +93,14 @@ export struct ModelLoadDialog {
               .onClick(() => {
                 this.viewModel.closeModelLoadDialog()
               })
-            Button('加载模型')
-              .attributeModifier(new ActionButtonStyle($r('app.color.button_primary_background'), $r('app.color.button_primary_text')))
-              .layoutWeight(1)
-              .onClick(() => {
-                this.viewModel.loadModel()
-              })
+            if (this.viewModel.modelLoadDialogCanStart()) {
+              Button('加载模型')
+                .attributeModifier(new ActionButtonStyle($r('app.color.button_primary_background'), $r('app.color.button_primary_text')))
+                .layoutWeight(1)
+                .onClick(() => {
+                  this.viewModel.loadModel()
+                })
+            }
           }
           .width('100%')
         }

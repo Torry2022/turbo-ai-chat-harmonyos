@@ -269,7 +269,7 @@ The chat API accepts text input, serves the currently loaded chat model, and pro
 
 ### Laya Decision API
 
-Install Laya from the Decision Model category on the Models page, then call `/v1/decisions` using the same API server. Laya loads on the first decision request; a chat model is not required.
+Install and load Laya in the Decision Model category, then call `/v1/decisions` on the same API server. A chat model is not required. After releasing the decision model, load it again before making another request.
 
 `POST /v1/decisions` supports `choice`, `score`, and `boolean` tasks. See the Service page’s API Guide for copyable request examples. Laya uses separate model files rather than chat-model ZIP import; weights are not included in the HAP.
 

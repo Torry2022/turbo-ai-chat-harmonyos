@@ -1,6 +1,6 @@
 import { RerankerService } from '../services/RerankerService'
 import { ConversationTitleService, ConversationTitleRequest, conversationTitleSignature } from '../services/ConversationTitleService'
-import { decideLaya, isLayaReady, LayaRuntimeState, observeLayaRuntime, releaseLaya } from '../services/LayaDecisionService'
+import { decideLaya, loadLaya, isLayaLoaded, isLayaReady, LayaRuntimeState, observeLayaRuntime, releaseLaya } from '../services/LayaDecisionService'
 import { ChatConversation, ChatConversationSummary, ChatHistorySearchResult, conversationTitle } from '../models/ChatHistoryTypes'
 import { ChatHistoryService } from '../services/ChatHistoryService'
 import { bundleManager, common } from '@kit.AbilityKit'
@@ -117,6 +117,7 @@ export class ChatViewModel {
   startupAutoLoadEnabled: boolean = false
   startupModelId: string = ''
   showModelLoadDialog: boolean = false
+  modelLoadTarget: 'chat' | 'decision' | 'rerank' = 'chat'
   modelLoading: boolean = false
   modelLoadElapsedSeconds: number = 0
   modelLoadMessage: string = '准备加载本地模型'
@@ -202,7 +203,8 @@ export class ChatViewModel {
     cancelRerank: () => this.reranker.cancel(),
     isRerankBusy: () => this.reranker.busy || this.rerankLoading || this.busy || this.modelLoading,
     isModelLoaded: () => this.loaded,
-    isLayaReady: () => isLayaReady(this.filesDir),
+    isDecisionLoaded: () => isLayaLoaded(),
+    isDecisionBusy: () => this.busy || this.modelLoading || this.reranker.busy,
     isGenerationReady: () => this.loaded && !this.modelScanning && !this.busy && !this.modelLoading,
     currentModel: () => this.apiServerModel(),
     currentSettings: () => this.currentGenerationSettings(),
@@ -211,7 +213,7 @@ export class ChatViewModel {
     generate: (request: ApiGenerationRequest, onChunk: (chunk: string) => void) => {
       return this.runApiGeneration(request, onChunk)
     },
-    decide: (request: PreparedApiDecision) => decideLaya(this.filesDir, request.state, request.type,
+    decide: (request: PreparedApiDecision) => this.runDecision(request.state, request.type,
       request.instruction, request.options),
     stopGeneration: () => this.stopGeneration(),
     onStatus: (status: string) => {
@@ -401,14 +403,35 @@ export class ChatViewModel {
     if (model === undefined || this.layaRuntimeState === 'loading' || this.layaRuntimeState === 'running' || this.layaRuntimeState === 'releasing' || this.busy || this.modelLoading || this.reranker.busy || this.rerankImporting) return
     this.busy = true
     this.rerankLoading = true
+    this.modelLoadTarget = 'rerank'
+    this.showModelLoadDialog = true
+    this.modelLoadMessage = `正在加载 ${model.shortName}，请保持应用在前台。`
     this.rerankMessage = '正在加载重排模型...'
+    this.setStatus(`正在加载 ${model.shortName}...`, 'neutral')
+    this.startModelLoadTimer()
     this.notify()
     try {
       await this.nativeService.cancelTitleGeneration()
       await this.reranker.load(model, this.rerankThreads, this.rerankMaxTokens)
       this.rerankMessage = ''
-    } catch (error) { this.rerankMessage = `加载失败：${formatError(error as Object)}` }
-    finally { this.rerankLoading = false; this.busy = false; this.notify() }
+      this.setStatus(`${model.shortName} 已加载`, 'success')
+      this.modelLoadMessage = `${model.shortName} 加载完成，可以用于重排请求。`
+      this.stopModelLoadTimer()
+      this.modelLoadElapsedSeconds = Math.floor((Date.now() - this.modelLoadStartedAt) / 1000)
+      setTimeout(() => {
+        if (this.modelLoadTarget === 'rerank' && !this.rerankLoading) {
+          this.showModelLoadDialog = false
+          this.notify()
+        }
+      }, 450)
+    } catch (error) {
+      const message = formatError(error as Object)
+      this.rerankMessage = `加载失败：${message}`
+      this.setStatus(`重排模型加载失败：${message}`, 'error')
+      this.modelLoadMessage = `${model.shortName} 加载失败。\n\n${message}`
+      this.stopModelLoadTimer()
+      this.modelLoadElapsedSeconds = 0
+    } finally { this.rerankLoading = false; this.busy = false; this.notify() }
   }
 
   async releaseRerankModel(): Promise<void> {
@@ -1783,11 +1806,66 @@ export class ChatViewModel {
     return this.layaReady ? '已安装' : '未安装'
   }
 
+  async loadDecisionModel(): Promise<void> {
+    if (this.busy || this.modelLoading || this.reranker.busy || isLayaLoaded()) return
+    this.busy = true
+    this.modelLoadTarget = 'decision'
+    this.showModelLoadDialog = true
+    this.modelLoadMessage = '正在加载 Laya 决策模型，请保持应用在前台。'
+    this.setStatus('正在加载 Laya...', 'neutral')
+    this.startModelLoadTimer()
+    this.notify()
+    try {
+      await this.nativeService.cancelTitleGeneration()
+      await loadLaya(this.filesDir)
+      this.setStatus('Laya 决策模型已加载', 'success')
+      this.modelLoadMessage = 'Laya 加载完成，可以用于决策请求。'
+      this.stopModelLoadTimer()
+      this.modelLoadElapsedSeconds = Math.floor((Date.now() - this.modelLoadStartedAt) / 1000)
+      setTimeout(() => {
+        if (this.modelLoadTarget === 'decision' && this.layaRuntimeState !== 'loading') {
+          this.showModelLoadDialog = false
+          this.notify()
+        }
+      }, 450)
+    } catch (error) {
+      const message = formatError(error as Object)
+      this.setStatus(`决策模型加载失败：${message}`, 'error')
+      this.modelLoadMessage = `Laya 加载失败。\n\n${message}`
+      this.stopModelLoadTimer()
+      this.modelLoadElapsedSeconds = 0
+    } finally {
+      this.busy = false
+      this.notify()
+    }
+  }
+
+  async runDecision(state: string, type: string, instruction: string, options: string[]): Promise<string> {
+    if (this.busy || this.modelLoading || this.reranker.busy) throw new Error('当前模型任务尚未结束')
+    if (!isLayaLoaded()) throw new Error('请先在模型页加载决策模型')
+    this.busy = true
+    this.notify()
+    try {
+      await this.nativeService.cancelTitleGeneration()
+      return await decideLaya(this.filesDir, state, type, instruction, options)
+    } finally {
+      this.busy = false
+      this.notify()
+    }
+  }
+
   async releaseDecisionModel(): Promise<void> {
+    if (this.busy || this.modelLoading || this.reranker.busy) return
+    this.busy = true
+    this.notify()
     try {
       await releaseLaya()
+      this.setStatus('Laya 决策模型已释放', 'neutral')
     } catch (error) {
       this.toastCallback(formatError(error as Object))
+    } finally {
+      this.busy = false
+      this.notify()
     }
   }
 
@@ -1798,12 +1876,34 @@ export class ChatViewModel {
     this.notify()
   }
 
+  modelLoadDialogName(): string {
+    if (this.modelLoadTarget === 'decision') return 'Laya（决策模型）'
+    if (this.modelLoadTarget === 'rerank') return `${this.selectedReranker()?.shortName ?? '重排模型'}（重排模型）`
+    return `${this.currentModel().shortName}（MNN）`
+  }
+
+  modelLoadDialogBusy(): boolean {
+    if (this.modelLoadTarget === 'decision') return this.layaRuntimeState === 'loading'
+    if (this.modelLoadTarget === 'rerank') return this.rerankLoading
+    return this.modelLoading
+  }
+
+  modelLoadDialogComplete(): boolean {
+    if (this.modelLoadTarget === 'decision') return isLayaLoaded()
+    if (this.modelLoadTarget === 'rerank') return this.loadedReranker() !== undefined
+    return this.loaded
+  }
+
+  modelLoadDialogCanStart(): boolean {
+    return this.modelLoadTarget === 'chat' && !this.modelLoading && !this.loaded
+  }
+
   headerStatus(): string {
     if (this.layaRuntimeState === 'loading') return '正在加载决策模型...'
     if (this.layaRuntimeState === 'running') return '正在执行决策...'
     if (this.layaRuntimeState === 'releasing') return '正在释放 Laya...'
     if (!this.loaded && !this.busy && !this.modelLoading && this.status === '模型未加载' &&
-      this.layaRuntimeState === 'loaded') return 'Laya 已加载'
+      this.layaRuntimeState === 'loaded') return 'Laya 决策模型已加载'
     return this.headerText()
   }
 
@@ -1925,6 +2025,7 @@ export class ChatViewModel {
       if (!installed) {
         return
       }
+      this.modelLoadTarget = 'chat'
       this.showModelLoadDialog = true
       this.modelLoadElapsedSeconds = 0
       this.modelLoadMessage = this.loaded ? `${this.currentModel().shortName} 已加载，可以开始聊天。` : `${this.currentModel().shortName} 尚未加载，点击加载模型开始。`
@@ -1944,6 +2045,7 @@ export class ChatViewModel {
   }
 
   closeModelLoadDialog(): void {
+    if (this.modelLoadDialogBusy()) return
     this.apiServerStartAfterModelLoad = false
     this.showModelLoadDialog = false
     this.notify()
@@ -2001,7 +2103,7 @@ export class ChatViewModel {
     if (catalogItem !== undefined && this.rejectIncompatibleCatalogItem(catalogItem)) {
       return
     }
-    if (this.modelLoading) {
+    if (this.busy || this.modelLoading) {
       return
     }
     if (this.showBuiltinModelInstallDialog) {
@@ -2009,6 +2111,7 @@ export class ChatViewModel {
     }
     this.busy = true
     this.modelLoading = true
+    this.modelLoadTarget = 'chat'
     this.showModelLoadDialog = showProgressDialog
     this.setStatus(`正在加载 ${this.currentModel().shortName}...`, 'neutral')
     this.modelLoadMessage = '正在加载模型权重，请保持应用在前台。'

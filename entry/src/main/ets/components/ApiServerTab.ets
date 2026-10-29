@@ -106,21 +106,39 @@ export struct ApiServerTab {
   }
 
 
-  private capabilityState(mode: string): string {
-    if ((mode === 'chat' && this.viewModel.modelLoading) ||
-      (mode === 'rerank' && this.viewModel.rerankLoading)) return '正在加载模型'
-    if (mode === 'chat') return this.loaded ? this.currentModelName : '未加载，请在模型页加载'
-    if (mode === 'decision') return `${LAYA_SHORT_NAME} ${this.layaStatus}`
-    if (mode === 'rerank') return this.viewModel.loadedReranker()?.shortName ?? '未加载，请在模型页加载'
+  private capabilityModel(mode: string): string {
+    if (mode === 'chat') return this.currentModelName
+    if (mode === 'decision') return this.layaReady ? LAYA_SHORT_NAME : '尚未安装决策模型'
+    if (mode === 'rerank') return (this.viewModel.loadedReranker() ?? this.viewModel.selectedReranker())?.shortName ?? '尚未导入重排模型'
     return '本地资料'
+  }
+
+  private capabilityState(mode: string): string {
+    if (mode === 'chat') return this.viewModel.modelLoading ? '加载中' : this.loaded ? '已加载' : '未加载'
+    if (mode === 'decision') {
+      if (!this.layaReady) return ''
+      if (this.viewModel.layaRuntimeState === 'loading') return '加载中'
+      if (this.viewModel.layaRuntimeState === 'releasing') return '释放中'
+      if (this.viewModel.layaRuntimeState === 'running') return '运行中'
+      return this.viewModel.layaRuntimeState === 'loaded' ? '已加载' : '未加载'
+    }
+    if (mode === 'rerank') {
+      if (this.viewModel.rerankLoading) return '加载中'
+      if (this.viewModel.loadedReranker()) return this.viewModel.reranker.busy ? '运行中' : '已加载'
+      return this.viewModel.selectedReranker() ? '未加载' : ''
+    }
+    return ''
   }
 
   @Builder
   private CapabilityHeader(title: string, mode: 'chat' | 'decision' | 'rerank', example: string = '') {
     Row({ space: 8 }) {
-      Text(title).fontSize(13).fontWeight(FontWeight.Medium).fontColor($r('app.color.text_body'))
-      Text(this.capabilityState(mode)).fontSize(12).fontColor($r('app.color.text_muted')).layoutWeight(1)
+      Text(title).fontSize(13).fontWeight(FontWeight.Medium).fontColor($r('app.color.text_body')).width(52)
+      Text(this.capabilityModel(mode)).fontSize(12).fontColor($r('app.color.text_muted')).layoutWeight(1)
         .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
+      if (this.capabilityState(mode).length > 0) {
+        Text(this.capabilityState(mode)).fontSize(11).fontColor($r('app.color.text_muted'))
+      }
       Button('调用说明')
         .attributeModifier(new CompactActionStyle())
         .onClick(() => this.onApiHelp(mode, example))

@@ -74,6 +74,21 @@ bool resizeInput(MNN::Interpreter& interpreter, MNN::Session* session, const cha
 
 } // namespace
 
+void loadLayaDecision(const std::string& modelPath, const std::string& tokenizerPath) {
+    std::lock_guard<std::mutex> lock(runtimeMutex);
+    if (runtime) throw std::runtime_error("Release the loaded decision model first");
+    auto candidate = std::make_unique<LayaRuntime>(modelPath, tokenizerPath);
+    candidate->tokenizer = std::make_unique<LayaTokenizer>(tokenizerPath);
+    candidate->interpreter.reset(MNN::Interpreter::createFromFile(modelPath.c_str()));
+    if (!candidate->interpreter) throw std::runtime_error("Cannot load Laya model");
+    MNN::ScheduleConfig config;
+    config.type = MNN_FORWARD_CPU;
+    config.numThread = 4;
+    candidate->session = candidate->interpreter->createSession(config);
+    if (!candidate->session) throw std::runtime_error("Cannot create Laya session");
+    runtime = std::move(candidate);
+}
+
 void releaseLayaDecision() {
     std::lock_guard<std::mutex> lock(runtimeMutex);
     runtime.reset();
@@ -90,9 +105,8 @@ std::string runLayaDecision(const std::string& modelPath, const std::string& tok
     std::lock_guard<std::mutex> lock(runtimeMutex);
     const auto start = std::chrono::steady_clock::now();
     if (!runtime || runtime->modelPath != modelPath || runtime->tokenizerPath != tokenizerPath) {
-        runtime = std::make_unique<LayaRuntime>(modelPath, tokenizerPath);
+        throw std::runtime_error("Load the decision model before inference");
     }
-    if (!runtime->tokenizer) runtime->tokenizer = std::make_unique<LayaTokenizer>(tokenizerPath);
     std::vector<int> head = runtime->tokenizer->encode(type + " question: " + withoutMask(instruction));
     std::vector<std::vector<int>> optionIds;
     int optionTokens = 0;

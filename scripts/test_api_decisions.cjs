@@ -66,7 +66,7 @@ vm.runInNewContext(ts.transpileModule(ast.statements.find(node =>
 }).outputText, context);
 const server = new context.exports.OpenAiApiServer({
   rerankModel: () => undefined,
-  isModelLoaded: () => true, isLayaReady: () => true,
+  isModelLoaded: () => true, isDecisionLoaded: () => true, isDecisionBusy: () => false,
   currentModel: () => ({ id: 'chat-model', name: 'Chat' }), onLog: () => {}
 });
 let routed, status, payload;
@@ -85,7 +85,7 @@ for (const chatLoaded of [false, true]) {
   for (const decisionReady of [false, true]) {
     for (const rerankLoaded of [false, true]) {
       server.callbacks.isModelLoaded = () => chatLoaded;
-      server.callbacks.isLayaReady = () => decisionReady;
+      server.callbacks.isDecisionLoaded = () => decisionReady;
       server.callbacks.rerankModel = () => rerankLoaded ? { id: 'reranker' } : undefined;
       server.sendModels({});
       const expected = [
@@ -97,4 +97,13 @@ for (const chatLoaded of [false, true]) {
     }
   }
 }
-console.log('PASS unified routing and independent model readiness');
+server.callbacks.isDecisionLoaded = () => false;
+status = undefined;
+const decisionBody = JSON.stringify({ input: 'x', task: { type: 'boolean', instruction: 'Check' } });
+context.exports.OpenAiApiServer.prototype.handleDecision.call(server, {}, decisionBody);
+assert.equal(status, 503);
+server.callbacks.isDecisionLoaded = () => true;
+server.callbacks.isDecisionBusy = () => true;
+context.exports.OpenAiApiServer.prototype.handleDecision.call(server, {}, decisionBody);
+assert.equal(status, 409);
+console.log('PASS unified routing, loaded-only model listing, unloaded decisions and busy guards');

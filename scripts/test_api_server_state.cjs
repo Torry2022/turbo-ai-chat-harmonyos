@@ -7,7 +7,7 @@ const ts = require(process.argv[2] || 'typescript');
 const source = fs.readFileSync(path.join(__dirname, '../entry/src/main/ets/state/ChatViewModel.ets'), 'utf8');
 const ast = ts.createSourceFile('ChatViewModel.ts', source, ts.ScriptTarget.Latest, true);
 class Stub { static create() { return new Stub(); } }
-const context = { exports: {}, Observed: value => value, Scroller: Stub, setTimeout, clearTimeout };
+const context = { exports: {}, Observed: value => value, Scroller: Stub, setTimeout, clearTimeout, setInterval, clearInterval };
 for (const node of ast.statements.filter(ts.isImportDeclaration)) {
   const clause = node.importClause;
   if (clause.name) context[clause.name.text] = Stub;
@@ -18,6 +18,8 @@ for (const node of ast.statements.filter(ts.isImportDeclaration)) {
 }
 let layaReady = false;
 context.isLayaReady = () => layaReady;
+let decisionLoaded = false;
+context.isLayaLoaded = () => decisionLoaded;
 context.formatError = error => error.message;
 vm.runInNewContext(ts.transpileModule(ast.statements.find(ts.isClassDeclaration).getText(ast), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, experimentalDecorators: true }
@@ -68,4 +70,46 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
   view.setApiServerEnabled(true);
   assert.equal(starts, 2);
   console.log('PASS startup failure, invalid port and active inference guards');
+
+  view.busy = false;
+  view.loaded = true;
+  view.reranker = { busy: false };
+  view.nativeService = { cancelTitleGeneration: async () => {} };
+  let resolveLoad, resolveDecision, rejectDecision, releaseCalls = 0;
+  context.loadLaya = () => new Promise(resolve => { resolveLoad = () => { decisionLoaded = true; resolve(); }; });
+  context.decideLaya = () => new Promise((resolve, reject) => { resolveDecision = resolve; rejectDecision = reject; });
+  context.releaseLaya = async () => { releaseCalls++; decisionLoaded = false; };
+  await assert.rejects(view.runDecision('x', 'choice', 'q', ['a','b']), /先在模型页加载/);
+  const loading = view.loadDecisionModel();
+  assert.equal(view.busy, true);
+  assert.equal(view.modelLoadTarget, 'decision');
+  assert.equal(view.showModelLoadDialog, true);
+  assert.equal(view.status, '正在加载 Laya...');
+  await tick();
+  await assert.rejects(view.runApiGeneration({}, () => {}), /当前已有任务/);
+  await view.releaseDecisionModel();
+  assert.equal(releaseCalls, 0);
+  resolveLoad();
+  await loading;
+  assert.equal(view.busy, false);
+  assert.equal(view.loaded, true);
+  assert.equal(view.status, 'Laya 决策模型已加载');
+  assert.equal(view.modelLoadDialogName(), 'Laya（决策模型）');
+  assert.equal(view.modelLoadDialogComplete(), true);
+  const deciding = view.runDecision('x', 'choice', 'q', ['a','b']);
+  assert.equal(view.busy, true);
+  await tick();
+  await assert.rejects(view.runDecision('x', 'choice', 'q', ['a','b']), /当前模型任务/);
+  resolveDecision('{}');
+  await deciding;
+  assert.equal(view.busy, false);
+  const failed = view.runDecision('x', 'choice', 'q', ['a','b']);
+  await tick();
+  rejectDecision(new Error('decision failed'));
+  await assert.rejects(failed);
+  assert.equal(view.busy, false);
+  await view.releaseDecisionModel();
+  assert.equal(decisionLoaded, false);
+  assert.equal(view.loaded, true);
+  console.log('PASS decision loading and inference block conflicting work and preserve the loaded chat model');
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -239,7 +239,7 @@ add('history actions preserve loaded model and reject busy transitions', async (
     view.layaRuntimeState = 'loaded';
     assert.ok(view.headerStatus().startsWith('加载失败'));
     view.setStatus('模型未加载');
-    assert.equal(view.headerStatus(), 'Laya 已加载');
+    assert.equal(view.headerStatus(), 'Laya 决策模型已加载');
     view.layaRuntimeState = 'idle';
     assert.equal(view.headerStatus(), '模型未加载');
     view.layaRuntimeState = 'running';

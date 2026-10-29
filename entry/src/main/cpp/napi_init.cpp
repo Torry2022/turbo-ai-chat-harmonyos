@@ -901,6 +901,39 @@ napi_value IsLoaded(napi_env env, napi_callback_info info) {
     return result;
 }
 
+napi_value LayaLoadAsync(napi_env env, napi_callback_info info) {
+    size_t argc = 2;
+    napi_value args[2] = {nullptr};
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc != 2) {
+        napi_throw_type_error(env, nullptr, "Expected model and tokenizer paths");
+        return nullptr;
+    }
+    auto* work = new LayaDecisionWork();
+    work->modelPath = ReadString(env, args[0]);
+    work->tokenizerPath = ReadString(env, args[1]);
+    napi_value promise = nullptr;
+    napi_create_promise(env, &work->deferred, &promise);
+    napi_value resourceName = MakeString(env, "layaLoadAsync");
+    napi_create_async_work(env, nullptr, resourceName,
+        [](napi_env, void* data) {
+            auto* work = static_cast<LayaDecisionWork*>(data);
+            try { loadLayaDecision(work->modelPath, work->tokenizerPath); }
+            catch (const std::exception& error) { work->error = error.what(); }
+        },
+        [](napi_env env, napi_status, void* data) {
+            auto* work = static_cast<LayaDecisionWork*>(data);
+            napi_value result = nullptr;
+            napi_get_undefined(env, &result);
+            if (work->error.empty()) napi_resolve_deferred(env, work->deferred, result);
+            else napi_reject_deferred(env, work->deferred, MakeString(env, work->error));
+            napi_delete_async_work(env, work->work);
+            delete work;
+        }, work, &work->work);
+    napi_queue_async_work(env, work->work);
+    return promise;
+}
+
 napi_value LayaDecideAsync(napi_env env, napi_callback_info info) {
     size_t argc = 6;
     napi_value args[6] = {nullptr};
@@ -1050,6 +1083,7 @@ static napi_value Init(napi_env env, napi_value exports) {
     napi_property_descriptor desc[] = {
         {"rerankerAsync", nullptr, RerankerAsync, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"rerankerCancel", nullptr, RerankerCancel, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"layaLoadAsync", nullptr, LayaLoadAsync, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"layaDecideAsync", nullptr, LayaDecideAsync, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"layaReleaseAsync", nullptr, LayaReleaseAsync, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"loadModel", nullptr, LoadModel, nullptr, nullptr, nullptr, napi_default, nullptr},

@@ -58,7 +58,8 @@ export interface ApiServerCallbacks {
   cancelRerank: () => void
   isRerankBusy: () => boolean
   isModelLoaded: () => boolean
-  isLayaReady: () => boolean
+  isDecisionLoaded: () => boolean
+  isDecisionBusy: () => boolean
   isGenerationReady: () => boolean
   currentModel: () => ApiServerModel
   currentSettings: () => GenerationSettings
@@ -682,7 +683,7 @@ export class OpenAiApiServer {
     if (this.callbacks.isModelLoaded()) {
       data.push({ id: model.id, object: 'model', created: 0, owned_by: SERVER_OWNER })
     }
-    if (this.callbacks.isLayaReady()) {
+    if (this.callbacks.isDecisionLoaded()) {
       data.push({ id: DECISION_MODEL_ID, object: 'model', created: 0, owned_by: SERVER_OWNER })
     }
     const payload: ApiModelList = { object: 'list', data }
@@ -751,14 +752,18 @@ export class OpenAiApiServer {
       this.sendError(state, 400, 'invalid_request_error', errorMessage(err))
       return
     }
-    if (!this.callbacks.isLayaReady()) {
-      this.callbacks.onLog('ERROR', '503 POST /v1/decisions · Laya 模型或词表未安装')
-      this.sendError(state, 503, 'model_not_ready', '请先在模型页下载 Laya 模型和词表。')
+    if (!this.callbacks.isDecisionLoaded()) {
+      this.callbacks.onLog('ERROR', '503 POST /v1/decisions · 决策模型未加载')
+      this.sendError(state, 503, 'model_not_loaded', '请先在模型页加载决策模型。')
       return
     }
     if (this.activeClientId >= 0 || this.rerankConnection !== undefined) {
       this.callbacks.onLog('ERROR', '409 POST /v1/decisions · 当前已有 API 请求')
       this.sendError(state, 409, 'server_busy', '当前已有 API 请求，请稍后重试。')
+      return
+    }
+    if (this.callbacks.isDecisionBusy()) {
+      this.sendError(state, 409, 'server_busy', '当前模型任务尚未结束，请稍后重试。')
       return
     }
     const startedAt = Date.now()

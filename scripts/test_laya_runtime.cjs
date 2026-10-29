@@ -11,11 +11,15 @@ vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(root, 'models/La
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 }
 }).outputText, configContext);
 const config = configContext.exports;
-let resolveDecision, rejectDecision, calls = 0, releases = 0;
+let resolveDecision, rejectDecision, calls = 0, releases = 0, resolveLoad, rejectLoad, loads = 0;
 let nativePaths;
 const installedFiles = new Map(config.LAYA_DOWNLOAD_SPEC.files.map(file =>
   [`/files/${config.LAYA_MODEL_DIRECTORY}/${file.relativePath}`, file.sizeBytes]));
 const native = {
+  layaLoadAsync: (modelPath, tokenizerPath) => {
+    loads++; nativePaths = [modelPath, tokenizerPath];
+    return new Promise((resolve, reject) => { resolveLoad = resolve; rejectLoad = reject; });
+  },
   layaDecideAsync: (modelPath, tokenizerPath) => { nativePaths = [modelPath, tokenizerPath]; calls++; return new Promise((resolve, reject) => {
     resolveDecision = resolve; rejectDecision = reject;
   }); },
@@ -41,11 +45,22 @@ const api = context.exports;
   installedFiles.set(tokenizerPath, config.LAYA_TOKENIZER_BYTES);
   assert.equal(api.isLayaReady('/missing'), false);
   api.observeLayaRuntime(state => states.push(state));
+  assert.equal(api.isLayaLoaded(), false);
+  await assert.rejects(api.decideLaya('/files', 'text', 'choice', 'question', ['a', 'b']), /先在模型页加载/);
+  assert.equal(calls, 0);
+  const loading = api.loadLaya('/files');
+  assert.equal(states.at(-1), 'loading');
+  await assert.rejects(api.releaseLaya());
+  await assert.rejects(api.loadLaya('/files'));
+  assert.equal(loads, 1);
+  resolveLoad();
+  await loading;
+  assert.equal(api.isLayaLoaded(), true);
   const first = api.decideLaya('/files', 'text', 'choice', 'question', ['a', 'b']);
   assert.deepEqual(nativePaths, [
     `/files/${config.LAYA_MODEL_DIRECTORY}/${config.LAYA_MODEL_FILE}`, tokenizerPath
   ]);
-  assert.equal(states.at(-1), 'loading');
+  assert.equal(states.at(-1), 'running');
   await assert.rejects(api.decideLaya('/files', 'text', 'choice', 'question', ['a', 'b']));
   await assert.rejects(api.releaseLaya());
   assert.equal(calls, 1);
@@ -60,5 +75,11 @@ const api = context.exports;
   assert.equal(releases, 1);
   await api.releaseLaya();
   assert.equal(states.at(-1), 'idle');
-  console.log('PASS Laya cold/warm state, concurrent request guard, release guard and error cleanup');
+  assert.equal(api.isLayaLoaded(), false);
+  const failedLoad = api.loadLaya('/files');
+  rejectLoad(new Error('load failed'));
+  await assert.rejects(failedLoad);
+  assert.equal(api.isLayaLoaded(), false);
+  assert.equal(states.at(-1), 'idle');
+  console.log('PASS explicit decision loading, no implicit inference load, concurrency guards and failure cleanup');
 })().catch(error => { console.error(error); process.exitCode = 1; });

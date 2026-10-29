@@ -19,6 +19,24 @@ function setRuntimeState(state: LayaRuntimeState): void {
   onRuntimeState(state)
 }
 
+export function isLayaLoaded(): boolean {
+  return runtimeState === 'loaded' || runtimeState === 'running'
+}
+
+export async function loadLaya(filesDir: string): Promise<void> {
+  if (isRerankerActive() || runtimeState !== 'idle') throw new Error('请等待当前模型任务结束')
+  if (!isLayaReady(filesDir)) throw new Error('请先下载完整的决策模型')
+  setRuntimeState('loading')
+  try {
+    await entry.layaLoadAsync(`${filesDir}/${LAYA_MODEL_DIRECTORY}/${LAYA_MODEL_FILE}`,
+      `${filesDir}/${LAYA_MODEL_DIRECTORY}/${LAYA_TOKENIZER_FILE}`)
+    setRuntimeState('loaded')
+  } catch (error) {
+    setRuntimeState('idle')
+    throw new Error(`${error}`)
+  }
+}
+
 export async function releaseLaya(): Promise<void> {
   if (isRerankerActive()) throw new Error('请等待重排任务结束')
   if (runtimeState === 'loading' || runtimeState === 'running' || runtimeState === 'releasing') {
@@ -53,7 +71,8 @@ export async function decideLaya(filesDir: string, state: string, type: string, 
   if (runtimeState === 'loading' || runtimeState === 'running' || runtimeState === 'releasing') {
     throw new Error('当前正在使用决策模型，请稍后重试')
   }
-  setRuntimeState(runtimeState === 'loaded' ? 'running' : 'loading')
+  if (!isLayaLoaded()) throw new Error('请先在模型页加载决策模型')
+  setRuntimeState('running')
   try {
     const output: string = await entry.layaDecideAsync(`${filesDir}/${LAYA_MODEL_DIRECTORY}/${LAYA_MODEL_FILE}`,
       `${filesDir}/${LAYA_MODEL_DIRECTORY}/${LAYA_TOKENIZER_FILE}`, state, type, instruction, options)

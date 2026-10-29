@@ -4,7 +4,7 @@ import { common } from '@kit.AbilityKit'
 import fs from '@ohos.file.fs'
 import { BuiltinModelInstallProgress, formatBytes } from '../models/BuiltinModelDownloadTypes'
 import { BuiltinModelInstallService } from '../services/BuiltinModelInstallService'
-import { decideLaya } from '../services/LayaDecisionService'
+import { isLayaLoaded } from '../services/LayaDecisionService'
 import { LAYA_MODEL_ID, LAYA_MODEL_DIRECTORY, LAYA_MODEL_FILE, LAYA_TOKENIZER_FILE,
   LAYA_MODEL_BYTES, LAYA_TOKENIZER_BYTES, LAYA_DOWNLOAD_SPEC } from '../models/LayaModelConfig'
 import { formatDownloadError } from '../utils/formatters'
@@ -85,6 +85,8 @@ export struct LayaDecisionDialog {
   private inputRevision: number = 0
   private installService: BuiltinModelInstallService = new BuiltinModelInstallService()
   onClose: () => void = () => {}
+  onDecision: (state: string, type: string, instruction: string, options: string[]) => Promise<string> =
+    async () => { throw new Error('请先在模型页加载决策模型') }
   onModelReady: () => void = () => {}
 
   aboutToAppear(): void {
@@ -233,6 +235,10 @@ export struct LayaDecisionDialog {
         return
       }
     }
+    if (!isLayaLoaded()) {
+      this.validationText = '请先关闭此窗口，在模型页加载决策模型。'
+      return
+    }
     const prepared = this.prepare()
     if (prepared === undefined) return
     const revision = this.inputRevision
@@ -242,7 +248,7 @@ export struct LayaDecisionDialog {
     this.showRawResult = false
     this.mobileView = 'result'
     try {
-      const report: string = await decideLaya(this.filesDir, prepared.request.state, prepared.request.question.t,
+      const report: string = await this.onDecision(prepared.request.state, prepared.request.question.t,
         prepared.request.question.ins, prepared.options)
       if (revision !== this.inputRevision) {
         this.resultText = '输入已修改，请重新运行决策。'
@@ -278,7 +284,7 @@ export struct LayaDecisionDialog {
       this.resultText = `${summary}\n${lines.join('\n')}\n耗时：${result.elapsed_ms} ms\n概率未经任务校准。`
     } catch (_error) {
       this.resultText = revision !== this.inputRevision ? '输入已修改，请重新运行决策。' :
-        '决策失败：请检查输入内容及 Laya 模型、词表是否完整。'
+        '决策失败，请检查模型状态与输入内容。'
     } finally {
       this.running = false
     }
@@ -295,7 +301,7 @@ export struct LayaDecisionDialog {
             .fontWeight(FontWeight.Medium)
             .fontColor($r('app.color.text_title'))
           Text(this.downloadError.length > 0 ? this.downloadError :
-            this.modelReady ? '可离线运行决策' :
+            this.modelReady ? (isLayaLoaded() ? '模型已加载，可运行决策' : '已安装，请在模型页加载') :
             `${formatBytes(this.downloadBytes)} / ${formatBytes(LAYA_DOWNLOAD_SPEC.totalBytes)} · ModelScope`)
             .fontSize(11)
             .fontColor(this.downloadError.length > 0 ? $r('app.color.status_error') : $r('app.color.text_secondary'))

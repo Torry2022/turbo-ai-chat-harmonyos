@@ -692,6 +692,8 @@ struct Index {
           availableHeight: this.windowHeight,
           filesDir: this.abilityContext?.filesDir ?? '',
           onModelReady: () => { this.viewModel.refreshLayaReady() },
+          onDecision: (state: string, type: string, instruction: string, options: string[]) =>
+            this.viewModel.runDecision(state, type, instruction, options),
           onClose: () => {
             this.showLayaDecision = false
             this.viewModel.refreshLayaReady()
