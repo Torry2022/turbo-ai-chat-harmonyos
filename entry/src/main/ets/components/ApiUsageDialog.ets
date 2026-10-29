@@ -52,7 +52,7 @@ export struct ApiUsageDialog {
               .fontColor($r('app.color.text_title')).width('100%')
             Text(this.mode === 'rerank' ?
               '向 /v1/rerank 发送 POST 请求。query 为问题，documents 为候选文本数组，top_n 为可选的返回数量。结果按相关性降序排列，index 对应输入位置（从 0 开始）。需先在模型页加载重排模型。' : this.mode === 'decision' ?
-              '向 API 地址后的 /v1/decisions 发送 POST 请求，Content-Type 设为 application/json。需先在模型页安装 Laya，首次请求时会自动加载。下方为选择题的请求体示例。' :
+              '向 API 地址后的 /v1/decisions 发送 POST 请求，Content-Type 设为 application/json。需先在模型页安装并加载决策模型。下方为选择题的请求体示例。' :
                 '在 Cherry Studio 等客户端中选择 OpenAI 兼容服务，填入本页 API 地址和 API Key，通过 GET /v1/models 获取模型列表。聊天需先在模型页加载模型，支持 Chat Completions 和 Responses 请求。')
               .fontSize(13).lineHeight(21).fontColor($r('app.color.text_secondary')).width('100%')
             if (this.mode !== 'chat') {
@@ -67,7 +67,9 @@ export struct ApiUsageDialog {
             Text('启用 API 认证时，请使用服务页的 API Key。请求头格式为 Authorization: Bearer <API Key>。')
               .fontSize(12).lineHeight(20).fontColor($r('app.color.text_muted')).width('100%')
           }.width('100%').alignItems(HorizontalAlign.Start)
-        }.layoutWeight(1).width('100%').align(Alignment.TopStart)
+        }.width('100%').align(Alignment.TopStart)
+          // Reserve the outer margin, padding, header and optional footer button.
+          .constraintSize({ maxHeight: Math.max(1, this.availableHeight - (this.mode === 'chat' ? 136 : 192)) })
           .scrollBar(BarState.Auto)
         if (this.mode !== 'chat') {
           Button('复制示例')
@@ -77,7 +79,7 @@ export struct ApiUsageDialog {
       }
       .padding(24)
       .width(Math.max(1, Math.min(560, this.availableWidth - 32)))
-      .height(Math.max(1, Math.min(this.mode === 'chat' ? 380 : 580, this.availableHeight - 32)))
+      .constraintSize({ maxHeight: Math.max(1, this.availableHeight - 32) })
       .backgroundColor($r('app.color.dialog'))
       .border({ width: 1, color: $r('app.color.border') })
       .borderRadius($r('app.float.dialog_radius'))
