@@ -1,0 +1,35 @@
+--- a/transformers/llm/engine/include/llm/reranker.hpp
++++ b/transformers/llm/engine/include/llm/reranker.hpp
+@@ -11,6 +11,7 @@
+ #include <string>
+ #include <vector>
+ #include <memory>
++#include <stdexcept>
+ #include <algorithm>
+ #include "llm.hpp"
+ 
+@@ -84,6 +85,7 @@
+      */
+     void initialize(const std::string& config_path) override {
+         mLlm.reset(Llm::createLLM(config_path));
++        if (!mLlm) throw std::runtime_error("Cannot create reranker");
+         mLlm->set_config("{\"all_logits\":true}");
+     }
+ 
+@@ -91,9 +93,13 @@
+      * @brief Loads the LLM and initializes token IDs.
+      */
+     void load() override {
+-        mLlm->load();
+-        mTokenTrueId = mLlm->tokenizer_encode("yes")[0];
+-        mTokenFalseId = mLlm->tokenizer_encode("no")[0];
++        if (!mLlm->load()) throw std::runtime_error("Cannot load reranker");
++        const auto yes = mLlm->tokenizer_encode("yes");
++        const auto no = mLlm->tokenizer_encode("no");
++        if (yes.size() != 1 || no.size() != 1 || yes[0] == no[0])
++            throw std::runtime_error("Unsupported reranker tokenizer");
++        mTokenTrueId = yes[0];
++        mTokenFalseId = no[0];
+     }
+ 
+     /**

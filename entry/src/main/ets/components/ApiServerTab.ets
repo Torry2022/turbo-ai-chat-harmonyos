@@ -1,8 +1,8 @@
+import { LAYA_MODEL_ID, LAYA_SHORT_NAME } from '../models/LayaModelConfig'
 import { InputFieldStyle } from './ControlStyles'
 import { ActionButtonStyle, CompactActionStyle } from './ButtonStyles'
 import { ApiServerLogEntry, ChatViewModel } from '../state/ChatViewModel'
 import { pasteboard } from '@kit.BasicServicesKit'
-import { ModelType, ModelTypeSelector } from './ModelTypeSelector'
 
 @Component
 export struct ApiServerTab {
@@ -14,9 +14,8 @@ export struct ApiServerTab {
   @Prop renderVersion: number = 0
   @Prop loaded: boolean = false
   @Prop layaReady: boolean = false
-  @Prop apiServiceTarget: 'chat' | 'decision' = 'chat'
   @Prop layaStatus: string = '未安装'
-  onApiHelp: (mode: 'chat' | 'decision', example: string) => void = () => {}
+  onApiHelp: (mode: 'rerank' | 'chat' | 'decision', example: string) => void = () => {}
   @Prop busy: boolean = false
   @Prop currentModelName: string = ''
   @Prop apiServerRunning: boolean = false
@@ -96,7 +95,7 @@ export struct ApiServerTab {
 
   private decisionExample(): string {
     return `{
-  "model": "Laya-Multilingual-MNN-FP16",
+  "model": "${LAYA_MODEL_ID}",
   "input": "手机键盘弹出后底部标签也跟着上移。",
   "task": {
     "type": "choice",
@@ -107,68 +106,37 @@ export struct ApiServerTab {
   }
 
 
-  private serviceName(): string {
-    if (this.apiServiceTarget === 'decision') return 'Laya-Multilingual-MNN-FP16'
-    return this.currentModelName
-  }
-
-  private serviceState(): string {
-    if (this.apiServiceTarget === 'decision') return this.layaStatus
-    return this.loaded ? '已加载' : '未加载'
+  private capabilityState(mode: string): string {
+    if ((mode === 'chat' && this.viewModel.modelLoading) ||
+      (mode === 'rerank' && this.viewModel.rerankLoading)) return '正在加载模型'
+    if (mode === 'chat') return this.loaded ? this.currentModelName : '未加载，请在模型页加载'
+    if (mode === 'decision') return `${LAYA_SHORT_NAME} ${this.layaStatus}`
+    if (mode === 'rerank') return this.viewModel.loadedReranker()?.shortName ?? '未加载，请在模型页加载'
+    return '本地资料'
   }
 
   @Builder
-  private Endpoint(method: string, path: string, methodColor: ResourceColor) {
-    Row({ space: 7 }) {
-      Text(method)
-        .width(34)
-        .fontSize(12)
-        .lineHeight(20)
-        .fontWeight(FontWeight.Medium)
-        .fontColor(methodColor)
-      Text(path)
-        .fontSize(12)
-        .lineHeight(20)
-        .fontColor($r('app.color.text_secondary'))
-    }
-    .width('100%')
+  private CapabilityHeader(title: string, mode: 'chat' | 'decision' | 'rerank', example: string = '') {
+    Row({ space: 8 }) {
+      Text(title).fontSize(13).fontWeight(FontWeight.Medium).fontColor($r('app.color.text_body'))
+      Text(this.capabilityState(mode)).fontSize(12).fontColor($r('app.color.text_muted')).layoutWeight(1)
+        .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
+      Button('调用说明')
+        .attributeModifier(new CompactActionStyle())
+        .onClick(() => this.onApiHelp(mode, example))
+    }.width('100%')
   }
 
   @Builder
   private CapabilitiesCard() {
     Column({ space: 8 }) {
-      Row() {
-        this.SectionTitle('服务内容')
-        Blank()
-        Button('调用说明')
-          .attributeModifier(new CompactActionStyle())
-          .onClick(() => {
-            const example = this.apiServiceTarget === 'decision' ? this.decisionExample() : ''
-            this.onApiHelp(this.apiServiceTarget, example)
-          })
-      }.width('100%')
-      ModelTypeSelector({
-        selected: this.apiServiceTarget,
-        interactionEnabled: !this.apiServerRunning && !this.apiServerStarting,
-        onChange: (type: ModelType): void => { this.viewModel.selectApiServiceTarget(type) }
-      })
-      .width('100%')
-      Text(this.serviceName())
-        .fontSize(13).fontWeight(FontWeight.Medium).fontColor($r('app.color.text_body'))
-      Text(this.serviceState())
-        .fontSize(12).fontColor($r('app.color.text_secondary'))
-      if (this.apiServiceTarget === 'chat') {
-        this.Endpoint('GET', '/v1/models', $r('app.color.endpoint_post'))
-        this.Endpoint('POST', '/v1/chat/completions', $r('app.color.link'))
-        this.Endpoint('POST', '/v1/responses', $r('app.color.link'))
-      } else if (this.apiServiceTarget === 'decision') {
-        this.Endpoint('GET', '/v1/models', $r('app.color.endpoint_post'))
-        this.Endpoint('POST', '/v1/decisions', $r('app.color.link'))
-
-      }
-      this.Endpoint('GET', '/turbo/runtime', $r('app.color.endpoint_post'))
-      Text(this.apiServerRunning ? '切换服务内容前，请先关闭服务。' : '服务启动后，只接收所选内容的请求。')
-        .fontSize(12).lineHeight(18).fontColor($r('app.color.text_hint')).width('100%')
+      this.SectionTitle('服务内容')
+      this.CapabilityHeader('聊天', 'chat')
+      Divider().color($r('app.color.divider')).opacity(0.6)
+      this.CapabilityHeader('决策', 'decision', this.decisionExample())
+      Divider().color($r('app.color.divider')).opacity(0.6)
+      this.CapabilityHeader('重排', 'rerank',
+        '{"query":"中国的首都是哪里？","documents":["北京是中国的首都。","上海位于长江入海口。"],"top_n":2}')
     }
     .width('100%').alignItems(HorizontalAlign.Start).padding(10)
     .backgroundColor($r('app.color.card')).borderRadius($r('app.float.card_radius'))
@@ -209,23 +177,11 @@ export struct ApiServerTab {
           .lineHeight(19)
           .fontColor(this.apiServerRunning ? $r('app.color.status_good') : $r('app.color.text_secondary'))
           .width('100%')
-        Text(`服务内容：${this.serviceName()}`)
-          .fontSize(12)
-          .lineHeight(18)
-          .fontColor($r('app.color.text_hint'))
-          .width('100%')
         Text(`累计处理 ${this.apiServerRequestCount} 个 API 请求`)
           .fontSize(12)
           .lineHeight(18)
           .fontColor($r('app.color.text_hint'))
           .width('100%')
-        if ((this.apiServiceTarget === 'chat' && !this.loaded) || (this.apiServiceTarget === 'decision' && !this.layaReady)) {
-          Text(this.apiServiceTarget === 'chat' ? '开启服务时可选择并加载聊天模型。' : '请先在模型页的决策分类中安装 Laya。')
-            .fontSize(12)
-            .lineHeight(18)
-            .fontColor($r('app.color.status_warning'))
-            .width('100%')
-        }
       }
       .width('100%')
       .alignItems(HorizontalAlign.Start)

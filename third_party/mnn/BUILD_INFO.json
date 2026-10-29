@@ -1,4 +1,4 @@
-﻿{
+{
     "patches":  [
                     {
                         "file":  "patches/0003-tokenizer-nfc.patch",
@@ -28,5 +28,11 @@
                      "imageCodecs":  true,
                      "opencl":  false
                  },
-    "libMnnSha256":  "8cec684728f2773ddb896b5b27bec8458d69b376d6a211bb25ddf7e4dd966ec7"
+    "libMnnSha256":  "8cec684728f2773ddb896b5b27bec8458d69b376d6a211bb25ddf7e4dd966ec7",
+    "headerPatches": [
+    {
+        "file": "patches/0005-reranker-load-validation.patch",
+        "sha256": "bc35683b5aca1be5552aba1fe8aa6bbedf82c4f80c1a01b9a6b36b9113dff976"
+    }
+]
 }

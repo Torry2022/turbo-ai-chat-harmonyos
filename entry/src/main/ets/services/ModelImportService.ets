@@ -33,6 +33,8 @@ import {
 import { ModelDirectoryPreflightService } from './ModelDirectoryPreflightService'
 
 export class ModelImportService {
+  private reranker: boolean = false
+  constructor(reranker: boolean = false) { this.reranker = reranker }
   private preflightService: ModelDirectoryPreflightService = new ModelDirectoryPreflightService()
 
   async pickAndImport(context: common.UIAbilityContext, existingProfiles: ModelProfile[], folder: boolean = false): Promise<ModelImportResult | undefined> {
@@ -88,7 +90,7 @@ export class ModelImportService {
       }
 
       const supportsImage = await this.detectSupportsImage(configPath)
-      await this.preflightService.requireCompatible(configPath, supportsImage)
+      await this.preflightService.requireCompatible(configPath, supportsImage, [], !this.reranker)
 
       const sourceName = this.inferName(zipUri, configPath, targetDir)
       const inferredName = uniqueModelName(sourceName, existingProfiles)
@@ -98,7 +100,7 @@ export class ModelImportService {
         name: inferredName,
         shortName: inferredShortName,
         directoryName: modelId,
-        description: '用户导入的 MNN 模型。',
+        description: this.reranker ? '用户导入的 MNN 重排模型。' : '用户导入的 MNN 模型。',
         supportsImage,
         systemPrompt: DEFAULT_IMPORTED_MODEL_PROMPT,
         source: IMPORTED_MODEL_SOURCE,
@@ -167,7 +169,7 @@ export class ModelImportService {
       }
 
       const supportsImage = await this.detectSupportsImage(configPath)
-      const preflight = await this.preflightService.validate(configPath, supportsImage)
+      const preflight = await this.preflightService.validate(configPath, supportsImage, [], !this.reranker)
       if (!preflight.compatible) {
         skippedCount++
         errors.push(`${directoryName}：${preflight.message}`)
@@ -183,7 +185,7 @@ export class ModelImportService {
         name: inferredName,
         shortName: inferredShortName,
         directoryName,
-        description: '用户导入的 MNN 模型。',
+        description: this.reranker ? '用户导入的 MNN 重排模型。' : '用户导入的 MNN 模型。',
         supportsImage,
         systemPrompt: DEFAULT_IMPORTED_MODEL_PROMPT,
         source: IMPORTED_MODEL_SOURCE,
@@ -367,7 +369,7 @@ export class ModelImportService {
   }
 
   private importRoot(filesDir: string): string {
-    return `${filesDir}/${IMPORTED_MODELS_DIR}`
+    return `${filesDir}/${this.reranker ? 'rerank-models' : IMPORTED_MODELS_DIR}`
   }
 
   private storePath(filesDir: string): string {
@@ -479,6 +481,7 @@ export class ModelImportService {
   }
 
   private async normalizeImportedProfile(profile: ModelProfile): Promise<ModelProfile> {
+    if (this.reranker) return profile
     let normalizedSupportsImage = profile.supportsImage
     if (profile.configPath !== undefined && profile.configPath.length > 0) {
       try {

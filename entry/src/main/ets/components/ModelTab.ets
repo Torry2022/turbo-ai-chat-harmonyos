@@ -1,3 +1,5 @@
+import { LAYA_MODEL_ID } from '../models/LayaModelConfig'
+import { RerankerModels } from './RerankerModels'
 import { InputFieldStyle, ParameterSliderStyle } from './ControlStyles'
 import { ActionButtonStyle } from './ButtonStyles'
 import {
@@ -340,15 +342,18 @@ export struct ModelTab {
     Column({ space: 10 }) {
       this.SectionTitle('模型列表')
       ModelTypeSelector({
-        selected: this.modelCategory === 0 ? 'chat' : 'decision',
+        selected: this.modelCategory === 0 ? 'chat' : this.modelCategory === 1 ? 'decision' : 'rerank',
+        showReranker: true,
         onChange: (type: ModelType): void => {
           this.cancelModelDrag()
-          this.modelCategory = type === 'chat' ? 0 : 1
+          this.modelCategory = type === 'chat' ? 0 : type === 'decision' ? 1 : 2
         }
       })
       .width('100%')
       if (this.modelCategory === 1) {
         this.DecisionModelCard()
+      } else if (this.modelCategory === 2) {
+        RerankerModels({ viewModel: this.viewModel, renderVersion: this.renderVersion })
       } else {
         Column({ space: 8 }) {
           ForEach(this.visibleModelProfiles, (profile: ModelProfile) => {
@@ -421,23 +426,21 @@ export struct ModelTab {
 
   @Builder
   private DecisionModelCard() {
-    Column({ space: 8 }) {
-      Row({ space: 8 }) {
-        Text('Laya-Multilingual-MNN-FP16')
-          .fontSize(13)
-          .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.text_body'))
-          .layoutWeight(1)
-        Text(this.layaStatus)
-          .fontSize(11)
-          .fontColor(this.layaReady ? $r('app.color.status_good') : $r('app.color.text_hint'))
-      }
-      .width('100%')
-      Text('根据输入完成选择、评分或是非判断。')
-        .fontSize(12)
-        .lineHeight(18)
-        .fontColor($r('app.color.text_muted'))
+    Column({ space: 10 }) {
+      Column({ space: 4 }) {
+        Row({ space: 6 }) {
+          Text(LAYA_MODEL_ID)
+            .fontSize(14).fontWeight(FontWeight.Medium)
+            .fontColor($r('app.color.text_title')).layoutWeight(1)
+          if (this.layaStatus === '已加载') {
+            this.CapabilityTag('已加载', $r('app.color.tag_green_text'), $r('app.color.tag_green_background'))
+          }
+        }
         .width('100%')
+        Text('多语言决策模型，支持选择、评分与是非判断。')
+          .fontSize(12).lineHeight(18).fontColor($r('app.color.text_note')).width('100%')
+      }
+      .width('100%').padding(10).backgroundColor($r('app.color.selected_background')).borderRadius(8)
       Button(this.layaReady ? '进入决策' : '下载模型')
         .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
         .width('100%')
@@ -973,6 +976,10 @@ export struct ModelTab {
             this.ImportedModelConfigCard()
             this.ContextCard()
             this.ModelManagementCard()
+          } else if (this.modelCategory === 2) {
+            Column() {
+              RerankerModels({ viewModel: this.viewModel, renderVersion: this.renderVersion, settings: true })
+            }.width('100%').padding(12).backgroundColor($r('app.color.inset')).borderRadius($r('app.float.card_radius'))
           } else {
             this.DecisionGuideCard()
           }

@@ -435,8 +435,7 @@ struct Index {
       },
       layaReady: this.viewModel.layaReady,
       layaStatus: this.viewModel.layaStatusText(),
-      apiServiceTarget: this.viewModel.apiServiceTarget,
-      onApiHelp: (mode: 'chat' | 'decision', example: string) => {
+      onApiHelp: (mode: 'rerank' | 'chat' | 'decision', example: string) => {
         this.apiUsageMode = mode
         this.apiUsageExample = example
       },

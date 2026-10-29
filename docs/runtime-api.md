@@ -13,7 +13,7 @@ curl http://设备IP:8080/turbo/runtime -H "Authorization: Bearer <API Key>"
 | 字段 | 含义与单位 |
 | --- | --- |
 | `object` | 固定为 `turbo.runtime` |
-| `service.target` | 当前 API 服务类型：`chat` 或 `decision` |
+| `service.target` | `all`：各接口同时开放，分别使用对应模型 |
 | `service.inferenceBusy` | API 是否正在处理聊天生成或决策请求 |
 | `chatModel.id`、`name` | 当前选择的聊天模型，不代表 Laya 决策模型 |
 | `chatModel.loaded`、`loading`、`generating` | 聊天模型是否已加载、正在加载、正在生成 |

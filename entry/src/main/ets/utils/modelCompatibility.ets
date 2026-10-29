@@ -20,6 +20,7 @@ export interface ExpectedModelFile {
 }
 
 export interface ModelDirectorySnapshot {
+  requireChatTemplate?: boolean
   configText: string
   llmConfigText: string
   files: ModelFileSnapshot[]
@@ -89,7 +90,7 @@ export function validateModelDirectorySnapshot(snapshot: ModelDirectorySnapshot)
 
   const template = llmConfig.jinja?.chat_template ?? ''
   const legacyTemplate = isLegacyChatMlPromptTemplate(llmConfig.prompt_template ?? '')
-  if (template.trim().length <= 0 && !legacyTemplate) {
+  if (snapshot.requireChatTemplate !== false && template.trim().length <= 0 && !legacyTemplate) {
     return failure(
       MODEL_PREFLIGHT_TEMPLATE_INCOMPATIBLE,
       'llm_config.json 缺少 jinja.chat_template，且不是可自动兼容的 ChatML 旧模板。'

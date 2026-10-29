@@ -62,3 +62,6 @@ export const isLoaded: () => boolean;
 export const layaDecideAsync: (modelPath: string, tokenizerPath: string, state: string,
   type: string, instruction: string, options: string[]) => Promise<string>;
 export const layaReleaseAsync: () => Promise<void>;
+
+export const rerankerAsync: (operation: string, config: string, threads: number, tokens: number, query: string, documents: string[]) => Promise<number[]>;
+export const rerankerCancel: () => void;

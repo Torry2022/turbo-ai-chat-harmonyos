@@ -1,3 +1,4 @@
+#include "reranker_runner.h"
 // Derived from Turbo1123/turbo-ai-chat-harmonyos and subsequently modified.
 // See README.md and Git history for provenance and change details.
 
@@ -973,8 +974,82 @@ napi_value CancelTitleGeneration(napi_env env, napi_callback_info) {
     return result;
 }
 
+struct RerankerWork {
+    napi_async_work work = nullptr;
+    napi_deferred deferred = nullptr;
+    std::string operation, config, query, error;
+    int threads = 6, tokens = 2048;
+    uint64_t epoch = 0;
+    std::vector<std::string> documents;
+    std::vector<float> scores;
+};
+
+napi_value RerankerAsync(napi_env env, napi_callback_info info) {
+    size_t argc = 6;
+    napi_value args[6] = {};
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc != 6) { napi_throw_type_error(env, nullptr, "Invalid reranker arguments"); return nullptr; }
+    auto* work = new RerankerWork();
+    work->epoch = rerankerEpoch();
+    work->operation = ReadString(env, args[0]);
+    work->config = ReadString(env, args[1]);
+    napi_get_value_int32(env, args[2], &work->threads);
+    napi_get_value_int32(env, args[3], &work->tokens);
+    work->query = ReadString(env, args[4]);
+    uint32_t length = 0;
+    napi_get_array_length(env, args[5], &length);
+    for (uint32_t i = 0; i < length; i++) {
+        napi_value item = nullptr;
+        napi_get_element(env, args[5], i, &item);
+        work->documents.push_back(ReadString(env, item));
+    }
+    napi_value promise = nullptr;
+    napi_create_promise(env, &work->deferred, &promise);
+    napi_create_async_work(env, nullptr, MakeString(env, "rerankerAsync"),
+        [](napi_env, void* data) {
+            auto* w = static_cast<RerankerWork*>(data);
+            try {
+                if (w->operation == "load") loadReranker(w->config, w->threads, w->tokens);
+                else if (w->operation == "score") w->scores = scoreReranker(w->query, w->documents, w->epoch);
+                else if (w->operation == "release") releaseReranker();
+                else throw std::runtime_error("Unknown reranker operation");
+            } catch (const std::exception& e) { w->error = e.what(); }
+        },
+        [](napi_env env, napi_status status, void* data) {
+            auto* w = static_cast<RerankerWork*>(data);
+            if (status != napi_ok && w->error.empty()) w->error = "Reranker task failed";
+            if (!w->error.empty()) {
+                napi_value error = nullptr;
+                napi_create_error(env, nullptr, MakeString(env, w->error), &error);
+                napi_reject_deferred(env, w->deferred, error);
+            } else {
+                napi_value result = nullptr;
+                napi_create_array_with_length(env, w->scores.size(), &result);
+                for (size_t i = 0; i < w->scores.size(); i++) {
+                    napi_value score = nullptr;
+                    napi_create_double(env, w->scores[i], &score);
+                    napi_set_element(env, result, i, score);
+                }
+                napi_resolve_deferred(env, w->deferred, result);
+            }
+            napi_delete_async_work(env, w->work);
+            delete w;
+        }, work, &work->work);
+    napi_queue_async_work(env, work->work);
+    return promise;
+}
+
+napi_value RerankerCancel(napi_env env, napi_callback_info) {
+    cancelReranker();
+    napi_value result = nullptr;
+    napi_get_undefined(env, &result);
+    return result;
+}
+
 static napi_value Init(napi_env env, napi_value exports) {
     napi_property_descriptor desc[] = {
+        {"rerankerAsync", nullptr, RerankerAsync, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"rerankerCancel", nullptr, RerankerCancel, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"layaDecideAsync", nullptr, LayaDecideAsync, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"layaReleaseAsync", nullptr, LayaReleaseAsync, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"loadModel", nullptr, LoadModel, nullptr, nullptr, nullptr, napi_default, nullptr},

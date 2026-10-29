@@ -33,7 +33,7 @@ New-Item -ItemType Directory -Force -Path $utf8proc | Out-Null
 Copy-Item -Path (Join-Path $PSScriptRoot '..\third_party\mnn\utf8proc\*') -Destination $utf8proc -Force
 
 $cmake = Join-Path $HarmonyNativeHome 'build-tools\cmake\bin\cmake.exe'
-foreach ($patchName in @('0003-tokenizer-nfc.patch', '0004-streaming-added-token.patch')) {
+foreach ($patchName in @('0003-tokenizer-nfc.patch', '0004-streaming-added-token.patch', '0005-reranker-load-validation.patch')) {
   $patch = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\third_party\mnn\patches\$patchName"))
   $patchApplied = $false
   try {

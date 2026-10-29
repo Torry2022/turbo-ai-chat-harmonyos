@@ -20,6 +20,7 @@ set_target_properties(mnn PROPERTIES
 )
 
 add_library(entry SHARED
+    reranker_runner.cpp
     napi_init.cpp
     mnn_llm_runner.cpp
     "${CMAKE_CURRENT_LIST_DIR}/../../../../scripts/laya/laya_tokenizer.cpp"

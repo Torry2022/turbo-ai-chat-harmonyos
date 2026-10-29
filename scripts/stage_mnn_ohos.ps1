@@ -18,7 +18,7 @@ if ($LASTEXITCODE -ne 0 -or $actualCommit -ne $expectedCommit) {
   throw "Expected MNN $expectedCommit, found $actualCommit"
 }
 if (-not (Test-Path $library)) { throw "Missing $library" }
-$patchNames = @('0003-tokenizer-nfc.patch', '0004-streaming-added-token.patch')
+$patchNames = @('0003-tokenizer-nfc.patch', '0004-streaming-added-token.patch', '0005-reranker-load-validation.patch')
 foreach ($patchName in $patchNames) {
   & git -C $MnnRoot apply --reverse --check (Join-Path $root "third_party\mnn\patches\$patchName")
   if ($LASTEXITCODE -ne 0) { throw "Required MNN patch is missing: $patchName" }

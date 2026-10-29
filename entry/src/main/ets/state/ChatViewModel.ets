@@ -1,3 +1,4 @@
+import { RerankerService } from '../services/RerankerService'
 import { ConversationTitleService, ConversationTitleRequest, conversationTitleSignature } from '../services/ConversationTitleService'
 import { decideLaya, isLayaReady, LayaRuntimeState, observeLayaRuntime, releaseLaya } from '../services/LayaDecisionService'
 import { ChatConversation, ChatConversationSummary, ChatHistorySearchResult, conversationTitle } from '../models/ChatHistoryTypes'
@@ -151,7 +152,6 @@ export class ChatViewModel {
   pendingDeleteModelId: string = ''
   layaReady: boolean = false
   layaRuntimeState: LayaRuntimeState = 'idle'
-  apiServiceTarget: 'chat' | 'decision' = 'chat'
   apiServerRunning: boolean = false
   apiServerStarting: boolean = false
   apiServerPortInput: string = '8080'
@@ -197,9 +197,13 @@ export class ChatViewModel {
   private statsService: RuntimeStatsService = new RuntimeStatsService()
   private speechRecognitionService: SpeechRecognitionService = new SpeechRecognitionService()
   private apiServer: OpenAiApiServer = new OpenAiApiServer({
-    isModelLoaded: () => this.apiServiceTarget === 'chat' && this.loaded,
-    isLayaReady: () => this.apiServiceTarget === 'decision' && isLayaReady(this.filesDir),
-    isGenerationReady: () => this.apiServiceTarget === 'chat' && this.loaded && !this.modelScanning && !this.busy && !this.modelLoading,
+    rerankModel: () => this.loadedReranker(),
+    rerank: (query: string, documents: string[]) => this.runApiRerank(query, documents),
+    cancelRerank: () => this.reranker.cancel(),
+    isRerankBusy: () => this.reranker.busy || this.rerankLoading || this.busy || this.modelLoading,
+    isModelLoaded: () => this.loaded,
+    isLayaReady: () => isLayaReady(this.filesDir),
+    isGenerationReady: () => this.loaded && !this.modelScanning && !this.busy && !this.modelLoading,
     currentModel: () => this.apiServerModel(),
     currentSettings: () => this.currentGenerationSettings(),
     currentMaxNewTokens: () => this.maxNewTokens,
@@ -272,6 +276,11 @@ export class ChatViewModel {
   initialize(context: common.UIAbilityContext): void {
     this.context = context
     this.filesDir = context.filesDir
+    this.rerankImport.loadImportedProfiles(this.filesDir).then((profiles: ModelProfile[]) => {
+      this.rerankProfiles = profiles
+      this.rerankSelectedId = profiles[0]?.id ?? ''
+      this.notify()
+    }).catch(() => { this.rerankMessage = '无法读取重排模型清单，请重新扫描'; this.notify() })
     observeLayaRuntime((state: LayaRuntimeState) => {
       this.layaRuntimeState = state
       this.refreshLayaReady()
@@ -337,6 +346,120 @@ export class ChatViewModel {
     this.apiServer.stop().catch((_err: Error) => {
     })
     this.apiServerRunning = false
+  }
+
+  rerankProfiles: ModelProfile[] = []
+  rerankSelectedId: string = ''
+  rerankThreads: number = 6
+  rerankMaxTokens: number = 2048
+  rerankMessage: string = ''
+  rerankLoading: boolean = false
+  rerankImporting: boolean = false
+  readonly reranker: RerankerService = new RerankerService()
+  private rerankImport: ModelImportService = new ModelImportService(true)
+  private deletingReranker: boolean = false
+
+  selectedReranker(): ModelProfile | undefined {
+    return this.rerankProfiles.find((model: ModelProfile) => model.id === this.rerankSelectedId)
+  }
+
+  loadedReranker(): ModelProfile | undefined {
+    return this.rerankProfiles.find((model: ModelProfile) => model.id === this.reranker.loadedId)
+  }
+
+  selectReranker(id: string): void {
+    if (this.rerankImporting) return
+    this.rerankSelectedId = id
+    this.notify()
+  }
+
+  async importReranker(folder: boolean, scan: boolean = false): Promise<void> {
+    if (!this.context || this.rerankImporting || this.reranker.busy) return
+    this.rerankImporting = true
+    this.rerankMessage = scan ? '正在扫描重排模型目录...' : '请选择 Qwen3-Reranker 的完整 MNN 模型目录或 ZIP'
+    this.notify()
+    try {
+      if (scan) {
+        const result = await this.rerankImport.scanPushedModelDirectories(this.filesDir, this.rerankProfiles)
+        this.rerankProfiles = result.profiles
+        this.rerankMessage = result.errors.length > 0 ? result.errors[0] : ''
+        if (result.addedProfiles.length > 0) this.rerankSelectedId = result.addedProfiles[0].id
+      } else {
+        const result = await this.rerankImport.pickAndImport(this.context, this.rerankProfiles, folder)
+        if (result !== undefined) {
+          this.rerankProfiles = await this.rerankImport.loadImportedProfiles(this.filesDir)
+          this.rerankSelectedId = result.profile.id
+          this.rerankMessage = ''
+        } else { this.rerankMessage = '' }
+      }
+    } catch (error) { this.rerankMessage = `导入失败：${formatError(error as Object)}` }
+    finally { this.rerankImporting = false; this.notify() }
+  }
+
+  async loadRerankModel(): Promise<void> {
+    const model = this.selectedReranker()
+    if (model === undefined || this.layaRuntimeState === 'loading' || this.layaRuntimeState === 'running' || this.layaRuntimeState === 'releasing' || this.busy || this.modelLoading || this.reranker.busy || this.rerankImporting) return
+    this.busy = true
+    this.rerankLoading = true
+    this.rerankMessage = '正在加载重排模型...'
+    this.notify()
+    try {
+      await this.nativeService.cancelTitleGeneration()
+      await this.reranker.load(model, this.rerankThreads, this.rerankMaxTokens)
+      this.rerankMessage = ''
+    } catch (error) { this.rerankMessage = `加载失败：${formatError(error as Object)}` }
+    finally { this.rerankLoading = false; this.busy = false; this.notify() }
+  }
+
+  async releaseRerankModel(): Promise<void> {
+    if (this.reranker.busy || this.rerankLoading) return
+    try { await this.reranker.release(); this.rerankMessage = '' }
+    catch (error) { this.rerankMessage = `释放失败：${formatError(error as Object)}` }
+    this.notify()
+  }
+
+  private async runApiRerank(query: string, documents: string[]): Promise<number[]> {
+    if (this.busy || this.modelLoading || this.rerankLoading || this.layaRuntimeState === 'running' ||
+      this.layaRuntimeState === 'loading' || this.layaRuntimeState === 'releasing' || this.reranker.busy) throw new Error('当前模型任务尚未结束')
+    this.busy = true
+    this.rerankMessage = '正在重排候选文本...'
+    this.notify()
+    try {
+      const scores = await this.reranker.score(query, documents, () => this.nativeService.cancelTitleGeneration())
+      this.rerankMessage = ''
+      return scores
+    } catch (error) {
+      this.rerankMessage = '重排未完成，请检查输入或模型状态'
+      throw new Error((error as Error).message)
+    } finally { this.busy = false; this.notify() }
+  }
+
+  requestDeleteReranker(): void {
+    if (this.reranker.busy || this.rerankLoading || this.rerankImporting || !this.selectedReranker()) return
+    this.deletingReranker = true
+    this.pendingDeleteModelId = this.rerankSelectedId
+    this.showDeleteModelDialog = true
+    this.notify()
+  }
+
+  private async deleteReranker(): Promise<void> {
+    if (this.reranker.busy || this.rerankLoading || this.rerankImporting) return
+    const id = this.pendingDeleteModelId
+    this.showDeleteModelDialog = false
+    this.rerankImporting = true
+    this.notify()
+    try {
+      if (id === this.reranker.loadedId) await this.reranker.release()
+      this.rerankProfiles = await this.rerankImport.deleteImportedProfile(this.filesDir, id)
+      this.rerankSelectedId = this.rerankProfiles[0]?.id ?? ''
+      this.rerankMessage = ''
+    } catch (error) { this.rerankMessage = `删除失败：${formatError(error as Object)}` }
+    finally {
+      this.deletingReranker = false
+      this.pendingDeleteModelId = ''
+      this.rerankImporting = false
+      this.notify()
+    }
   }
 
   modelProfiles(): ModelProfile[] {
@@ -496,17 +619,6 @@ export class ChatViewModel {
       return
     }
     this.layaReady = isLayaReady(this.filesDir)
-    if (this.apiServiceTarget === 'decision' && !this.layaReady) {
-      this.toastCallback('请先在模型页安装 Laya')
-      return
-    }
-    if (this.apiServiceTarget === 'chat' && !this.loaded) {
-      this.apiServerStartAfterModelLoad = true
-      this.toastCallback('请先加载模型')
-      this.openModelLoadDialog(false)
-      this.notify()
-      return
-    }
     this.apiServerStartAfterModelLoad = false
     if (this.busy || this.modelLoading) {
       this.apiServerStatus = '当前任务结束后才能启动 API 服务。'
@@ -528,7 +640,6 @@ export class ChatViewModel {
     this.saveApiServerSettings()
     this.apiServer.start({
       port,
-      target: this.apiServiceTarget,
       requireApiKey: this.apiServerRequireKey,
       apiKey: this.apiServerKey
     }).then((address: string) => {
@@ -1033,12 +1144,14 @@ export class ChatViewModel {
   }
 
   cancelDeleteModel(): void {
+    this.deletingReranker = false
     this.pendingDeleteModelId = ''
     this.showDeleteModelDialog = false
     this.notify()
   }
 
   confirmDeleteModel(): void {
+    if (this.deletingReranker) { this.deleteReranker(); return }
     if (this.rejectWhileModelScanning()) {
       return
     }
@@ -1146,6 +1259,7 @@ export class ChatViewModel {
     if (this.pendingDeleteModelId.length <= 0) {
       return undefined
     }
+    if (this.deletingReranker) return this.selectedReranker()
     return this.findProfile(this.pendingDeleteModelId)
   }
 
@@ -1661,13 +1775,6 @@ export class ChatViewModel {
     this.statusTone = tone
   }
 
-  selectApiServiceTarget(target: 'chat' | 'decision'): void {
-    if (this.apiServerRunning || this.apiServerStarting) return
-    this.apiServerStartAfterModelLoad = false
-    this.apiServiceTarget = target
-    this.notify()
-  }
-
   layaStatusText(): string {
     if (this.layaRuntimeState === 'loading') return '正在加载决策模型'
     if (this.layaRuntimeState === 'running') return '正在执行决策'
@@ -1677,10 +1784,6 @@ export class ChatViewModel {
   }
 
   async releaseDecisionModel(): Promise<void> {
-    if ((this.apiServerRunning || this.apiServerStarting) && this.apiServiceTarget === 'decision') {
-      this.toastCallback('请先关闭决策 API 服务')
-      return
-    }
     try {
       await releaseLaya()
     } catch (error) {
@@ -1741,6 +1844,13 @@ export class ChatViewModel {
         loaded: this.loaded,
         loading: this.modelLoading,
         generating: this.generating
+      },
+      rerankModel: {
+        id: this.reranker.loadedId,
+        name: this.loadedReranker()?.name ?? '',
+        loaded: this.reranker.loadedId.length > 0,
+        loading: this.rerankLoading,
+        generating: this.reranker.busy && !this.rerankLoading
       },
       metrics,
       storage
@@ -2323,28 +2433,7 @@ export class ChatViewModel {
   }
 
   private stopApiServerForModelChange(restartAfterLoad: boolean): void {
-    if (this.apiServerRunning && this.apiServiceTarget === 'decision' && isLayaReady(this.filesDir)) {
-      this.apiServerStartAfterModelLoad = false
-      return
-    }
-    this.apiServerStartAfterModelLoad = restartAfterLoad
-    if (!this.apiServerRunning) {
-      return
-    }
-    this.apiServerRunning = false
-    this.apiServerStarting = true
-    this.apiServer.stop().then(() => {
-      this.apiServerStarting = false
-      this.notify()
-      this.startPendingApiServerIfReady()
-    }).catch((err: Error) => {
-      this.apiServerStarting = false
-      this.apiServerStartAfterModelLoad = false
-      this.apiServerStatus = `停止 API 服务失败：${formatError(err as Object)}`
-      this.appendApiServerLog('ERROR', `停止服务失败：${formatError(err as Object)}`)
-      this.notify()
-    })
-    this.notify()
+    this.apiServerStartAfterModelLoad = !this.apiServerRunning && restartAfterLoad
   }
 
   private startPendingApiServerIfReady(): void {

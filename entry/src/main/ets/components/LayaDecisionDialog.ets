@@ -2,29 +2,13 @@ import { dialogFade, dialogScale } from './DialogMotion'
 import { InputFieldStyle } from './ControlStyles'
 import { common } from '@kit.AbilityKit'
 import fs from '@ohos.file.fs'
-import { BuiltinModelDownloadSpec, BuiltinModelInstallProgress, formatBytes } from '../models/BuiltinModelDownloadTypes'
+import { BuiltinModelInstallProgress, formatBytes } from '../models/BuiltinModelDownloadTypes'
 import { BuiltinModelInstallService } from '../services/BuiltinModelInstallService'
-import {
-  decideLaya, LAYA_MODEL_BYTES, LAYA_MODEL_DIRECTORY, LAYA_TOKENIZER_BYTES
-} from '../services/LayaDecisionService'
+import { decideLaya } from '../services/LayaDecisionService'
+import { LAYA_MODEL_ID, LAYA_MODEL_DIRECTORY, LAYA_MODEL_FILE, LAYA_TOKENIZER_FILE,
+  LAYA_MODEL_BYTES, LAYA_TOKENIZER_BYTES, LAYA_DOWNLOAD_SPEC } from '../models/LayaModelConfig'
 import { formatDownloadError } from '../utils/formatters'
 
-const LAYA_REPO = 'TorryJi/Laya-Multilingual-MNN-FP16'
-const LAYA_REVISION = '4e8478fb2bf840c244f2afaaea4c572a61ff3c9e'
-const LAYA_BASE_URL = `https://modelscope.cn/models/${LAYA_REPO}/resolve/${LAYA_REVISION}`
-const LAYA_DOWNLOAD_SPEC: BuiltinModelDownloadSpec = {
-  id: 'laya-multilingual-mnn-fp16',
-  modelId: LAYA_REPO,
-  directoryName: LAYA_MODEL_DIRECTORY,
-  displayName: 'Laya-Multilingual-MNN-FP16',
-  sourceName: 'ModelScope',
-  sourceUrl: `https://modelscope.cn/models/${LAYA_REPO}`,
-  files: [
-    { relativePath: 'laya.mnn', sizeBytes: LAYA_MODEL_BYTES, url: `${LAYA_BASE_URL}/laya.mnn` },
-    { relativePath: 'laya.tokbin', sizeBytes: LAYA_TOKENIZER_BYTES, url: `${LAYA_BASE_URL}/laya.tokbin` }
-  ],
-  totalBytes: LAYA_MODEL_BYTES + LAYA_TOKENIZER_BYTES
-}
 
 type LayaQuestionType = 'choice' | 'score' | 'noul'
 
@@ -122,8 +106,8 @@ export struct LayaDecisionDialog {
   }
 
   private async refreshModelState(): Promise<void> {
-    const ready = await this.hasCompleteFile('laya.mnn', LAYA_MODEL_BYTES) &&
-      await this.hasCompleteFile('laya.tokbin', LAYA_TOKENIZER_BYTES)
+    const ready = await this.hasCompleteFile(LAYA_MODEL_FILE, LAYA_MODEL_BYTES) &&
+      await this.hasCompleteFile(LAYA_TOKENIZER_FILE, LAYA_TOKENIZER_BYTES)
     if (this.closing) return
     this.modelReady = ready
     this.onModelReady()
@@ -285,7 +269,7 @@ export struct LayaDecisionDialog {
       else if (type === 'noul') answer.noul = probabilities['true']
       else answer.choice = prepared.labels[winner]
       const displayReport: LayaDisplayReport = {
-        model: 'Laya-Multilingual-MNN-FP16',
+        model: LAYA_MODEL_ID,
         answers: { question: answer },
         metadata: { task_calibrated: false, elapsed_ms: result.elapsed_ms }
       }

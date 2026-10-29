@@ -39,7 +39,7 @@ fi
 native_home="$(find_native_home)"
 mkdir -p "$MNN_ROOT/3rd_party/utf8proc"
 cp "$ROOT_DIR/third_party/mnn/utf8proc/"* "$MNN_ROOT/3rd_party/utf8proc/"
-for patch_name in 0003-tokenizer-nfc.patch 0004-streaming-added-token.patch; do
+for patch_name in 0003-tokenizer-nfc.patch 0004-streaming-added-token.patch 0005-reranker-load-validation.patch; do
   patch="$ROOT_DIR/third_party/mnn/patches/$patch_name"
   if ! git -C "$MNN_ROOT" apply --reverse --check "$patch" 2>/dev/null; then
     git -C "$MNN_ROOT" apply --check "$patch"

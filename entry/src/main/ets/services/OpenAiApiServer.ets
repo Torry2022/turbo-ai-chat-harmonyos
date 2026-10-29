@@ -1,3 +1,5 @@
+import { LAYA_MODEL_ID } from '../models/LayaModelConfig'
+import { RerankResponse, RerankRequest, validateRerankRequest, rankScores } from '../utils/rerank'
 import connection from '@ohos.net.connection'
 import socket from '@ohos.net.socket'
 import util from '@ohos.util'
@@ -8,11 +10,10 @@ import { parseAssistantText, stripModelSpecialTokens } from '../utils/thinking'
 
 const MAX_REQUEST_BYTES: number = 1024 * 1024
 const SERVER_OWNER: string = 'turbo-ai-chat'
-const DECISION_MODEL_ID: string = 'Laya-Multilingual-MNN-FP16'
+const DECISION_MODEL_ID: string = LAYA_MODEL_ID
 
 export interface ApiServerConfig {
   port: number
-  target?: 'chat' | 'decision'
   requireApiKey: boolean
   apiKey: string
 }
@@ -30,6 +31,7 @@ export interface ApiRuntimeModel extends ApiServerModel {
 
 export interface ApiRuntimeSnapshot {
   chatModel: ApiRuntimeModel
+  rerankModel?: ApiRuntimeModel
   metrics: RuntimeSample
   storage: StorageSample
 }
@@ -51,6 +53,10 @@ export interface ApiGenerationRequest {
 }
 
 export interface ApiServerCallbacks {
+  rerankModel: () => ApiServerModel | undefined
+  rerank: (query: string, documents: string[]) => Promise<number[]>
+  cancelRerank: () => void
+  isRerankBusy: () => boolean
   isModelLoaded: () => boolean
   isLayaReady: () => boolean
   isGenerationReady: () => boolean
@@ -435,6 +441,7 @@ export class OpenAiApiServer {
   private server?: socket.TCPSocketServer
   private config: ApiServerConfig = { port: 8080, requireApiKey: true, apiKey: '' }
   private connections: Map<number, HttpConnectionState> = new Map()
+  private rerankConnection?: HttpConnectionState
   private activeClientId: number = -1
   private activeRequestKind: 'chat' | 'decision' | '' = ''
   private running: boolean = false
@@ -494,6 +501,7 @@ export class OpenAiApiServer {
   }
 
   async stop(): Promise<void> {
+    if (this.rerankConnection !== undefined) this.callbacks.cancelRerank()
     if (!this.running && this.server === undefined) {
       return
     }
@@ -529,12 +537,14 @@ export class OpenAiApiServer {
       })
       client.on('close', () => {
         state.closed = true
+        if (this.rerankConnection === state) this.callbacks.cancelRerank()
         this.connections.delete(client.clientId)
         if (this.activeClientId === client.clientId && this.activeRequestKind === 'chat') {
           this.callbacks.stopGeneration()
         }
       })
       client.on('error', (_err: Error) => {
+        if (this.rerankConnection === state) this.callbacks.cancelRerank()
         state.close()
         this.connections.delete(client.clientId)
         if (this.activeClientId === client.clientId && this.activeRequestKind === 'chat') {
@@ -596,13 +606,8 @@ export class OpenAiApiServer {
       this.sendRuntime(state)
       return
     }
-    const decisionService = this.config.target === 'decision'
-    if (request.method === 'POST' &&
-      ((request.path === '/v1/decisions' && !decisionService) ||
-      ((request.path === '/v1/chat/completions' || request.path === '/v1/responses') && decisionService))) {
-      this.sendError(state, 503, 'service_not_enabled', decisionService ?
-        '当前提供 Laya 决策服务，请使用 /v1/decisions。' : '当前提供聊天服务，请先在 App 中切换服务模型。')
-      this.callbacks.onLog('ERROR', `503 ${request.path} · 服务模型不匹配`)
+    if (request.method === 'POST' && request.path === '/v1/rerank') {
+      this.handleRerank(state, request.body)
       return
     }
     if (request.method === 'POST' && request.path === '/v1/chat/completions') {
@@ -621,6 +626,47 @@ export class OpenAiApiServer {
     this.callbacks.onLog('ERROR', `404 ${request.method} ${request.path}`)
   }
 
+  private handleRerank(state: HttpConnectionState, body: string): void {
+    let request: RerankRequest
+    try {
+      request = JSON.parse(body) as RerankRequest
+      const invalid = validateRerankRequest(request)
+      if (invalid.length > 0) throw new Error(invalid)
+    } catch (_error) {
+      this.sendError(state, 400, 'invalid_request', '请提供 query、1–64 段非空 documents 和有效的 top_n。')
+      return
+    }
+    const model = this.callbacks.rerankModel()
+    if (model === undefined) {
+      this.sendError(state, 503, 'model_not_loaded', '请先在模型页加载重排模型。')
+      return
+    }
+    if (request.model !== undefined && request.model !== model.id) {
+      this.sendError(state, 400, 'model_not_found', 'model 与已加载的重排模型不匹配。')
+      return
+    }
+    if (this.rerankConnection !== undefined || this.activeClientId >= 0 || this.callbacks.isRerankBusy()) {
+      this.sendError(state, 409, 'model_busy', '当前模型任务尚未结束，请稍后重试。')
+      return
+    }
+    this.rerankConnection = state
+    this.callbacks.onStatus('API 请求：重排')
+    this.callbacks.rerank(request.query, request.documents).then((scores: number[]) => {
+      if (scores.length !== request.documents.length) throw new Error('重排结果数量不匹配')
+      const results = rankScores(scores, request.top_n ?? scores.length)
+      const response: RerankResponse = { model: model.id, results }
+      if (!state.closed) this.sendJson(state, 200, response)
+      this.callbacks.onLog('RESP', '200 POST /v1/rerank')
+    }).catch((error: Error) => {
+      const invalid = errorMessage(error).indexOf('exceeds the configured token limit') >= 0
+      if (!state.closed) this.sendError(state, invalid ? 400 : 500, invalid ? 'input_too_long' : 'rerank_failed',
+        invalid ? '输入超过重排模型的单条输入上限，请缩短问题或候选文本。' : '重排未完成，请检查模型状态后重试。')
+      this.callbacks.onLog('ERROR', invalid ? '400 POST /v1/rerank：输入超长' : '重排未完成')
+    }).finally(() => {
+      if (this.rerankConnection === state) this.rerankConnection = undefined
+    })
+  }
+
   private authorized(request: ParsedHttpRequest): boolean {
     if (!this.config.requireApiKey) {
       return true
@@ -631,14 +677,13 @@ export class OpenAiApiServer {
   private sendModels(state: HttpConnectionState): void {
     const model = this.callbacks.currentModel()
     const data: ApiModelObject[] = []
-    if (this.config.target === 'decision' ? this.callbacks.isLayaReady() : this.callbacks.isModelLoaded()) {
-      const modelObject: ApiModelObject = {
-        id: this.config.target === 'decision' ? DECISION_MODEL_ID : model.id,
-        object: 'model',
-        created: Math.floor(Date.now() / 1000),
-        owned_by: SERVER_OWNER
-      }
-      data.push(modelObject)
+    const reranker = this.callbacks.rerankModel()
+    if (reranker !== undefined) data.push({ id: reranker.id, object: 'model', created: 0, owned_by: SERVER_OWNER })
+    if (this.callbacks.isModelLoaded()) {
+      data.push({ id: model.id, object: 'model', created: 0, owned_by: SERVER_OWNER })
+    }
+    if (this.callbacks.isLayaReady()) {
+      data.push({ id: DECISION_MODEL_ID, object: 'model', created: 0, owned_by: SERVER_OWNER })
     }
     const payload: ApiModelList = { object: 'list', data }
     this.sendJson(state, 200, payload)
@@ -650,7 +695,7 @@ export class OpenAiApiServer {
       if (state.closed) return
       const payload: ApiRuntimeResponse = {
         object: 'turbo.runtime',
-        service: { target: this.config.target ?? 'chat', inferenceBusy: this.activeClientId >= 0 },
+        service: { target: 'all', inferenceBusy: this.activeClientId >= 0 || this.rerankConnection !== undefined },
         chatModel: snapshot.chatModel,
         metrics: snapshot.metrics,
         storage: snapshot.storage
@@ -711,7 +756,7 @@ export class OpenAiApiServer {
       this.sendError(state, 503, 'model_not_ready', '请先在模型页下载 Laya 模型和词表。')
       return
     }
-    if (this.activeClientId >= 0) {
+    if (this.activeClientId >= 0 || this.rerankConnection !== undefined) {
       this.callbacks.onLog('ERROR', '409 POST /v1/decisions · 当前已有 API 请求')
       this.sendError(state, 409, 'server_busy', '当前已有 API 请求，请稍后重试。')
       return
@@ -774,7 +819,7 @@ export class OpenAiApiServer {
       this.sendError(state, 503, 'model_not_ready', '请先在 Turbo AI Chat 中加载模型，并等待当前任务完成。')
       return
     }
-    if (this.activeClientId >= 0) {
+    if (this.activeClientId >= 0 || this.rerankConnection !== undefined) {
       this.callbacks.onLog('ERROR', `409 POST ${apiPath} · 当前已有生成任务`)
       this.sendError(state, 409, 'server_busy', '当前已有 API 生成任务，请稍后重试。')
       return

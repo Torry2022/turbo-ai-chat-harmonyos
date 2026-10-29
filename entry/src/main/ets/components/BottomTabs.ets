@@ -7,7 +7,7 @@ export interface AppTabEntry {
 export const DEFAULT_APP_TABS: AppTabEntry[] = [
     { title: '聊天', description: '全屏对话', icon: $r('sys.symbol.message') },
     { title: '模型', description: '加载参数', icon: $r('sys.symbol.square_grid_2x2') },
-    { title: 'API 服务', description: 'OpenAI API', icon: $r('sys.symbol.externaldrive_3') },
+    { title: 'API 服务', description: '本地 API', icon: $r('sys.symbol.externaldrive_3') },
     { title: '监控', description: 'CPU 内存', icon: $r('sys.symbol.waveform_path_ecg_square') }
   ]
 

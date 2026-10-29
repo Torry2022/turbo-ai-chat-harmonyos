@@ -13,7 +13,7 @@ Omit the header when API authentication is disabled. Queries remain available du
 | Field | Meaning and units |
 | --- | --- |
 | `object` | Always `turbo.runtime` |
-| `service.target` | Active API service: `chat` or `decision` |
+| `service.target` | `all`: endpoints are available together; each uses its corresponding model |
 | `service.inferenceBusy` | Whether an API chat-generation or decision request is active |
 | `chatModel.id`, `name` | Selected chat model, separate from the Laya decision model |
 | `chatModel.loaded`, `loading`, `generating` | Chat model lifecycle and generation flags |

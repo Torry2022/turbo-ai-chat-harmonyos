@@ -1,18 +1,19 @@
-export type ModelType = 'chat' | 'decision'
+export type ModelType = 'chat' | 'decision' | 'rerank'
 
 @Component
 export struct ModelTypeSelector {
   @Prop selected: ModelType = 'chat'
+  @Prop showReranker: boolean = false
   @Prop interactionEnabled: boolean = true
   onChange: (type: ModelType) => void = (_type: ModelType) => {}
   @State private contentWidth: number = 0
 
   private indicatorWidth(): number {
-    return Math.max(0, (this.contentWidth - 6) / 2)
+    return Math.max(0, (this.contentWidth - (this.showReranker ? 8 : 6)) / (this.showReranker ? 3 : 2))
   }
 
   private indicatorOffset(): number {
-    return 2 + (this.selected === 'decision' ? this.indicatorWidth() + 2 : 0)
+    return 2 + (this.selected === 'rerank' ? 2 : this.selected === 'decision' ? 1 : 0) * (this.indicatorWidth() + 2)
   }
 
   @Builder
@@ -48,6 +49,9 @@ export struct ModelTypeSelector {
       Row({ space: 2 }) {
         this.Segment('聊天模型', 'chat')
         this.Segment('决策模型', 'decision')
+        if (this.showReranker) {
+          this.Segment('重排模型', 'rerank')
+        }
       }
       .height(40)
       .padding(2)

@@ -11,7 +11,12 @@ const selected = ast.statements.filter(node =>
   (ts.isVariableStatement(node) && node.declarationList.declarations.some(declaration =>
     declaration.name.getText(ast) === 'DECISION_MODEL_ID')) ||
   (ts.isFunctionDeclaration(node) && ['prepareApiDecision', 'formatApiDecision'].includes(node.name?.text)));
-const context = { exports: {} };
+const configContext = { exports: {} };
+vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(__dirname,
+  '../entry/src/main/ets/models/LayaModelConfig.ets'), 'utf8'), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 }
+}).outputText, configContext);
+const context = { exports: {}, LAYA_MODEL_ID: configContext.exports.LAYA_MODEL_ID };
 vm.runInNewContext(ts.transpileModule(selected.map(node => node.getText(ast)).join('\n'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 }
 }).outputText, context);
@@ -53,13 +58,14 @@ assert.throws(() => request({ model: 'unknown', input: 'x', task: { type: 'boole
 assert.throws(() => request({ input: 'x', task: { type: 'noul', instruction: 'Check' } }), /只支持 choice、score 或 boolean/);
 console.log('PASS decision request mapping and response formatting');
 
-// Exercise routing with both models available: availability must not override the selected service.
+// All endpoint families remain routable regardless of which models are ready.
 context.SERVER_OWNER = 'test';
 vm.runInNewContext(ts.transpileModule(ast.statements.find(node =>
   ts.isClassDeclaration(node) && node.name.text === 'OpenAiApiServer').getText(ast), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 }
 }).outputText, context);
 const server = new context.exports.OpenAiApiServer({
+  rerankModel: () => undefined,
   isModelLoaded: () => true, isLayaReady: () => true,
   currentModel: () => ({ id: 'chat-model', name: 'Chat' }), onLog: () => {}
 });
@@ -69,35 +75,26 @@ server.sendError = (_state, code) => { status = code; };
 server.sendJson = (_state, code, body) => { status = code; payload = body; };
 server.handleDecision = () => { routed = 'decision'; };
 server.handleChatCompletions = server.handleResponses = () => { routed = 'chat'; };
-for (const target of ['chat', 'decision']) {
-  server.config.target = target;
-  for (const endpoint of ['/v1/chat/completions', '/v1/responses', '/v1/decisions']) {
-    routed = undefined; status = undefined;
-    server.route({}, { method: 'POST', path: endpoint, body: '{}' });
-    const compatible = (endpoint === '/v1/decisions') === (target === 'decision');
-    assert.equal(routed, compatible ? target : undefined);
-    assert.equal(status, compatible ? undefined : 503);
-  }
-  server.route({}, { method: 'GET', path: '/v1/models' });
-  assert.equal(payload.data.length, 1);
-  assert.equal(payload.data[0].id, target === 'chat' ? 'chat-model' : 'Laya-Multilingual-MNN-FP16');
+for (const endpoint of ['/v1/chat/completions', '/v1/responses', '/v1/decisions']) {
+  routed = undefined; status = undefined;
+  server.route({}, { method: 'POST', path: endpoint, body: '{}' });
+  assert.equal(routed, endpoint === '/v1/decisions' ? 'decision' : 'chat');
+  assert.equal(status, undefined);
 }
-console.log('PASS exclusive service routing and model list');
-
-// A different installed model must not make the selected service appear ready.
 for (const chatLoaded of [false, true]) {
   for (const decisionReady of [false, true]) {
-    server.callbacks.isModelLoaded = () => chatLoaded;
-    server.callbacks.isLayaReady = () => decisionReady;
-    for (const target of [undefined, 'chat', 'decision']) {
-      server.config.target = target;
+    for (const rerankLoaded of [false, true]) {
+      server.callbacks.isModelLoaded = () => chatLoaded;
+      server.callbacks.isLayaReady = () => decisionReady;
+      server.callbacks.rerankModel = () => rerankLoaded ? { id: 'reranker' } : undefined;
       server.sendModels({});
-      const ready = target === 'decision' ? decisionReady : chatLoaded;
-      assert.equal(payload.data.length, ready ? 1 : 0,
-        `target=${target}, chatLoaded=${chatLoaded}, decisionReady=${decisionReady}`);
-      if (ready) assert.equal(payload.data[0].id,
-        target === 'decision' ? 'Laya-Multilingual-MNN-FP16' : 'chat-model');
+      const expected = [
+        ...(rerankLoaded ? ['reranker'] : []),
+        ...(chatLoaded ? ['chat-model'] : []),
+        ...(decisionReady ? ['Laya-Multilingual-MNN-FP16'] : []),
+      ];
+      assert.deepEqual(Array.from(payload.data, item => item.id), expected);
     }
   }
 }
-console.log('PASS model list follows selected-service readiness, including legacy chat config');
+console.log('PASS unified routing and independent model readiness');

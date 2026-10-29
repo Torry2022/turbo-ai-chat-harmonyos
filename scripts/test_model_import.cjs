@@ -16,7 +16,7 @@ const code = ts.transpileModule(declaration.getText(ast).replace('export class',
   compilerOptions: { target: ts.ScriptTarget.ES2020 }
 }).outputText;
 
-async function check(name, run) {
+async function check(name, run, reranker = false) {
   let available = 1e12;
   let unzipError = false;
   let link = false;
@@ -58,7 +58,7 @@ async function check(name, run) {
     IMPORTED_MODELS_DIR: 'model-imports', IMPORTED_MODEL_SOURCE: 'imported',
     DEFAULT_IMPORTED_MODEL_PROMPT: '', CHAT_FORMAT_MNN_AUTO: 'mnn'
   });
-  const service = new Service();
+  const service = new Service(reranker);
   Object.assign(service, {
     pickSource: async () => '/selected', ensureDir: async () => {},
     exists: async () => true,
@@ -82,6 +82,15 @@ async function check(name, run) {
 }
 
 (async () => {
+  await check('reranker import isolates files and skips chat-template rewriting', async t => {
+    t.service.preflightService.requireCompatible = async (_path, _image, _expected, chatTemplate) => {
+      assert.equal(chatTemplate, false);
+    };
+    const result = await t.service.pickAndImport({ filesDir: '/app' }, [], true);
+    assert.match(result.profile.configPath, /^\/app\/rerank-models\//);
+    assert(t.copied.every(([,to]) => to.startsWith('/app/rerank-models/')));
+    assert.equal(t.saved().length, 1);
+  }, true);
   await check('folder picker works even when capability reporting is false', async t => {
     t.useRealPicker();
     assert.equal(await t.service.pickSource({}, true), '/selected');

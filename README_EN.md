@@ -12,7 +12,7 @@
 
 > This version is built on MNN development snapshot [`f0b6105c`](https://github.com/alibaba/MNN/commit/f0b6105c5c7f901b1531dd4c23afa8a00b454db3). Use the build scripts described below when compiling the runtime yourself.
 
-The project includes two [MNN compatibility patches](third_party/mnn/patches/README.md) for NFC text normalization and preserving model-defined token text in streaming output. The build scripts apply these patches automatically.
+The project includes [MNN compatibility patches](third_party/mnn/patches/README.md) for NFC text normalization and preserving model-defined token text in streaming output. The build scripts apply these patches automatically.
 
 ## Table of Contents
 
@@ -56,6 +56,12 @@ Turbo AI Chat runs models locally on HarmonyOS devices through a native inferenc
 The project can serve as a development and integration reference for local AI applications on HarmonyOS.
 
 ## Recent Highlights
+
+**Reranking and API services (v1.18.0)**
+
+- Add a reranking model category to import, load and release compatible Qwen3-Reranker MNN models independently, and rank candidate texts by relevance through `/v1/rerank`.
+- Serve chat, decision and reranking endpoints together according to each model's readiness. Keep the API server running when models are changed or released.
+- Align model list styling, simplify the service page, and provide model requirements and request examples in the usage dialogs.
 
 **Model compatibility and runtime monitoring (v1.17.0)**
 
@@ -241,7 +247,7 @@ Maximized PC window:
 
 ## OpenAI-Compatible API Server
 
-After loading a model, open the **Service** tab, choose a port and optionally enable the app-generated API key, then start the server. The page displays a LAN address such as `http://192.168.1.126:8080`. Starting the chat API without a loaded chat model opens the model-loading flow and continues automatically after a successful load. Releasing, switching, or deleting the current chat model stops a running chat API server automatically.
+On the Service page, set the port and optionally enable the app-generated API key, then start the server. The page shows a LAN address such as `http://192.168.1.126:8080`. Chat, decision and reranking endpoints share this address without switching service modes. Load the corresponding model before using chat or reranking. Switching or releasing a model leaves the server running; requests report when their model is unavailable.
 
 When adding an OpenAI-compatible provider in Cherry Studio, enter the displayed base URL without appending an endpoint. If API-key authentication is enabled, enter the same key, then fetch the model list. The server provides:
 
@@ -263,7 +269,7 @@ The chat API accepts text input, serves the currently loaded chat model, and pro
 
 ### Laya Decision API
 
-Install Laya from the Decision Model category on the Models page, select Decision Model on the Service page, and start the server. Laya loads on the first request without a loaded chat model. Stop the server before switching service content; switching chat models leaves the decision API active.
+Install Laya from the Decision Model category on the Models page, then call `/v1/decisions` using the same API server. Laya loads on the first decision request; a chat model is not required.
 
 `POST /v1/decisions` supports `choice`, `score`, and `boolean` tasks. See the Service page’s API Guide for copyable request examples. Laya uses separate model files rather than chat-model ZIP import; weights are not included in the HAP.
 
@@ -280,6 +286,8 @@ hdc install -r turbo-ai-chat-harmonyos-vX.Y.Z-signed.hap
 You can also sideload the HAP with [Xiaobai Debug Assistant](https://github.com/likuai2010/auto-installer). Debug-signed packages only work on devices included in the current profile; for other devices, download the unsigned HAP and re-sign it with your own developer account.
 
 ## Model Management
+
+Import and independently load reranking models under Models → Reranking models, then score candidate passages through [`/v1/rerank`](docs/rerank-api_EN.md). The endpoint shares the chat server address and authentication.
 
 The recommended path is to install models from the in-app Model Gallery. Import local conversions by selecting a folder or zip, or push a complete directory through hdc for large models.
 

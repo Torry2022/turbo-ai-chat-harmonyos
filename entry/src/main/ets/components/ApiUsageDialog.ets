@@ -47,12 +47,13 @@ export struct ApiUsageDialog {
         }.width('100%')
         Scroll() {
           Column({ space: 14 }) {
-            Text(this.mode === 'decision' ? 'Laya 决策 API' : 'OpenAI 兼容聊天 API')
+            Text(this.mode === 'rerank' ? '本地重排 API' : this.mode === 'decision' ? 'Laya 决策 API' : 'OpenAI 兼容聊天 API')
               .fontSize(14).fontWeight(FontWeight.Medium)
               .fontColor($r('app.color.text_title')).width('100%')
-            Text(this.mode === 'decision' ?
-              '向 API 地址后的 /v1/decisions 发送 POST 请求，Content-Type 设为 application/json。下方为选择题的请求体示例。' :
-                '在 Cherry Studio 等客户端中选择 OpenAI 兼容服务，填入本页 API 地址和 API Key，再获取模型列表。支持 Chat Completions 和 Responses 请求。')
+            Text(this.mode === 'rerank' ?
+              '向 /v1/rerank 发送 POST 请求。query 为问题，documents 为候选文本数组，top_n 为可选的返回数量。结果按相关性降序排列，index 对应输入位置（从 0 开始）。需先在模型页加载重排模型。' : this.mode === 'decision' ?
+              '向 API 地址后的 /v1/decisions 发送 POST 请求，Content-Type 设为 application/json。需先在模型页安装 Laya，首次请求时会自动加载。下方为选择题的请求体示例。' :
+                '在 Cherry Studio 等客户端中选择 OpenAI 兼容服务，填入本页 API 地址和 API Key，通过 GET /v1/models 获取模型列表。聊天需先在模型页加载模型，支持 Chat Completions 和 Responses 请求。')
               .fontSize(13).lineHeight(21).fontColor($r('app.color.text_secondary')).width('100%')
             if (this.mode !== 'chat') {
               Text(this.example)
@@ -61,7 +62,7 @@ export struct ApiUsageDialog {
                 .width('100%').padding(14)
                 .backgroundColor($r('app.color.inset')).borderRadius($r('app.float.card_radius'))
             }
-            Text('运行状态：GET /turbo/runtime 返回 CPU、内存、温度、存储占用和聊天模型状态。生成期间也可查询，无需切换到监控页。')
+            Text('运行状态：GET /turbo/runtime 返回 CPU、内存、温度、存储占用及聊天、重排模型状态。生成期间也可查询，无需切换到监控页。')
               .fontSize(13).lineHeight(21).fontColor($r('app.color.text_secondary')).width('100%')
             Text('启用 API 认证时，请使用服务页的 API Key。请求头格式为 Authorization: Bearer <API Key>。')
               .fontSize(12).lineHeight(20).fontColor($r('app.color.text_muted')).width('100%')

@@ -1,9 +1,9 @@
+import { LAYA_MODEL_DIRECTORY, LAYA_MODEL_FILE, LAYA_TOKENIZER_FILE,
+  LAYA_MODEL_BYTES, LAYA_TOKENIZER_BYTES } from '../models/LayaModelConfig'
+import { isRerankerActive } from './RerankerService'
 import fs from '@ohos.file.fs'
 import entry from 'libentry.so'
 
-export const LAYA_MODEL_DIRECTORY = 'laya-probe'
-export const LAYA_MODEL_BYTES = 644944912
-export const LAYA_TOKENIZER_BYTES = 13257378
 
 export type LayaRuntimeState = 'idle' | 'loading' | 'running' | 'loaded' | 'releasing'
 let runtimeState: LayaRuntimeState = 'idle'
@@ -20,6 +20,7 @@ function setRuntimeState(state: LayaRuntimeState): void {
 }
 
 export async function releaseLaya(): Promise<void> {
+  if (isRerankerActive()) throw new Error('请等待重排任务结束')
   if (runtimeState === 'loading' || runtimeState === 'running' || runtimeState === 'releasing') {
     throw new Error('请等待当前决策完成')
   }
@@ -37,8 +38,8 @@ export async function releaseLaya(): Promise<void> {
 export function isLayaReady(filesDir: string): boolean {
   if (filesDir.length === 0) return false
   try {
-    const model = fs.statSync(`${filesDir}/${LAYA_MODEL_DIRECTORY}/laya.mnn`)
-    const tokenizer = fs.statSync(`${filesDir}/${LAYA_MODEL_DIRECTORY}/laya.tokbin`)
+    const model = fs.statSync(`${filesDir}/${LAYA_MODEL_DIRECTORY}/${LAYA_MODEL_FILE}`)
+    const tokenizer = fs.statSync(`${filesDir}/${LAYA_MODEL_DIRECTORY}/${LAYA_TOKENIZER_FILE}`)
     return model.isFile() && model.size === LAYA_MODEL_BYTES &&
       tokenizer.isFile() && tokenizer.size === LAYA_TOKENIZER_BYTES
   } catch (_error) {
@@ -48,13 +49,14 @@ export function isLayaReady(filesDir: string): boolean {
 
 export async function decideLaya(filesDir: string, state: string, type: string, instruction: string,
   options: string[]): Promise<string> {
+  if (isRerankerActive()) throw new Error('请等待重排任务结束')
   if (runtimeState === 'loading' || runtimeState === 'running' || runtimeState === 'releasing') {
     throw new Error('当前正在使用决策模型，请稍后重试')
   }
   setRuntimeState(runtimeState === 'loaded' ? 'running' : 'loading')
   try {
-    const output: string = await entry.layaDecideAsync(`${filesDir}/${LAYA_MODEL_DIRECTORY}/laya.mnn`,
-      `${filesDir}/${LAYA_MODEL_DIRECTORY}/laya.tokbin`, state, type, instruction, options)
+    const output: string = await entry.layaDecideAsync(`${filesDir}/${LAYA_MODEL_DIRECTORY}/${LAYA_MODEL_FILE}`,
+      `${filesDir}/${LAYA_MODEL_DIRECTORY}/${LAYA_TOKENIZER_FILE}`, state, type, instruction, options)
     setRuntimeState('loaded')
     return output
   } catch (error) {

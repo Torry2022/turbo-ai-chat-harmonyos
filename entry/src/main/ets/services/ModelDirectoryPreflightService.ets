@@ -13,7 +13,8 @@ export class ModelDirectoryPreflightService {
   async validate(
     configPath: string,
     supportsImage: boolean,
-    expectedFiles: BuiltinModelFileSpec[] = []
+    expectedFiles: BuiltinModelFileSpec[] = [],
+    requireChatTemplate: boolean = true
   ): Promise<ModelPreflightResult> {
     const modelRoot = this.modelRoot(configPath)
     const files = modelRoot.length > 0 ? await this.listFilesRecursive(modelRoot, modelRoot) : []
@@ -31,10 +32,11 @@ export class ModelDirectoryPreflightService {
       llmConfigText,
       files,
       expectedFiles: expected,
-      supportsImage
+      supportsImage,
+      requireChatTemplate
     } as ModelDirectorySnapshot)
 
-    if (result.compatible && result.legacyTemplate) {
+    if (requireChatTemplate && result.compatible && result.legacyTemplate) {
       await MnnTemplateService.ensureChatMessagesTemplate(configPath)
       llmConfigText = await this.readTextIfExists(llmConfigPath)
       result = validateModelDirectorySnapshot({
@@ -42,7 +44,8 @@ export class ModelDirectoryPreflightService {
         llmConfigText,
         files,
         expectedFiles: expected,
-        supportsImage
+        supportsImage,
+        requireChatTemplate
       } as ModelDirectorySnapshot)
     }
     return result
@@ -51,9 +54,10 @@ export class ModelDirectoryPreflightService {
   async requireCompatible(
     configPath: string,
     supportsImage: boolean,
-    expectedFiles: BuiltinModelFileSpec[] = []
+    expectedFiles: BuiltinModelFileSpec[] = [],
+    requireChatTemplate: boolean = true
   ): Promise<void> {
-    const result = await this.validate(configPath, supportsImage, expectedFiles)
+    const result = await this.validate(configPath, supportsImage, expectedFiles, requireChatTemplate)
     if (!result.compatible) {
       throw new Error(result.message)
     }

@@ -6,22 +6,45 @@ const vm = require('node:vm');
 const ts = require(process.argv[2] || 'typescript');
 const root = path.join(__dirname, '../entry/src/main/ets');
 const source = fs.readFileSync(path.join(root, 'services/LayaDecisionService.ets'), 'utf8');
+const configContext = { exports: {} };
+vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(root, 'models/LayaModelConfig.ets'), 'utf8'), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 }
+}).outputText, configContext);
+const config = configContext.exports;
 let resolveDecision, rejectDecision, calls = 0, releases = 0;
+let nativePaths;
+const installedFiles = new Map(config.LAYA_DOWNLOAD_SPEC.files.map(file =>
+  [`/files/${config.LAYA_MODEL_DIRECTORY}/${file.relativePath}`, file.sizeBytes]));
 const native = {
-  layaDecideAsync: () => { calls++; return new Promise((resolve, reject) => {
+  layaDecideAsync: (modelPath, tokenizerPath) => { nativePaths = [modelPath, tokenizerPath]; calls++; return new Promise((resolve, reject) => {
     resolveDecision = resolve; rejectDecision = reject;
   }); },
   layaReleaseAsync: async () => { releases++; }
 };
-const context = { exports: {}, require: name => ({ default: name === 'libentry.so' ? native : {} }) };
+const context = { exports: {}, require: name => {
+  if (name.includes('LayaModelConfig')) return config;
+  if (name.includes('RerankerService')) return {isRerankerActive:()=>false};
+  return { default: name === 'libentry.so' ? native : {
+    statSync: file => ({ isFile: () => installedFiles.has(file), size: installedFiles.get(file) })
+  } };
+} };
 vm.runInNewContext(ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 }
 }).outputText, context);
 const api = context.exports;
 (async () => {
   const states = [];
+  assert.equal(api.isLayaReady('/files'), true);
+  const tokenizerPath = `/files/${config.LAYA_MODEL_DIRECTORY}/${config.LAYA_TOKENIZER_FILE}`;
+  installedFiles.set(tokenizerPath, config.LAYA_TOKENIZER_BYTES - 1);
+  assert.equal(api.isLayaReady('/files'), false);
+  installedFiles.set(tokenizerPath, config.LAYA_TOKENIZER_BYTES);
+  assert.equal(api.isLayaReady('/missing'), false);
   api.observeLayaRuntime(state => states.push(state));
   const first = api.decideLaya('/files', 'text', 'choice', 'question', ['a', 'b']);
+  assert.deepEqual(nativePaths, [
+    `/files/${config.LAYA_MODEL_DIRECTORY}/${config.LAYA_MODEL_FILE}`, tokenizerPath
+  ]);
   assert.equal(states.at(-1), 'loading');
   await assert.rejects(api.decideLaya('/files', 'text', 'choice', 'question', ['a', 'b']));
   await assert.rejects(api.releaseLaya());
