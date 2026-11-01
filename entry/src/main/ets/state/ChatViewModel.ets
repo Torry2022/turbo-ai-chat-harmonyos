@@ -500,11 +500,11 @@ export class ChatViewModel {
     return this.modelManager.currentModel()
   }
 
-  cpuThreadSummary(rerank: boolean = false): string {
-    const info = this.nativeService.modelThreadInfo()
-    const model = rerank ? info.rerank : info.chat
-    if (model.actual <= 0) return ''
-    return `已加载模型：请求 ${model.requested} 线程，CPU 并行上限 ${model.actual}`
+  threadConfigHint(): string {
+    if (!this.loaded) return ''
+    const actual = this.nativeService.modelThreadInfo().chat.actual
+    return actual > 0 && actual !== this.threadNum ?
+      `当前使用 ${actual} 线程，重新加载后生效` : ''
   }
 
   startupModelName(): string {

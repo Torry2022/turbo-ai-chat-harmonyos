@@ -670,7 +670,9 @@ export struct ModelTab {
       }
       .width('100%')
       .onClick(() => {
-        this.generationExpanded = !this.generationExpanded
+        this.getUIContext().animateTo({ duration: 220, curve: Curve.EaseInOut }, () => {
+          this.generationExpanded = !this.generationExpanded
+        })
       })
       if (!this.generationExpanded) {
         Text() {
@@ -702,14 +704,16 @@ export struct ModelTab {
         .width('100%')
       }
       if (this.generationExpanded) {
-        this.GenerationSliders()
-        Button('恢复默认')
-          .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
-          .enabled(this.controlsEnabled())
-          .width('100%')
-          .onClick(() => {
-            this.resetGenerationSliders()
-          })
+        Column({ space: 10 }) {
+          this.GenerationSliders()
+          Button('恢复默认')
+            .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
+            .enabled(this.controlsEnabled())
+            .width('100%')
+            .onClick(() => {
+              this.resetGenerationSliders()
+            })
+        }.width('100%').transition(TransitionEffect.OPACITY)
       }
     }
     .width('100%')
@@ -735,63 +739,67 @@ export struct ModelTab {
       }
       .width('100%')
       .onClick(() => {
-        this.runtimeExpanded = !this.runtimeExpanded
+        this.getUIContext().animateTo({ duration: 220, curve: Curve.EaseInOut }, () => {
+          this.runtimeExpanded = !this.runtimeExpanded
+        })
       })
       Text('可修改模型文件路径和 CPU 推理线程数，修改后需重新加载模型')
         .fontSize(11)
         .fontColor($r('app.color.text_model_hint'))
         .width('100%')
-      if (this.viewModel.loaded) {
-        Text(this.viewModel.cpuThreadSummary())
+      if (this.viewModel.threadConfigHint().length > 0) {
+        Text(this.viewModel.threadConfigHint())
           .fontSize(11).fontColor($r('app.color.text_model_hint')).width('100%')
       }
       if (this.runtimeExpanded) {
-      Column({ space: 4 }) {
-        Text('模型配置路径')
-          .fontSize(12)
-          .fontColor($r('app.color.text_muted'))
-          .width('100%')
-        TextInput({ text: this.viewModel.modelPath, placeholder: '模型配置路径' })
-          .attributeModifier(new InputFieldStyle())
-          .onChange((value: string) => {
-            this.viewModel.updateModelPath(value)
-          })
-          .enabled(this.controlsEnabled())
-          .height(42)
-          .fontSize(12)
-          .width('100%')
-      }
-      .width('100%')
-      Column({ space: 4 }) {
-        Row() {
-          Text('推理线程')
+        Column({ space: 10 }) {
+        Column({ space: 4 }) {
+          Text('模型配置路径')
             .fontSize(12)
             .fontColor($r('app.color.text_muted'))
-            .layoutWeight(1)
-          Text(`${this.viewModel.threadNum}`)
+            .width('100%')
+          TextInput({ text: this.viewModel.modelPath, placeholder: '模型配置路径' })
+            .attributeModifier(new InputFieldStyle())
+            .onChange((value: string) => {
+              this.viewModel.updateModelPath(value)
+            })
+            .enabled(this.controlsEnabled())
+            .height(42)
             .fontSize(12)
-            .fontColor($r('app.color.text_body'))
+            .width('100%')
         }
         .width('100%')
-        Slider({ value: this.viewModel.threadNum, min: 2, max: 8, step: 1 })
-          .attributeModifier(new ParameterSliderStyle())
-          .enabled(this.controlsEnabled())
-          .onChange((value: number, _mode: SliderChangeMode) => {
-            this.viewModel.updateThreadNum(value)
-          })
-        Text('更改后需重新加载模型生效')
-          .fontSize(11)
-          .fontColor($r('app.color.text_model_hint'))
+        Column({ space: 4 }) {
+          Row() {
+            Text('推理线程')
+              .fontSize(12)
+              .fontColor($r('app.color.text_muted'))
+              .layoutWeight(1)
+            Text(`${this.viewModel.threadNum}`)
+              .fontSize(12)
+              .fontColor($r('app.color.text_body'))
+          }
           .width('100%')
-      }
-      .width('100%')
-        Button(this.viewModel.loaded ? '应用并重新加载' : '应用并加载')
-          .attributeModifier(new ActionButtonStyle($r('app.color.button_primary_background'), $r('app.color.button_primary_text')))
-          .enabled(this.controlsEnabled())
-          .width('100%')
-          .onClick(() => {
-            this.viewModel.applyRuntimeConfigAndLoad()
-          })
+          Slider({ value: this.viewModel.threadNum, min: 2, max: 8, step: 1 })
+            .attributeModifier(new ParameterSliderStyle())
+            .enabled(this.controlsEnabled())
+            .onChange((value: number, _mode: SliderChangeMode) => {
+              this.viewModel.updateThreadNum(value)
+            })
+          Text('更改后需重新加载模型生效')
+            .fontSize(11)
+            .fontColor($r('app.color.text_model_hint'))
+            .width('100%')
+        }
+        .width('100%')
+          Button(this.viewModel.loaded ? '应用并重新加载' : '应用并加载')
+            .attributeModifier(new ActionButtonStyle($r('app.color.button_primary_background'), $r('app.color.button_primary_text')))
+            .enabled(this.controlsEnabled())
+            .width('100%')
+            .onClick(() => {
+              this.viewModel.applyRuntimeConfigAndLoad()
+            })
+        }.width('100%').transition(TransitionEffect.OPACITY)
       }
     }
     .width('100%')
@@ -993,6 +1001,9 @@ export struct ModelTab {
           } else if (this.modelCategory === 2) {
             Column() {
               RerankerModels({ viewModel: this.viewModel, renderVersion: this.renderVersion, settings: true })
+            }.width('100%').padding(12).backgroundColor($r('app.color.inset')).borderRadius($r('app.float.card_radius'))
+            Column() {
+              RerankerModels({ viewModel: this.viewModel, renderVersion: this.renderVersion, management: true })
             }.width('100%').padding(12).backgroundColor($r('app.color.inset')).borderRadius($r('app.float.card_radius'))
           } else {
             this.DecisionGuideCard()

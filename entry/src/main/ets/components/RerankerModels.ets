@@ -8,6 +8,8 @@ export struct RerankerModels {
   @ObjectLink viewModel: ChatViewModel
   @Prop renderVersion: number = 0
   @Prop settings: boolean = false
+  @Prop management: boolean = false
+  @State private runtimeExpanded: boolean = false
 
   private controlsEnabled(): boolean {
     return !this.viewModel.rerankLoading && !this.viewModel.reranker.busy && !this.viewModel.rerankImporting
@@ -46,39 +48,47 @@ export struct RerankerModels {
   build() {
     Column({ space: 10 }) {
       if (this.settings) {
-        Text('运行配置').fontSize(16).fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.text_title')).width('100%')
-        Text(`推理线程：${this.viewModel.rerankThreads}`)
-          .fontSize(12).fontColor($r('app.color.text_secondary')).width('100%')
-        if (this.viewModel.loadedReranker()) {
-          Text(this.viewModel.cpuThreadSummary(true))
-            .fontSize(11).fontColor($r('app.color.text_muted')).width('100%')
+        Row() {
+          Text('运行配置').fontSize(16).fontWeight(FontWeight.Bold)
+            .fontColor($r('app.color.text_title')).layoutWeight(1)
+          Text(this.runtimeExpanded ? '收起 ▲' : '展开 ▼')
+            .fontSize(12).fontColor($r('app.color.button_action_text'))
+        }.width('100%').onClick(() => {
+          this.getUIContext().animateTo({ duration: 220, curve: Curve.EaseInOut }, () => {
+            this.runtimeExpanded = !this.runtimeExpanded
+          })
+        })
+        Text('释放模型后可修改 CPU 推理线程数和单条输入上限')
+          .fontSize(11).fontColor($r('app.color.text_model_hint')).width('100%')
+        if (this.runtimeExpanded) {
+          Column({ space: 10 }) {
+            Text(`推理线程：${this.viewModel.rerankThreads}`)
+              .fontSize(12).fontColor($r('app.color.text_secondary')).width('100%')
+            Slider({ value: this.viewModel.rerankThreads, min: 2, max: 8, step: 1 })
+              .attributeModifier(new ParameterSliderStyle()).enabled(this.controlsEnabled() && !this.viewModel.loadedReranker())
+              .onChange((value: number) => { this.viewModel.rerankThreads = Math.round(value) })
+            Text(`单条输入上限：${this.viewModel.rerankMaxTokens} tokens`)
+              .fontSize(12).fontColor($r('app.color.text_secondary')).width('100%')
+            Slider({ value: this.viewModel.rerankMaxTokens, min: 128, max: 8192, step: 128 })
+              .attributeModifier(new ParameterSliderStyle()).enabled(this.controlsEnabled() && !this.viewModel.loadedReranker())
+              .onChange((value: number) => { this.viewModel.rerankMaxTokens = Math.round(value) })
+            Text('输入上限包含问题、候选文本和模型模板。超长请求会报错，不会自动截断。')
+              .fontSize(12).lineHeight(18).fontColor($r('app.color.text_hint')).width('100%')
+          }.width('100%').transition(TransitionEffect.OPACITY)
         }
-        Slider({ value: this.viewModel.rerankThreads, min: 2, max: 8, step: 1 })
-          .attributeModifier(new ParameterSliderStyle()).enabled(this.controlsEnabled() && !this.viewModel.loadedReranker())
-          .onChange((value: number) => { this.viewModel.rerankThreads = Math.round(value) })
-        Text(`单条输入上限：${this.viewModel.rerankMaxTokens} tokens`)
-          .fontSize(12).fontColor($r('app.color.text_secondary')).width('100%')
-        Slider({ value: this.viewModel.rerankMaxTokens, min: 128, max: 8192, step: 128 })
-          .attributeModifier(new ParameterSliderStyle()).enabled(this.controlsEnabled() && !this.viewModel.loadedReranker())
-          .onChange((value: number) => { this.viewModel.rerankMaxTokens = Math.round(value) })
-        Text('输入上限包含问题、候选文本和模型模板。超长请求会报错，不会自动截断。释放模型后可修改运行配置。')
-          .fontSize(12).lineHeight(18).fontColor($r('app.color.text_hint')).width('100%')
-        Divider().color($r('app.color.divider')).opacity(0.6)
-        Text('导入重排模型').fontSize(16).fontWeight(FontWeight.Bold)
+      } else if (this.management) {
+        Text('模型管理').fontSize(16).fontWeight(FontWeight.Bold)
           .fontColor($r('app.color.text_title')).width('100%')
         Text('支持 Qwen3-Reranker 的 MNN 导出目录。请导入专用重排模型，普通聊天模型不能用于相关性评分。')
           .fontSize(12).lineHeight(18).fontColor($r('app.color.text_muted')).width('100%')
-        Row({ space: 10 }) {
-          Button('选择文件夹')
-            .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
-            .layoutWeight(1).enabled(this.controlsEnabled())
-            .onClick(() => this.viewModel.importReranker(true))
-          Button('导入 ZIP')
-            .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
-            .layoutWeight(1).enabled(this.controlsEnabled())
-            .onClick(() => this.viewModel.importReranker(false))
-        }.width('100%')
+        Button('选择文件夹导入')
+          .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
+          .width('100%').enabled(this.controlsEnabled())
+          .onClick(() => this.viewModel.importReranker(true))
+        Button(this.viewModel.rerankImporting ? '正在导入' : '选择压缩包导入')
+          .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
+          .width('100%').enabled(this.controlsEnabled())
+          .onClick(() => this.viewModel.importReranker(false))
         Button('扫描已推送目录')
           .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
           .width('100%').enabled(this.controlsEnabled())
