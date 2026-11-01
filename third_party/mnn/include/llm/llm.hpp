@@ -220,6 +220,9 @@ public:
     const std::shared_ptr<Express::Executor>& getExecutor() const {
         return mExecutor;
     }
+    // Read existing CPU runtime maximum parallel width; zero means unavailable.
+    // Caller must hold the model lifecycle lock, outside an active inference.
+    int cpu_thread_count() const;
     virtual void setWavformCallback(std::function<bool(const float*, size_t, bool)> callback) {}
     virtual void generateWavform() {}
     virtual bool generateTTS(const std::string& text, const std::string& language = "english", int max_new_tokens = -1,

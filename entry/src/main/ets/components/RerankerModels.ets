@@ -50,6 +50,10 @@ export struct RerankerModels {
           .fontColor($r('app.color.text_title')).width('100%')
         Text(`推理线程：${this.viewModel.rerankThreads}`)
           .fontSize(12).fontColor($r('app.color.text_secondary')).width('100%')
+        if (this.viewModel.loadedReranker()) {
+          Text(this.viewModel.cpuThreadSummary(true))
+            .fontSize(11).fontColor($r('app.color.text_muted')).width('100%')
+        }
         Slider({ value: this.viewModel.rerankThreads, min: 2, max: 8, step: 1 })
           .attributeModifier(new ParameterSliderStyle()).enabled(this.controlsEnabled() && !this.viewModel.loadedReranker())
           .onChange((value: number) => { this.viewModel.rerankThreads = Math.round(value) })

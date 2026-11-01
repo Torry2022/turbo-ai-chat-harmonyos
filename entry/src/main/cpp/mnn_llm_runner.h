@@ -74,9 +74,13 @@ public:
     void requestStop();
     void reset();
     bool isLoaded() const;
+    int requestedThreads() const { return requestedThreads_.load(); }
+    int actualCpuThreads() const { return actualCpuThreads_.load(); }
 
 private:
     mutable std::mutex mutex_;
     std::atomic_bool stopRequested_{false};
     std::unique_ptr<MNN::Transformer::Llm> llm_;
+    std::atomic<int> requestedThreads_{0};
+    std::atomic<int> actualCpuThreads_{0};
 };

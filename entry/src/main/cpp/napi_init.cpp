@@ -4,6 +4,7 @@
 
 #include "mnn_llm_runner.h"
 #include "laya_decision.h"
+#include "mnn_cpu_capacity.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -918,7 +919,10 @@ napi_value LayaLoadAsync(napi_env env, napi_callback_info info) {
     napi_create_async_work(env, nullptr, resourceName,
         [](napi_env, void* data) {
             auto* work = static_cast<LayaDecisionWork*>(data);
-            try { loadLayaDecision(work->modelPath, work->tokenizerPath); }
+            try {
+                PrepareMnnCpuCapacity();
+                loadLayaDecision(work->modelPath, work->tokenizerPath);
+            }
             catch (const std::exception& error) { work->error = error.what(); }
         },
         [](napi_env env, napi_status, void* data) {
@@ -1079,8 +1083,19 @@ napi_value RerankerCancel(napi_env env, napi_callback_info) {
     return result;
 }
 
+napi_value ModelThreadInfo(napi_env env, napi_callback_info) {
+    // Cached under each model's lifecycle lock when loading finishes. Sampling
+    // must not wait for an active generation or create another CPU backend.
+    const std::string json = "{\"chat\":{\"requested\":" + std::to_string(g_runner.requestedThreads()) +
+        ",\"actual\":" + std::to_string(g_runner.actualCpuThreads()) +
+        "},\"rerank\":{\"requested\":" + std::to_string(rerankerRequestedThreads()) +
+        ",\"actual\":" + std::to_string(rerankerActualCpuThreads()) + "}}";
+    return MakeString(env, json);
+}
+
 static napi_value Init(napi_env env, napi_value exports) {
     napi_property_descriptor desc[] = {
+        {"modelThreadInfo", nullptr, ModelThreadInfo, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"rerankerAsync", nullptr, RerankerAsync, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"rerankerCancel", nullptr, RerankerCancel, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"layaLoadAsync", nullptr, LayaLoadAsync, nullptr, nullptr, nullptr, napi_default, nullptr},

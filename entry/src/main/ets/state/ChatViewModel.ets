@@ -493,6 +493,13 @@ export class ChatViewModel {
     return this.modelManager.currentModel()
   }
 
+  cpuThreadSummary(rerank: boolean = false): string {
+    const info = this.nativeService.modelThreadInfo()
+    const model = rerank ? info.rerank : info.chat
+    if (model.actual <= 0) return ''
+    return `已加载模型：请求 ${model.requested} 线程，CPU 并行上限 ${model.actual}`
+  }
+
   startupModelName(): string {
     const profile = this.modelManager.profiles().find((item: ModelProfile) => item.id === this.startupModelId)
     return profile?.shortName ?? this.startupModelId
@@ -1937,8 +1944,11 @@ export class ChatViewModel {
     const metrics = await this.statsService.readSample()
     const modelDir = modelConfig.length > 0 ? modelConfig.substring(0, modelConfig.lastIndexOf('/')) : ''
     const storage = await this.statsService.readStorageSample(this.filesDir, modelDir)
+    const threads = this.nativeService.modelThreadInfo()
     return {
       chatModel: {
+        requestedThreads: threads.chat.requested,
+        actualCpuThreads: threads.chat.actual,
         id: model.id,
         name: model.name,
         loaded: this.loaded,
@@ -1946,6 +1956,8 @@ export class ChatViewModel {
         generating: this.generating
       },
       rerankModel: {
+        requestedThreads: threads.rerank.requested,
+        actualCpuThreads: threads.rerank.actual,
         id: this.reranker.loadedId,
         name: this.loadedReranker()?.name ?? '',
         loaded: this.reranker.loadedId.length > 0,

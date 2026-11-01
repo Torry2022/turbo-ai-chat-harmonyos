@@ -24,6 +24,8 @@ export interface ApiServerModel {
 }
 
 export interface ApiRuntimeModel extends ApiServerModel {
+  requestedThreads?: number
+  actualCpuThreads?: number
   loaded: boolean
   loading: boolean
   generating: boolean

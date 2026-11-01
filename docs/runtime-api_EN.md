@@ -17,6 +17,8 @@ Omit the header when API authentication is disabled. Queries remain available du
 | `service.inferenceBusy` | Whether an API chat-generation or decision request is active |
 | `chatModel.id`, `name` | Selected chat model, separate from the Laya decision model |
 | `chatModel.loaded`, `loading`, `generating` | Chat model lifecycle and generation flags |
+| `chatModel.requestedThreads`, `rerankModel.requestedThreads` | Requested inference threads for each loaded model; 0 when unloaded |
+| `chatModel.actualCpuThreads`, `rerankModel.actualCpuThreads` | Maximum parallel width read from the existing CPU runtime after loading; 0 when unloaded. This is neither simultaneous workers for every operator nor the app's total thread count |
 | `metrics.sampledAt` | Runtime sample time, Unix milliseconds |
 | `metrics.appCpuPercent`, `systemCpuPercent` | Application and system CPU percentages; `12.5` means 12.5% |
 | `metrics.pssWithSwapBytes` | `Pss + SwapPss` in bytes, including swapped pages, separate from the RSS shown on the Monitor page |

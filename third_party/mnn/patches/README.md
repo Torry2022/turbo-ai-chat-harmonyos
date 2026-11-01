@@ -14,6 +14,14 @@ Base: `f0b6105c5c7f901b1531dd4c23afa8a00b454db3`.
   before scoring. This header-only change is compiled into the app bridge; it
   does not replace the staged MNN binary.
 
+- `0007-cpu-runtime-width.patch` reads the existing LLM executor's CPU runtime
+  width without creating another backend. The app checks it at load completion
+  and exposes requested threads and actual maximum CPU width separately.
+
+The app prepares CPU capacity through existing MNN interfaces before model
+loading, with each runtime retaining its requested width. Idle workers remain
+cached until process exit; the upstream thread-pool implementation is unchanged.
+
 The previous Omni attention-mask and PLE patches are no longer applied: this
 baseline dispatches generation masks correctly and rebuilds text PLE embeddings.
 The build keeps `MNN_BUILD_LLM_OMNI=ON` for multimodal models.

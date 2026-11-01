@@ -1,7 +1,20 @@
 import entry from 'libentry.so'
 import { ChatTurn, GenerationResult, GenerationSettings, ImagePayload } from '../models/ChatTypes'
 
+export interface ModelThreadWidth {
+  requested: number
+  actual: number
+}
+
+export interface NativeModelThreadInfo {
+  chat: ModelThreadWidth
+  rerank: ModelThreadWidth
+}
+
 export class NativeInferenceService {
+  modelThreadInfo(): NativeModelThreadInfo {
+    return JSON.parse(entry.modelThreadInfo()) as NativeModelThreadInfo
+  }
   private static titleTask?: Promise<GenerationResult>
   private static modelBarrier: Promise<void> = Promise.resolve()
   private static pendingResets: number = 0

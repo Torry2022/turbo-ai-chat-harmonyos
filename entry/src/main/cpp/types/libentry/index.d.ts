@@ -66,3 +66,4 @@ export const layaReleaseAsync: () => Promise<void>;
 
 export const rerankerAsync: (operation: string, config: string, threads: number, tokens: number, query: string, documents: string[]) => Promise<number[]>;
 export const rerankerCancel: () => void;
+export const modelThreadInfo: () => string;

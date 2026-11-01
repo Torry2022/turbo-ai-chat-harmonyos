@@ -17,6 +17,8 @@ curl http://设备IP:8080/turbo/runtime -H "Authorization: Bearer <API Key>"
 | `service.inferenceBusy` | API 是否正在处理聊天生成或决策请求 |
 | `chatModel.id`、`name` | 当前选择的聊天模型，不代表 Laya 决策模型 |
 | `chatModel.loaded`、`loading`、`generating` | 聊天模型是否已加载、正在加载、正在生成 |
+| `chatModel.requestedThreads`、`rerankModel.requestedThreads` | 对应已加载模型请求的推理线程数；未加载时为 0 |
+| `chatModel.actualCpuThreads`、`rerankModel.actualCpuThreads` | 加载完成时从现有 CPU runtime 读取的最大并行宽度；未加载时为 0。不是每个算子同时运行的线程数，也不是 App 线程总数 |
 | `metrics.sampledAt` | 本次运行指标的采样时间，Unix 毫秒 |
 | `metrics.appCpuPercent`、`systemCpuPercent` | 应用与系统 CPU 使用率，百分数；例如 `12.5` 表示 12.5% |
 | `metrics.pssWithSwapBytes` | `Pss + SwapPss`，字节，包含换出部分，独立于监控页采用的 RSS |

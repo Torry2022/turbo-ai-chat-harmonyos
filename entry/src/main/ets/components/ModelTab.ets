@@ -741,6 +741,10 @@ export struct ModelTab {
         .fontSize(11)
         .fontColor($r('app.color.text_model_hint'))
         .width('100%')
+      if (this.viewModel.loaded) {
+        Text(this.viewModel.cpuThreadSummary())
+          .fontSize(11).fontColor($r('app.color.text_model_hint')).width('100%')
+      }
       if (this.runtimeExpanded) {
       Column({ space: 4 }) {
         Text('模型配置路径')

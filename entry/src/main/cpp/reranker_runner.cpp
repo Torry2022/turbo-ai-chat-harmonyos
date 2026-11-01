@@ -1,4 +1,5 @@
 #include "reranker_runner.h"
+#include "mnn_cpu_capacity.h"
 #include "llm/reranker.hpp"
 #include <atomic>
 #include <cmath>
@@ -10,6 +11,8 @@ std::mutex mutex;
 std::unique_ptr<MNN::Transformer::Qwen3Reranker> model;
 std::atomic<uint64_t> cancelEpoch{0};
 int tokenLimit = 0;
+std::atomic<int> requestedThreads{0};
+std::atomic<int> actualCpuThreads{0};
 const std::string instruction = "Given a web search query, retrieve relevant passages that answer the query";
 // Must match Qwen3Reranker's separately tokenized prefix, document and suffix.
 const std::string prefix = "<|im_start|>system\nJudge whether the Document meets the requirements based on the Query and the Instruct provided. Note that the answer can only be \"yes\" or \"no\".<|im_end|>\n<|im_start|>user\n<Instruct>: ";
@@ -24,10 +27,16 @@ void loadReranker(const std::string& configPath, int threads, int maxInputTokens
     auto candidate = std::make_unique<MNN::Transformer::Qwen3Reranker>(configPath);
     candidate->get_llm()->set_config("{\"backend_type\":\"cpu\",\"thread_num\":" +
         std::to_string(threads) + ",\"precision\":\"low\",\"memory\":\"low\"}");
+    PrepareMnnCpuCapacity(candidate->get_llm()->dump_config());
     candidate->load();
+    const int actualThreads = candidate->get_llm()->cpu_thread_count();
+    if (actualThreads != threads)
+        throw std::runtime_error("CPU runtime thread width does not match the requested configuration");
     candidate->setInstruct(instruction);
     model = std::move(candidate);
     tokenLimit = maxInputTokens;
+    requestedThreads.store(threads);
+    actualCpuThreads.store(actualThreads);
 }
 
 std::vector<float> scoreReranker(const std::string& query, const std::vector<std::string>& documents, uint64_t epoch) {
@@ -57,8 +66,12 @@ std::vector<float> scoreReranker(const std::string& query, const std::vector<std
 
 uint64_t rerankerEpoch() { return cancelEpoch.load(); }
 void cancelReranker() { cancelEpoch.fetch_add(1); }
+int rerankerRequestedThreads() { return requestedThreads.load(); }
+int rerankerActualCpuThreads() { return actualCpuThreads.load(); }
 void releaseReranker() {
     std::lock_guard<std::mutex> lock(mutex);
     model.reset();
     tokenLimit = 0;
+    requestedThreads.store(0);
+    actualCpuThreads.store(0);
 }

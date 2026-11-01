@@ -1,5 +1,6 @@
 #include "mnn_llm_runner.h"
 #include "generation_stream.h"
+#include "mnn_cpu_capacity.h"
 
 #include <algorithm>
 #include <cctype>
@@ -303,13 +304,21 @@ bool MnnLlmRunner::load(
     }
 
     candidate->set_config(BuildRuntimeConfig(threadNum, sampling));
+    PrepareMnnCpuCapacity(candidate->dump_config());
 
     if (!candidate->load()) {
         error = "MNN LLM load failed";
         return false;
     }
 
+    const int actualThreads = candidate->cpu_thread_count();
+    if (actualThreads != threadNum) {
+        error = "CPU runtime thread width does not match the requested configuration";
+        return false;
+    }
     llm_ = std::move(candidate);
+    requestedThreads_.store(threadNum);
+    actualCpuThreads_.store(actualThreads);
     return true;
 }
 
@@ -630,6 +639,8 @@ void MnnLlmRunner::reset() {
     std::lock_guard<std::mutex> lock(mutex_);
     stopRequested_.store(false);
     llm_.reset();
+    requestedThreads_.store(0);
+    actualCpuThreads_.store(0);
 }
 
 bool MnnLlmRunner::isLoaded() const {

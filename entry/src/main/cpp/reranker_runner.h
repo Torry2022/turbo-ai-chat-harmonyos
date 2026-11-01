@@ -8,3 +8,5 @@ std::vector<float> scoreReranker(const std::string& query, const std::vector<std
 uint64_t rerankerEpoch();
 void cancelReranker();
 void releaseReranker();
+int rerankerRequestedThreads();
+int rerankerActualCpuThreads();
