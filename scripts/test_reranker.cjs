@@ -41,10 +41,11 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
   assert.equal(nativeCalls,0); assert.equal(service.busy,false);
   assert.deepEqual(await service.score('q',['doc'],async()=>{}),[0.8]);
   let resolveScore, cancels=0, available=true;
+  const activity=[];
   const server = new OpenAiApiServer({
     rerankModel:()=>available?{id:'model',name:'Model'}:undefined,
     isRerankBusy:()=>false, rerank:()=>new Promise(resolve=>{resolveScore=resolve}),
-    cancelRerank:()=>{cancels++},onStatus:()=>{},onLog:()=>{}
+    cancelRerank:()=>{cancels++},onRequestState:(kind,active)=>activity.push([kind,active]),onStatus:()=>{},onLog:()=>{}
   });
   const responses=[]; server.sendError=(_state,status,code)=>responses.push({status,code});
   server.sendJson=(_state,status,body)=>responses.push({status,body});
@@ -60,5 +61,6 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
   assert.deepEqual(JSON.parse(JSON.stringify(response.body.results)),[{index:1,relevance_score:0.9},{index:2,relevance_score:0.9}]);
   server.handleRerank(state,request);resolveScore([0.1]);await tick();assert.equal(responses.pop().status,500);
   assert.equal(server.rerankConnection,undefined);
+  assert.deepEqual(activity, [['rerank',true],['',false],['rerank',false],['rerank',true],['rerank',false]]);
   console.log('PASS rerank validation, stable ordering, input mapping, pending cancellation, release protection and HTTP stop/restart ownership');
 })().catch(error=>{console.error(error);process.exitCode=1});

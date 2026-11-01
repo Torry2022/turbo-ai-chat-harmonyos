@@ -159,6 +159,7 @@ export class ChatViewModel {
   apiServerRequireKey: boolean = true
   apiServerKey: string = ''
   apiServerAddress: string = 'http://设备局域网 IP:8080'
+  apiRequestKind: string = ''
   apiServerStatus: string = 'API 服务未启动'
   apiServerRequestCount: number = 0
   apiServerLogs: ApiServerLogEntry[] = []
@@ -216,10 +217,16 @@ export class ChatViewModel {
     decide: (request: PreparedApiDecision) => this.runDecision(request.state, request.type,
       request.instruction, request.options),
     stopGeneration: () => this.stopGeneration(),
-    onStatus: (status: string) => {
-      if (status.startsWith('API 请求：')) {
+    onRequestState: (kind: string, active: boolean) => {
+      if (active) {
         this.apiServerRequestCount++
+        this.apiRequestKind = kind
+      } else if (kind === '' || this.apiRequestKind === kind) {
+        this.apiRequestKind = ''
       }
+      this.notify()
+    },
+    onStatus: (status: string) => {
       this.apiServerStatus = status
       this.notify()
     },

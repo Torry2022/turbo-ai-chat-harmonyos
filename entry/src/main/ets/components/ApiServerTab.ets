@@ -114,17 +114,18 @@ export struct ApiServerTab {
   }
 
   private capabilityState(mode: string): string {
+    if (this.viewModel.apiRequestKind === mode) return '处理中'
     if (mode === 'chat') return this.viewModel.modelLoading ? '加载中' : this.loaded ? '已加载' : '未加载'
     if (mode === 'decision') {
       if (!this.layaReady) return ''
       if (this.viewModel.layaRuntimeState === 'loading') return '加载中'
       if (this.viewModel.layaRuntimeState === 'releasing') return '释放中'
-      if (this.viewModel.layaRuntimeState === 'running') return '运行中'
+      if (this.viewModel.layaRuntimeState === 'running') return '处理中'
       return this.viewModel.layaRuntimeState === 'loaded' ? '已加载' : '未加载'
     }
     if (mode === 'rerank') {
       if (this.viewModel.rerankLoading) return '加载中'
-      if (this.viewModel.loadedReranker()) return this.viewModel.reranker.busy ? '运行中' : '已加载'
+      if (this.viewModel.loadedReranker()) return this.viewModel.reranker.busy ? '处理中' : '已加载'
       return this.viewModel.selectedReranker() ? '未加载' : ''
     }
     return ''

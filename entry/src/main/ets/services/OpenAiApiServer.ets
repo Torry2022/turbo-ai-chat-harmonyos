@@ -70,6 +70,7 @@ export interface ApiServerCallbacks {
   generate: (request: ApiGenerationRequest, onChunk: (chunk: string) => void) => Promise<GenerationResult>
   decide: (request: PreparedApiDecision) => Promise<string>
   stopGeneration: () => void
+  onRequestState: (kind: string, active: boolean) => void
   onStatus: (status: string) => void
   onLog: (level: string, message: string) => void
 }
@@ -498,7 +499,7 @@ export class OpenAiApiServer {
       throw new Error(errorMessage(err))
     }
     this.running = true
-    this.callbacks.onStatus(`API 服务已启动：${this.baseUrl()}`)
+    this.callbacks.onStatus('API 服务运行中')
     this.callbacks.onLog('INFO', `服务已启动，正在监听端口 ${config.port}`)
     return this.baseUrl()
   }
@@ -526,7 +527,8 @@ export class OpenAiApiServer {
       await server.close().catch((_err: Error) => {
       })
     }
-    this.callbacks.onStatus('API 服务已停止')
+    this.callbacks.onRequestState('', false)
+    this.callbacks.onStatus('API 服务未启动')
     this.callbacks.onLog('INFO', '服务已停止')
   }
 
@@ -649,11 +651,11 @@ export class OpenAiApiServer {
       return
     }
     if (this.rerankConnection !== undefined || this.activeClientId >= 0 || this.callbacks.isRerankBusy()) {
-      this.sendError(state, 409, 'model_busy', '当前模型任务尚未结束，请稍后重试。')
+      this.sendError(state, 409, 'model_busy', '正在处理其他推理请求，请稍后重试。')
       return
     }
     this.rerankConnection = state
-    this.callbacks.onStatus('API 请求：重排')
+    this.callbacks.onRequestState('rerank', true)
     this.callbacks.rerank(request.query, request.documents).then((scores: number[]) => {
       if (scores.length !== request.documents.length) throw new Error('重排结果数量不匹配')
       const results = rankScores(scores, request.top_n ?? scores.length)
@@ -666,7 +668,10 @@ export class OpenAiApiServer {
         invalid ? '输入超过重排模型的单条输入上限，请缩短问题或候选文本。' : '重排未完成，请检查模型状态后重试。')
       this.callbacks.onLog('ERROR', invalid ? '400 POST /v1/rerank：输入超长' : '重排未完成')
     }).finally(() => {
-      if (this.rerankConnection === state) this.rerankConnection = undefined
+      if (this.rerankConnection === state) {
+        this.rerankConnection = undefined
+        this.callbacks.onRequestState('rerank', false)
+      }
     })
   }
 
@@ -761,31 +766,30 @@ export class OpenAiApiServer {
     }
     if (this.activeClientId >= 0 || this.rerankConnection !== undefined) {
       this.callbacks.onLog('ERROR', '409 POST /v1/decisions · 当前已有 API 请求')
-      this.sendError(state, 409, 'server_busy', '当前已有 API 请求，请稍后重试。')
+      this.sendError(state, 409, 'server_busy', '正在处理其他推理请求，请稍后重试。')
       return
     }
     if (this.callbacks.isDecisionBusy()) {
-      this.sendError(state, 409, 'server_busy', '当前模型任务尚未结束，请稍后重试。')
+      this.sendError(state, 409, 'server_busy', '正在处理其他推理请求，请稍后重试。')
       return
     }
     const startedAt = Date.now()
     const clientId = state.connection.clientId
     this.activeClientId = clientId
     this.activeRequestKind = 'decision'
-    this.callbacks.onStatus('API 请求：/v1/decisions')
+    this.callbacks.onRequestState('decision', true)
     Promise.resolve().then(() => this.callbacks.decide(request)).then((raw: string) => {
       const response = formatApiDecision(request, raw)
       if (!state.closed) this.sendJson(state, 200, response)
       this.callbacks.onLog('RESP', `200 POST /v1/decisions · ${Date.now() - startedAt} ms`)
-      if (this.running) this.callbacks.onStatus('Laya 决策完成')
     }).catch((err: Error) => {
       if (!state.closed) this.sendError(state, 500, 'decision_failed', errorMessage(err))
       this.callbacks.onLog('ERROR', `500 POST /v1/decisions · ${errorMessage(err)}`)
-      if (this.running) this.callbacks.onStatus(`Laya 决策失败：${errorMessage(err)}`)
     }).finally(() => {
       if (this.activeClientId === clientId && this.activeRequestKind === 'decision') {
         this.activeClientId = -1
         this.activeRequestKind = ''
+        this.callbacks.onRequestState('decision', false)
       }
     })
   }
@@ -828,7 +832,7 @@ export class OpenAiApiServer {
     }
     if (this.activeClientId >= 0 || this.rerankConnection !== undefined) {
       this.callbacks.onLog('ERROR', `409 POST ${apiPath} · 当前已有生成任务`)
-      this.sendError(state, 409, 'server_busy', '当前已有 API 生成任务，请稍后重试。')
+      this.sendError(state, 409, 'server_busy', '正在处理其他推理请求，请稍后重试。')
       return
     }
     const model = this.callbacks.currentModel()
@@ -868,7 +872,7 @@ export class OpenAiApiServer {
       }
     }
 
-    this.callbacks.onStatus(`API 请求：${apiPath}`)
+    this.callbacks.onRequestState('chat', true)
     this.callbacks.onLog(
       'INFO',
       `model=${model.id}, stream=${streaming}, maxTokens=${request.maxNewTokens}`
@@ -938,7 +942,7 @@ export class OpenAiApiServer {
         `200 POST ${apiPath}${streamLabel} · ${Date.now() - startedAt} ms · ` +
           `${result.generatedTokens} tokens · ${output.answer.length} chars`
       )
-      this.callbacks.onStatus(`API 生成完成：${result.generatedTokens} tokens`)
+      this.callbacks.onRequestState('chat', false)
     }).catch((err: Error) => {
       if (!state.closed) {
         if (streaming) {
@@ -954,7 +958,7 @@ export class OpenAiApiServer {
       this.activeClientId = -1
       this.activeRequestKind = ''
       this.callbacks.onLog('ERROR', `500 POST ${apiPath} · ${errorMessage(err)}`)
-      this.callbacks.onStatus(`API 生成失败：${errorMessage(err)}`)
+      this.callbacks.onRequestState('chat', false)
     })
   }
 

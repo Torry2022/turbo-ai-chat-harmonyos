@@ -259,6 +259,11 @@ When adding an OpenAI-compatible provider in Cherry Studio, enter the displayed 
 - `GET /v1/models`
 - `POST /v1/chat/completions`
 - `POST /v1/responses`
+- `POST /v1/decisions`
+- `POST /v1/rerank`
+- `GET /turbo/runtime`
+
+Inference requests are handled one at a time. While busy, the server returns HTTP 409 without queuing the request; model-list and runtime queries remain available.
 
 The phone bottom bar and narrow sidebar label this entry “API 服务” (API Service). The wide sidebar uses “服务” (Service) with the “OpenAI API” subtitle.
 

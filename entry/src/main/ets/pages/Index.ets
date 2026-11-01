@@ -532,13 +532,16 @@ struct Index {
             busy: this.viewModel.busy,
             renderVersion: this.stateVersion,
             showNewChat: this.activeTab === 0,
-            actionLabel: this.activeTab === 1 ? '模型广场' : '',
+            actionLabel: this.activeTab === 1 ? '模型广场' : this.activeTab === 2 ? '接口文档' : '',
             onNewChat: () => {
               this.newChat()
             },
             onAction: () => {
               if (this.activeTab === 1) {
                 this.viewModel.openModelMarketDialog()
+              } else if (this.activeTab === 2) {
+                this.apiUsageExample = ''
+                this.apiUsageMode = 'overview'
               }
             }
           })

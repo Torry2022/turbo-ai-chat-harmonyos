@@ -259,6 +259,11 @@ PC 最大化：
 - `GET /v1/models`
 - `POST /v1/chat/completions`
 - `POST /v1/responses`
+- `POST /v1/decisions`
+- `POST /v1/rerank`
+- `GET /turbo/runtime`
+
+推理请求一次处理一个。忙碌时返回 HTTP 409，不进入等待队列；模型列表与运行状态仍可查询。
 
 手机底栏和窄侧栏的入口显示为“API 服务”；宽侧栏显示“服务”，并保留“OpenAI API”副标题。
 
