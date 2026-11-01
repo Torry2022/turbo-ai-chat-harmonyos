@@ -435,7 +435,7 @@ struct Index {
       },
       layaReady: this.viewModel.layaReady,
       layaStatus: this.viewModel.layaStatusText(),
-      onApiHelp: (mode: 'rerank' | 'chat' | 'decision', example: string) => {
+      onApiHelp: (mode: 'log' | 'rerank' | 'chat' | 'decision', example: string) => {
         this.apiUsageMode = mode
         this.apiUsageExample = example
       },
@@ -454,6 +454,7 @@ struct Index {
       apiServerKey: this.viewModel.apiServerKey,
       apiServerAddress: this.viewModel.apiServerAddress,
       apiServerStatus: this.viewModel.apiServerStatus,
+      apiRequestKind: this.viewModel.apiRequestKind,
       apiServerRequestCount: this.viewModel.apiServerRequestCount,
       apiServerLogs: this.viewModel.apiServerLogs
     })
@@ -529,9 +530,9 @@ struct Index {
             status: this.viewModel.headerStatus(),
             statusColor: this.viewModel.headerColor(),
             newChatEnabled: this.viewModel.canManageConversations(),
-            busy: this.viewModel.busy,
             renderVersion: this.stateVersion,
             showNewChat: this.activeTab === 0,
+            actionEnabled: this.activeTab === 2 || !this.viewModel.busy,
             actionLabel: this.activeTab === 1 ? '模型广场' : this.activeTab === 2 ? '接口文档' : '',
             onNewChat: () => {
               this.newChat()

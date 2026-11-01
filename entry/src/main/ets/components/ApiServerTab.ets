@@ -15,8 +15,9 @@ export struct ApiServerTab {
   @Prop loaded: boolean = false
   @Prop layaReady: boolean = false
   @Prop layaStatus: string = '未安装'
-  onApiHelp: (mode: 'rerank' | 'chat' | 'decision', example: string) => void = () => {}
+  onApiHelp: (mode: 'log' | 'rerank' | 'chat' | 'decision', example: string) => void = () => {}
   @Prop busy: boolean = false
+  @Prop apiRequestKind: string = ''
   @Prop currentModelName: string = ''
   @Prop apiServerRunning: boolean = false
   @Prop apiServerStarting: boolean = false
@@ -70,6 +71,19 @@ export struct ApiServerTab {
     return $r('app.color.text_muted')
   }
 
+  private serviceStatusText(): string {
+    if (this.apiServerStarting) return this.apiServerRunning ? '正在停止 API 服务…' : '正在启动 API 服务…'
+    return this.apiServerStatus
+  }
+
+  private serviceStatusColor(): ResourceColor {
+    if (this.apiServerStarting) return $r('app.color.text_secondary')
+    if (this.apiServerStatus !== 'API 服务运行中' && this.apiServerStatus !== 'API 服务未启动') {
+      return $r('app.color.status_error_alt')
+    }
+    return this.apiServerRunning ? $r('app.color.status_good') : $r('app.color.text_secondary')
+  }
+
   private logItems(): ApiServerLogEntry[] {
     const items = this.apiServerLogs.slice()
     items.reverse()
@@ -114,7 +128,7 @@ export struct ApiServerTab {
   }
 
   private capabilityState(mode: string): string {
-    if (this.viewModel.apiRequestKind === mode) return '处理中'
+    if (this.apiRequestKind === mode) return '处理中'
     if (mode === 'chat') return this.viewModel.modelLoading ? '加载中' : this.loaded ? '已加载' : '未加载'
     if (mode === 'decision') {
       if (!this.layaReady) return ''
@@ -191,12 +205,12 @@ export struct ApiServerTab {
         .height(22)
         .width('100%')
         .alignItems(VerticalAlign.Center)
-        Text(this.apiServerStatus)
+        Text(this.serviceStatusText())
           .fontSize(13)
           .lineHeight(19)
-          .fontColor(this.apiServerRunning ? $r('app.color.status_good') : $r('app.color.text_secondary'))
+          .fontColor(this.serviceStatusColor())
           .width('100%')
-        Text(`累计处理 ${this.apiServerRequestCount} 个 API 请求`)
+        Text(`已接受 ${this.apiServerRequestCount} 个推理请求`)
           .fontSize(12)
           .lineHeight(18)
           .fontColor($r('app.color.text_hint'))
@@ -387,6 +401,9 @@ export struct ApiServerTab {
                 }
                 .width('100%')
                 .alignItems(VerticalAlign.Top)
+                .onClick(() => this.onApiHelp('log', `${item.time}  ${item.level}\n\n${item.message}`))
+                .accessibilityText(`${item.time} ${item.level} ${item.message}`)
+                .accessibilityDescription('点击查看完整日志')
               }
             }, (item: ApiServerLogEntry) => `${item.id}`)
           }

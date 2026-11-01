@@ -265,6 +265,8 @@ When adding an OpenAI-compatible provider in Cherry Studio, enter the displayed 
 
 Inference requests are handled one at a time. While busy, the server returns HTTP 409 without queuing the request; model-list and runtime queries remain available.
 
+The service header provides an endpoint reference. Click a log entry to view and copy its full text.
+
 The phone bottom bar and narrow sidebar label this entry “API 服务” (API Service). The wide sidebar uses “服务” (Service) with the “OpenAI API” subtitle.
 
 The Service tab shows operational logs for server lifecycle, request paths, model parameters, response status, latency, and output size. It does not log API keys, prompts, or response text.

@@ -107,3 +107,14 @@ server.callbacks.isDecisionBusy = () => true;
 context.exports.OpenAiApiServer.prototype.handleDecision.call(server, {}, decisionBody);
 assert.equal(status, 409);
 console.log('PASS unified routing, loaded-only model listing, unloaded decisions and busy guards');
+
+server.callbacks.isModelLoaded = () => false;
+server.callbacks.isGenerationReady = () => false;
+server.runGeneration({}, '', false, false, {});
+assert.equal(status, 503);
+server.callbacks.isModelLoaded = () => true;
+for (const responsesApi of [false, true]) {
+  server.runGeneration({}, '', false, responsesApi, {});
+  assert.equal(status, 409);
+}
+console.log('PASS unloaded chat returns 503 while busy chat returns 409 for both API formats');

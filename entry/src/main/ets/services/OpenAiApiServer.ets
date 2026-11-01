@@ -825,14 +825,14 @@ export class OpenAiApiServer {
     request: ApiGenerationRequest
   ): void {
     const apiPath = responsesApi ? '/v1/responses' : '/v1/chat/completions'
-    if (!this.callbacks.isGenerationReady()) {
-      this.callbacks.onLog('ERROR', `503 POST ${apiPath} · 模型未就绪或当前任务未完成`)
-      this.sendError(state, 503, 'model_not_ready', '请先在 Turbo AI Chat 中加载模型，并等待当前任务完成。')
+    if (!this.callbacks.isModelLoaded()) {
+      this.callbacks.onLog('ERROR', `503 POST ${apiPath} · 聊天模型未加载`)
+      this.sendError(state, 503, 'model_not_ready', '请先在模型页加载聊天模型。')
       return
     }
-    if (this.activeClientId >= 0 || this.rerankConnection !== undefined) {
-      this.callbacks.onLog('ERROR', `409 POST ${apiPath} · 当前已有生成任务`)
-      this.sendError(state, 409, 'server_busy', '正在处理其他推理请求，请稍后重试。')
+    if (this.activeClientId >= 0 || this.rerankConnection !== undefined || !this.callbacks.isGenerationReady()) {
+      this.callbacks.onLog('ERROR', `409 POST ${apiPath} · 当前已有模型任务`)
+      this.sendError(state, 409, 'server_busy', '当前有模型任务正在执行，请稍后重试。')
       return
     }
     const model = this.callbacks.currentModel()

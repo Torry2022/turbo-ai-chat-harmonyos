@@ -3,10 +3,10 @@ export struct AppHeader {
   @Prop status: string = ''
   @Prop statusColor: ResourceColor = $r('app.color.text_muted')
   @Prop newChatEnabled: boolean = true
-  @Prop busy: boolean = false
   @Prop renderVersion: number = 0
   @Prop showNewChat: boolean = true
   @Prop actionLabel: string = ''
+  @Prop actionEnabled: boolean = true
   @Prop compact: boolean = false
   onSettings: () => void = () => {}
   onNewChat: () => void = () => {}
@@ -93,7 +93,7 @@ export struct AppHeader {
 
         Button(this.showNewChat ? '新对话' : this.actionLabel)
           .visibility(this.showNewChat || this.actionLabel.length > 0 ? Visibility.Visible : Visibility.Hidden)
-          .enabled(this.showNewChat ? this.newChatEnabled : !this.busy)
+          .enabled(this.showNewChat ? this.newChatEnabled : this.actionEnabled)
           .height(40)
           .width(78)
           .fontSize(this.showNewChat ? $r('app.float.button_font_size') : 15)
