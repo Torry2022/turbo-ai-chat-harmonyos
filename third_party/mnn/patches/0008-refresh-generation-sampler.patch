@@ -1,0 +1,47 @@
+diff --git a/transformers/llm/engine/src/sampler.cpp b/transformers/llm/engine/src/sampler.cpp
+index 4deabc5ea..a1563af41 100644
+--- a/transformers/llm/engine/src/sampler.cpp
++++ b/transformers/llm/engine/src/sampler.cpp
+@@ -238,10 +238,17 @@ Sampler* Sampler::createSampler(std::shared_ptr<LlmContext> context, std::shared
+ 
+ Sampler::Sampler(std::shared_ptr<LlmContext> context, std::shared_ptr<LlmConfig> config)
+     : mContext(context), mRng(std::random_device{}()) {
++    reconfigure(config);
++}
++
++void Sampler::reconfigure(std::shared_ptr<LlmConfig> config) {
++    mConfig = SamplerConfig{};
+     mConfig.max_all_tokens = config->max_all_tokens();
+     mConfig.max_new_tokens = config->max_new_tokens();
+     mConfig.type = config->sampler_type();
+     mConfig.configSampler(mConfig.type, config);
++    mPipeline.clear();
++    mTopKPrefilter = false;
+     buildPipeline();
+ }
+ 
+diff --git a/transformers/llm/engine/src/sampler.hpp b/transformers/llm/engine/src/sampler.hpp
+index 44673f82c..18a6481c2 100644
+--- a/transformers/llm/engine/src/sampler.hpp
++++ b/transformers/llm/engine/src/sampler.hpp
+@@ -74,6 +74,7 @@ public:
+ public:
+     static Sampler* createSampler(std::shared_ptr<LlmContext> context, std::shared_ptr<LlmConfig> config);
+     Sampler(std::shared_ptr<LlmContext> context, std::shared_ptr<LlmConfig> config);
++    void reconfigure(std::shared_ptr<LlmConfig> config);
+     int sample(MNN::Express::VARP logits);
+     int sample(MNN::Express::VARP logits, const std::vector<int>& indices);
+ 
+diff --git a/transformers/llm/engine/src/llm.cpp b/transformers/llm/engine/src/llm.cpp
+--- a/transformers/llm/engine/src/llm.cpp
++++ b/transformers/llm/engine/src/llm.cpp
+@@ -879,6 +879,9 @@
+ void Llm::generate_init(std::ostream* os, const char* end_with) {
++    // Refresh once at the request boundary, preserving the sampler RNG and
++    // avoiding changes to an already running token-generation loop.
++    if (mSampler) mSampler->reconfigure(mConfig);
+     // init status
+     mContext->os = os;
+     {
+         std::lock_guard<std::mutex> _l(mContext->mutex);
+         if (nullptr != end_with) {

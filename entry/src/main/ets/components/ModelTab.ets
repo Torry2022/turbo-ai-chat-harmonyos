@@ -579,7 +579,7 @@ export struct ModelTab {
           .fontColor($r('app.color.text_body'))
       }
       .width('100%')
-      Slider({ value: this.sliderRepetitionPenalty, min: 0.8, max: 1.5, step: 0.05 })
+      Slider({ value: this.sliderRepetitionPenalty, min: 1, max: 1.5, step: 0.05 })
         .attributeModifier(new ParameterSliderStyle())
         .enabled(this.controlsEnabled())
         .onChange((value: number, _mode: SliderChangeMode) => {
@@ -637,7 +637,7 @@ export struct ModelTab {
           .fontSize(12)
           .fontColor($r('app.color.text_muted'))
           .layoutWeight(1)
-        Text(`${this.sliderPenaltyWindow} tokens`)
+        Text(this.sliderPenaltyWindow === 0 ? '全部已记录 token' : `${this.sliderPenaltyWindow} tokens`)
           .fontSize(12)
           .fontColor($r('app.color.text_body'))
       }

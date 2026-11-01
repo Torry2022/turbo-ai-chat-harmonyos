@@ -930,7 +930,7 @@ export class ChatViewModel {
   }
 
   updateRepetitionPenalty(value: number, notify: boolean = true): void {
-    this.repetitionPenalty = Math.round(value * 100) / 100
+    this.repetitionPenalty = Math.max(1, Math.min(1.5, Math.round(value * 100) / 100))
     if (notify) {
       this.notify()
     }
@@ -963,7 +963,7 @@ export class ChatViewModel {
     this.temperature = defaults.temperature ?? DEFAULT_TEMPERATURE
     this.topP = defaults.topP ?? DEFAULT_TOP_P
     this.topK = defaults.topK ?? DEFAULT_TOP_K
-    this.repetitionPenalty = defaults.repetitionPenalty ?? DEFAULT_REPETITION_PENALTY
+    this.repetitionPenalty = Math.max(1, Math.min(1.5, defaults.repetitionPenalty ?? DEFAULT_REPETITION_PENALTY))
     this.frequencyPenalty = defaults.frequencyPenalty ?? DEFAULT_FREQUENCY_PENALTY
     this.presencePenalty = defaults.presencePenalty ?? DEFAULT_PRESENCE_PENALTY
     this.penaltyWindow = defaults.penaltyWindow ?? DEFAULT_PENALTY_WINDOW
@@ -2071,7 +2071,6 @@ export class ChatViewModel {
       if (!installed) {
         return
       }
-      this.resetGenerationSettings(false)
       this.startModelLoad()
     }).catch((err: Error) => {
       this.apiServerStartAfterModelLoad = false

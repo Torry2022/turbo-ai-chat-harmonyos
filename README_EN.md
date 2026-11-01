@@ -57,6 +57,11 @@ The project can serve as a development and integration reference for local AI ap
 
 ## Recent Highlights
 
+**Thread configuration and sampling fixes (v1.18.1)**
+
+- Fix earlier model loads limiting later CPU thread counts; chat and reranking models retain their own thread settings.
+- Apply sampling changes to the next request, preserve current settings when loading, and use greedy sampling at zero temperature.
+
 **Reranking and API services (v1.18.0)**
 
 - Add a reranking model category to import, load and release compatible Qwen3-Reranker MNN models independently, and rank candidate texts by relevance through `/v1/rerank`.
@@ -223,7 +228,7 @@ With a physical keyboard, Enter sends from the chat input and Shift+Enter insert
 - Thinking blocks: separate reasoning from the final answer, including models whose chat template already supplies the opening `<think>` tag. The model's default thinking setting is preserved. Reasoning counts toward the maximum output length, so reaching the limit may cut the answer short.
 - Markdown rendering: code blocks (with copy button), tables, blockquotes, links, etc., with compatibility handling for incomplete inline code, empty table cells, and table column jitter during streaming output
 - Long-conversation scrolling optimization: caches Markdown / thinking-block parsing and pauses auto-follow while the user is scrolling
-- Generation parameter controls: temperature, Top-P/K, penalty terms, etc.
+- Generation parameter controls: temperature, Top-P/K and penalties take effect on the next generation request. Zero temperature selects the highest-scoring token; a zero penalty window includes all recorded tokens.
 - Performance metrics: TTFT, TPOT, tokens/s, and token counts for completed responses
 - Model management: download from the Model Gallery, reorder or delete installed models, and optionally load the current model when the app starts
 - Import local MNN models by selecting a folder (where supported), importing a zip, or pushing a directory and scanning it in the app; standard MNN export directories use `jinja.chat_template` from `llm_config.json`

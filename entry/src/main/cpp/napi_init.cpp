@@ -187,11 +187,11 @@ MnnLlmRunner::SamplingConfig ReadSamplingConfig(
     sampling.topK = std::clamp(ReadNamedInt(env, args[settingsIndex], "top_k", sampling.topK), 1, 256);
     sampling.repetitionPenalty = std::clamp(
         ReadNamedDouble(env, args[settingsIndex], "repetitionPenalty", sampling.repetitionPenalty),
-        0.8,
+        1.0,
         2.0);
     sampling.repetitionPenalty = std::clamp(
         ReadNamedDouble(env, args[settingsIndex], "repetition_penalty", sampling.repetitionPenalty),
-        0.8,
+        1.0,
         2.0);
     sampling.frequencyPenalty = std::clamp(
         ReadNamedDouble(env, args[settingsIndex], "frequencyPenalty", sampling.frequencyPenalty),

@@ -112,4 +112,19 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
   assert.equal(decisionLoaded, false);
   assert.equal(view.loaded, true);
   console.log('PASS decision loading and inference block conflicting work and preserve the loaded chat model');
+  view.temperature = .25; view.topP = .65; view.topK = 17;
+  view.maxNewTokens = 1024; view.penaltyWindow = 0;
+  view.updateRepetitionPenalty(.8, false);
+  assert.equal(view.repetitionPenalty, 1);
+  view.generationDefaultsForCurrentModel = () => ({});
+  view.ensureCurrentModelInstalled = async () => true;
+  let loadedSettings;
+  view.startModelLoad = () => { loadedSettings = { ...view.currentGenerationSettings(), maxNewTokens: view.maxNewTokens }; };
+  view.loadModel(); await tick();
+  assert.deepEqual(JSON.parse(JSON.stringify(loadedSettings)), {
+    temperature: .25, topP: .65, topK: 17, repetitionPenalty: 1,
+    frequencyPenalty: view.frequencyPenalty, presencePenalty: view.presencePenalty,
+    penaltyWindow: 0, maxNewTokens: 1024
+  });
+  console.log('PASS manual loading preserves configured generation values and repetition penalty lower bound');
 })().catch(error => { console.error(error); process.exitCode = 1; });

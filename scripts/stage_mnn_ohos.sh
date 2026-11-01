@@ -14,7 +14,7 @@ INC_OUT="$ROOT_DIR/third_party/mnn/include"
 actual_commit="$(git -C "$MNN_ROOT" rev-parse HEAD)"
 [[ "$actual_commit" == "$EXPECTED_COMMIT" ]] || { echo "Unexpected MNN commit: $actual_commit" >&2; exit 1; }
 [[ -f "$BUILD_DIR/libMNN.so" ]] || { echo "Missing $BUILD_DIR/libMNN.so" >&2; exit 1; }
-for patch_name in 0003-tokenizer-nfc.patch 0004-streaming-added-token.patch 0005-reranker-load-validation.patch 0007-cpu-runtime-width.patch; do
+for patch_name in 0003-tokenizer-nfc.patch 0004-streaming-added-token.patch 0005-reranker-load-validation.patch 0007-cpu-runtime-width.patch 0008-refresh-generation-sampler.patch; do
   git -C "$MNN_ROOT" apply --reverse --check "$ROOT_DIR/third_party/mnn/patches/$patch_name"
 done
 
@@ -32,7 +32,8 @@ cat > "$ROOT_DIR/third_party/mnn/BUILD_INFO.json" <<EOF
     {"file": "patches/0003-tokenizer-nfc.patch", "sha256": "$(sha256sum "$ROOT_DIR/third_party/mnn/patches/0003-tokenizer-nfc.patch" | awk '{print $1}')"},
     {"file": "patches/0004-streaming-added-token.patch", "sha256": "$(sha256sum "$ROOT_DIR/third_party/mnn/patches/0004-streaming-added-token.patch" | awk '{print $1}')"},
     {"file": "patches/0005-reranker-load-validation.patch", "sha256": "$(sha256sum "$ROOT_DIR/third_party/mnn/patches/0005-reranker-load-validation.patch" | awk '{print $1}')"},
-    {"file": "patches/0007-cpu-runtime-width.patch", "sha256": "$(sha256sum "$ROOT_DIR/third_party/mnn/patches/0007-cpu-runtime-width.patch" | awk '{print $1}')"}
+    {"file": "patches/0007-cpu-runtime-width.patch", "sha256": "$(sha256sum "$ROOT_DIR/third_party/mnn/patches/0007-cpu-runtime-width.patch" | awk '{print $1}')"},
+    {"file": "patches/0008-refresh-generation-sampler.patch", "sha256": "$(sha256sum "$ROOT_DIR/third_party/mnn/patches/0008-refresh-generation-sampler.patch" | awk '{print $1}')"}
   ],
   "architecture": "arm64-v8a",
   "stl": "c++_shared",

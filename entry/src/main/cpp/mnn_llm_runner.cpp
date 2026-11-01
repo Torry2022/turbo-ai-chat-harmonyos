@@ -148,8 +148,11 @@ std::string BuildSamplingConfigProperties(const MnnLlmRunner::SamplingConfig& sa
     config << "\"max_new_tokens\":" << sampling.maxNewTokens << ","
            << "\"reuse_kv\":false,"
            << "\"sampler_type\":\"mixed\","
-           << "\"mixed_samplers\":[\"penalty\",\"topK\",\"topP\",\"temperature\"],"
-           << "\"temperature\":" << sampling.temperature << ","
+           << "\"mixed_samplers\":" << (sampling.temperature <= 0.0f
+               ? "[\"penalty\",\"greedy\"]," : "[\"penalty\",\"topK\",\"topP\",\"temperature\"],")
+           // Keep zero-temperature handling in the caller: MNN's probability
+           // samplers require positive temperature, while greedy needs none.
+           << "\"temperature\":" << (sampling.temperature <= 0.0f ? 1.0f : sampling.temperature) << ","
            << "\"top_k\":" << sampling.topK << ","
            << "\"top_p\":" << sampling.topP << ","
            << "\"repetition_penalty\":" << sampling.repetitionPenalty << ","

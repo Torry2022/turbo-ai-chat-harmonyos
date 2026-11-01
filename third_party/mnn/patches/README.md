@@ -18,9 +18,14 @@ Base: `f0b6105c5c7f901b1531dd4c23afa8a00b454db3`.
   width without creating another backend. The app checks it at load completion
   and exposes requested threads and actual maximum CPU width separately.
 
-The app prepares CPU capacity through existing MNN interfaces before model
-loading, with each runtime retaining its requested width. Idle workers remain
-cached until process exit; the upstream thread-pool implementation is unchanged.
+- `0008-refresh-generation-sampler.patch` refreshes sampler settings at each
+  generation boundary while preserving its random-number generator state.
+
+Thread-pool capacity and zero-temperature policy are handled by the app using
+existing MNN interfaces. The app prepares capacity before loading a model, with
+each runtime retaining its requested width. It translates zero temperature to
+penalty filtering followed by greedy selection. Neither changes MNN's pool or
+sampling policy. Capacity initialization retains idle workers until process exit.
 
 The previous Omni attention-mask and PLE patches are no longer applied: this
 baseline dispatches generation masks correctly and rebuilds text PLE embeddings.

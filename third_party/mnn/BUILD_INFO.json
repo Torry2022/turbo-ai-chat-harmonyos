@@ -15,6 +15,10 @@
     {
       "file": "patches/0007-cpu-runtime-width.patch",
       "sha256": "98068f53f57e636facf7bec4f927893615f94248e9806b0cab7b2f09745816e7"
+    },
+    {
+      "file": "patches/0008-refresh-generation-sampler.patch",
+      "sha256": "4f02614c11aed31b04f24b1c6f5f2c2ef3e1d2c5bd9129a70915f8e5f663b422"
     }
   ],
   "version": "3.6.1-dev+f0b6105c",
@@ -36,5 +40,5 @@
     "imageCodecs": true,
     "opencl": false
   },
-  "libMnnSha256": "c955389b0c8dfaf915fb38d052d37efe7875efe669b6766dcc8e15bf366faa1a"
+  "libMnnSha256": "7b2d3473c5452ccf99ede46d8690c4499d9f640d2ac0918de80f3f54b34cf37c"
 }
