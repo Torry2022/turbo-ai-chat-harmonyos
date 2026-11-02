@@ -1,4 +1,5 @@
 import fs from '@ohos.file.fs'
+import { util } from '@kit.ArkTS'
 import { ChatAnswerVersion, ChatMessage } from '../models/ChatTypes'
 import { ChatConversation, ChatConversationSummary, ChatHistoryIndex, ChatHistorySearchResult } from '../models/ChatHistoryTypes'
 import { parseAssistantText } from '../utils/thinking'
@@ -19,11 +20,21 @@ export class ChatHistoryService {
     return this.enqueue(async (): Promise<ChatHistoryIndex> => {
       await this.ensureDirectory(this.root)
       this.summaries = []
-      try {
-        const index = JSON.parse(await fs.readText(`${this.root}/index.json`)) as ChatHistoryIndex
-        this.activeId = this.validId(index.activeId) ? index.activeId : ''
-      } catch (_) {
-        this.activeId = ''
+      this.activeId = ''
+      const indexPath = `${this.root}/index.json`
+      for (const suffix of ['', '.bak']) {
+        try {
+          const index = JSON.parse(await fs.readText(`${indexPath}${suffix}`)) as ChatHistoryIndex
+          if (index.version !== 1 || (index.activeId !== '' && !this.validId(index.activeId))) continue
+          if (suffix === '.bak') {
+            if (await this.exists(indexPath)) await fs.rename(indexPath, `${indexPath}.invalid-${Date.now()}`)
+            await fs.rename(`${indexPath}.bak`, indexPath)
+          }
+          this.activeId = index.activeId
+          break
+        } catch (_) {
+          // Try the previous committed index before rebuilding from records.
+        }
       }
       // The index is a cache. Rebuild from records after interrupted writes.
       const names = await fs.listFile(this.root)
@@ -303,7 +314,14 @@ export class ChatHistoryService {
     const backup = `${path}.bak`
     const file = fs.openSync(temporary, fs.OpenMode.WRITE_ONLY | fs.OpenMode.CREATE | fs.OpenMode.TRUNC)
     try {
-      await fs.write(file.fd, content)
+      const data = new util.TextEncoder().encodeInto(content).buffer as ArrayBuffer
+      if (content.length > 0 && data.byteLength === 0) throw new Error('对话记录编码失败')
+      let offset = 0
+      while (offset < data.byteLength) {
+        const written = await fs.write(file.fd, data.slice(offset))
+        if (written <= 0) throw new Error('写入对话记录失败')
+        offset += written
+      }
       await fs.fsync(file.fd)
     } finally {
       fs.closeSync(file)

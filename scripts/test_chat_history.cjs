@@ -19,7 +19,7 @@ const fileIo = {
   mkdir: async name => fs.mkdirSync(name, { recursive: true }),
   stat: async name => fs.statSync(name),
   statSync: name => fs.statSync(name),
-  write: async (fd, text) => fs.writeSync(fd, text),
+  write: async (fd, value) => fs.writeSync(fd, typeof value === 'string' ? value : Buffer.from(value)),
   fsync: async fd => fs.fsyncSync(fd),
   copyFile: async (fd, name) => fs.writeFileSync(name, fs.readFileSync(fd)),
   unlink: async name => fs.unlinkSync(name),
@@ -72,7 +72,9 @@ function load(filename) {
         put: async (key, value) => values.set(key, value), flush: async () => {} };
     } };
     if (name === '@ohos/hypium') return hypium;
-    if (name === '@kit.ArkTS') return { buffer: Buffer };
+    if (name === '@kit.ArkTS') return { buffer: Buffer, util: { TextEncoder: class {
+      encodeInto(value) { return new TextEncoder().encode(value); }
+    } } };
     return sdkStub;
   };
   vm.runInNewContext(result.outputText, {
@@ -970,6 +972,79 @@ add('stale autosave retains generated title only for the same first-turn version
   record.messages[0].content = '完全不同的问题';
   await service.save(record);
   assert.equal((await service.load(record.id)).titleSource, 'temporary');
+});
+
+add('short writes preserve UTF-8 messages and complete JSON before reporting success', async () => {
+  for (const size of [1, 2, 7]) {
+    const dir = path.join(temporary, `short-write-${size}`);
+    const service = new ChatHistoryService(); await service.initialize(dir);
+    const record = conversation(`c-short-${size}`);
+    record.messages[1].content = '中文🙂𠮷与组合字符é'.repeat(8);
+    const write = fileIo.write; let calls = 0;
+    fileIo.write = async (fd, value) => {
+      calls++;
+      const bytes = Buffer.from(value);
+      return fs.writeSync(fd, bytes.subarray(0, size));
+    };
+    try { await service.save(record); } finally { fileIo.write = write; }
+    const restarted = new ChatHistoryService(); await restarted.initialize(dir);
+    assert.equal((await restarted.load(record.id)).messages[1].content, record.messages[1].content);
+    assert.ok(calls > 2);
+  }
+});
+add('zero-progress and interrupted writes keep the previous record and allow retry', async () => {
+  for (const fault of ['zero', 'throw']) {
+    const dir = path.join(temporary, `write-failure-${fault}`);
+    const service = new ChatHistoryService(); await service.initialize(dir);
+    const record = conversation(`c-write-${fault}`); await service.save(record);
+    const filename = path.join(dir, 'chat-history', record.id, 'conversation.json');
+    const before = fs.readFileSync(filename, 'utf8'); record.messages[1].content = '修改后🙂';
+    const write = fileIo.write; let calls = 0;
+    fileIo.write = async (fd, value) => {
+      if (++calls > 1) {
+        if (fault === 'zero') return 0;
+        throw new Error('injected write failure');
+      }
+      return fs.writeSync(fd, Buffer.from(value).subarray(0, 3));
+    };
+    try { await assert.rejects(service.save(record)); } finally { fileIo.write = write; }
+    assert.equal(fs.readFileSync(filename, 'utf8'), before);
+    await service.save(record);
+    assert.equal((await service.load(record.id)).messages[1].content, '修改后🙂');
+  }
+});
+add('missing or damaged primary index restores active selection from a valid backup', async () => {
+  for (const damage of ['missing', 'json', 'version']) {
+    const dir = path.join(temporary, `index-recovery-${damage}`);
+    const service = new ChatHistoryService(); await service.initialize(dir);
+    const record = conversation(`c-index-${damage}`); await service.save(record);
+    const filename = path.join(dir, 'chat-history', 'index.json');
+    fs.copyFileSync(filename, filename + '.tmp');
+    fs.rmSync(filename + '.bak', { force: true }); fs.renameSync(filename, filename + '.bak');
+    if (damage !== 'missing') fs.writeFileSync(filename, damage === 'json' ? '{broken' : JSON.stringify({ version: 99, activeId: '' }));
+    const restarted = new ChatHistoryService(); const index = await restarted.initialize(dir);
+    assert.equal(index.activeId, record.id); assert.equal(restarted.list().length, 1);
+    assert.equal((await restarted.load(record.id)).messages[1].content, record.messages[1].content);
+    const again = new ChatHistoryService(); assert.equal((await again.initialize(dir)).activeId, record.id);
+  }
+});
+add('primary empty selection wins and backup cannot restore a deleted conversation', async () => {
+  const dir = path.join(temporary, 'index-empty-selection');
+  const service = new ChatHistoryService(); await service.initialize(dir);
+  const record = conversation('c-empty-selection'); await service.save(record); await service.selectEmpty();
+  const restarted = new ChatHistoryService(); assert.equal((await restarted.initialize(dir)).activeId, '');
+  await restarted.load(record.id); await restarted.remove(record.id);
+  const filename = path.join(dir, 'chat-history', 'index.json'); fs.unlinkSync(filename);
+  const deleted = new ChatHistoryService(); const index = await deleted.initialize(dir);
+  assert.equal(index.activeId, ''); assert.equal(deleted.list().length, 0);
+});
+add('unreadable indexes rebuild records while valid primary selection takes precedence', async () => {
+  const dir = path.join(temporary, 'index-precedence');
+  const service = new ChatHistoryService(); await service.initialize(dir);
+  await service.save(conversation('c-first')); await service.save(conversation('c-second'));
+  const normal = new ChatHistoryService(); assert.equal((await normal.initialize(dir)).activeId, 'c-second');
+  const filename = path.join(dir, 'chat-history', 'index.json'); fs.writeFileSync(filename, '{bad'); fs.writeFileSync(filename + '.bak', '{bad');
+  const rebuilt = new ChatHistoryService(); assert.equal((await rebuilt.initialize(dir)).activeId, ''); assert.equal(rebuilt.list().length, 2);
 });
 
 for (const name of ['ChatSession', 'Thinking', 'Markdown', 'GenerationWorkflow', 'GenerationMetrics', 'OpenAiApiServer', 'Knowledge', 'KnowledgeRelations']) {
