@@ -237,7 +237,7 @@ def build_item(args: argparse.Namespace) -> dict[str, Any]:
     provider = args.provider.strip() or repo.split("/", 1)[0]
     supports_image = infer_supports_image(args.supports_image, llm_config, selected_files)
     description = args.description.strip() or "来自 ModelScope 的兼容 MNN 端侧模型。"
-    capabilities = ["文本", "图片"] if supports_image else ["文本"]
+    capabilities = ["对话", "图像理解"] if supports_image else ["对话"]
     runtime = build_runtime(display_name, supports_image, args.system_prompt, args.context_message_limit,
                             config, generation_config)
 

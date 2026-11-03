@@ -79,7 +79,7 @@ export struct RerankerModels {
       } else if (this.management) {
         Text('模型管理').fontSize(16).fontWeight(FontWeight.Bold)
           .fontColor($r('app.color.text_title')).width('100%')
-        Text('支持 Qwen3-Reranker 的 MNN 导出目录。请导入专用重排模型，普通聊天模型不能用于相关性评分。')
+        Text('可从模型广场下载，或导入 Qwen3-Reranker 的 MNN 导出目录。')
           .fontSize(12).lineHeight(18).fontColor($r('app.color.text_muted')).width('100%')
         Button('选择文件夹导入')
           .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
@@ -104,7 +104,7 @@ export struct RerankerModels {
           Column({ space: 12 }) {
             Image($r('app.media.model_search_empty')).width(36).height(36)
               .fillColor($r('app.color.text_muted')).opacity(0.65).accessibilityLevel('no')
-            Text('尚未导入重排模型').fontSize(13).fontColor($r('app.color.text_muted'))
+            Text('尚未安装重排模型').fontSize(13).fontColor($r('app.color.text_muted'))
           }.width('100%').height(156).justifyContent(FlexAlign.Center)
             .alignItems(HorizontalAlign.Center)
         } else {

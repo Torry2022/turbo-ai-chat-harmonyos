@@ -1,3 +1,4 @@
+import { ModelCatalogItem } from '../models/BuiltinModelDownloadTypes'
 import { common } from '@kit.AbilityKit'
 import picker from '@ohos.file.picker'
 import fs from '@ohos.file.fs'
@@ -237,6 +238,22 @@ export class ModelImportService {
       }
     }
     return normalized
+  }
+
+  async registerCatalogModel(filesDir: string, item: ModelCatalogItem): Promise<ModelProfile[]> {
+    if (!this.reranker || item.modelType !== 'rerank' || !this.isSafeImportedDirectoryName(item.directoryName)) {
+      throw new Error('模型分类或安装目录无效')
+    }
+    const profiles = await this.loadImportedProfiles(filesDir)
+    const configPath = `${this.importRoot(filesDir)}/${item.directoryName}/config.json`
+    if (profiles.some((profile: ModelProfile) => profile.configPath === configPath)) return profiles
+    await this.preflightService.requireCompatible(configPath, false, item.files, false)
+    profiles.push({ id: uniqueModelId(`catalog-${item.id}`, profiles), name: item.displayName,
+      shortName: item.shortName, directoryName: item.directoryName, description: item.description,
+      supportsImage: false, systemPrompt: '', source: IMPORTED_MODEL_SOURCE, configPath,
+      catalogItemId: item.id, downloadId: item.id, editable: false, removable: true })
+    await this.saveImportedProfiles(filesDir, profiles)
+    return profiles
   }
 
   async saveImportedProfiles(filesDir: string, profiles: ModelProfile[]): Promise<void> {

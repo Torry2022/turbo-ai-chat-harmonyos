@@ -150,6 +150,21 @@ async function check(name, run, reranker = false) {
     assert.equal(t.saved()[0], result.profile);
     assert(t.deleted.every(p => p.startsWith('/app/')));
   });
+  await check('downloaded reranker registers only its directory and retains existing imports', async t => {
+    const existing = [{ id: 'old', source: 'imported', configPath: '/app/rerank-models/old/config.json', directoryName: 'old' }];
+    t.service.loadImportedProfiles = async () => existing;
+    const item = { id: 'official-rank', modelType: 'rerank', directoryName: 'Qwen3-Reranker-0.6B-MNN',
+      displayName: 'Qwen3-Reranker-0.6B', shortName: 'Qwen3-Reranker-0.6B', description: '排序', files: [] };
+    const profiles = await t.service.registerCatalogModel('/app', item);
+    assert.equal(profiles.length, 2);
+    assert.equal(profiles[0].id, 'old');
+    assert.equal(profiles[1].catalogItemId, item.id);
+    assert.equal(profiles[1].configPath, '/app/rerank-models/Qwen3-Reranker-0.6B-MNN/config.json');
+    assert.equal(profiles[1].source, 'imported');
+    assert.equal((await t.service.registerCatalogModel('/app', item)).length, 2);
+    await assert.rejects(t.service.registerCatalogModel('/app', { ...item, modelType: 'chat' }), /分类/);
+    await assert.rejects(t.service.registerCatalogModel('/app', { ...item, directoryName: '../bad' }), /目录/);
+  }, true);
   await check('low space rejects before copying and does not save manifest', async t => {
     t.lowSpace();
     await assert.rejects(t.service.pickAndImport({ filesDir: '/app' }, [], true), /读取文件夹失败.*空间不足/);

@@ -7,6 +7,7 @@ import {
   BuiltinModelInstallProgress,
   ModelCatalogItem
 } from '../models/BuiltinModelDownloadTypes'
+import { modelInstallDirectory } from '../utils/modelCatalog'
 import { ModelProfile } from '../models/ModelProfile'
 import { calculateDownloadedBytes, calculateDownloadProgress } from '../utils/downloadProgress'
 import { formatDownloadError } from '../utils/formatters'
@@ -51,10 +52,16 @@ export class BuiltinModelInstallService {
   }
 
   async isCatalogItemInstalled(filesDir: string, item: ModelCatalogItem): Promise<boolean> {
+    if (item.modelType === 'decision') {
+      for (const file of item.files) {
+        if (!await this.isInstalledFile(this.filePath(filesDir, item, file), file)) return false
+      }
+      return item.files.length > 0
+    }
     const result = await this.preflightService.validate(
-      `${filesDir}/${item.directoryName}/config.json`,
+      `${modelInstallDirectory(filesDir, item)}/config.json`,
       item.supportsImage,
-      item.files
+      item.files, item.modelType !== 'rerank'
     )
     return result.compatible
   }
@@ -81,7 +88,7 @@ export class BuiltinModelInstallService {
     if (spec === undefined) {
       return false
     }
-    const targetDir = `${filesDir}/${spec.directoryName}`
+    const targetDir = modelInstallDirectory(filesDir, spec)
     if (!await this.exists(targetDir)) {
       return false
     }
@@ -148,7 +155,7 @@ export class BuiltinModelInstallService {
     onProgress: ProgressCallback
   ): Promise<void> {
     this.cancelRequested = false
-    await this.ensureDir(`${context.filesDir}/${spec.directoryName}`)
+    await this.ensureDir(modelInstallDirectory(context.filesDir, spec))
 
     let completedBytes = 0
     for (let index = 0; index < spec.files.length; index++) {
@@ -387,7 +394,7 @@ export class BuiltinModelInstallService {
   }
 
   private filePath(filesDir: string, spec: BuiltinModelDownloadSpec, file: BuiltinModelFileSpec): string {
-    return `${filesDir}/${spec.directoryName}/${file.relativePath}`
+    return `${modelInstallDirectory(filesDir, spec)}/${file.relativePath}`
   }
 
   private async ensureDir(path: string): Promise<void> {

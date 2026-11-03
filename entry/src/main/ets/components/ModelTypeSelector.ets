@@ -47,7 +47,7 @@ export struct ModelTypeSelector {
         .backgroundColor($r('app.color.gallery_entry_background'))
         .translate({ x: this.indicatorOffset(), y: 2 })
       Row({ space: 2 }) {
-        this.Segment('聊天模型', 'chat')
+        this.Segment('对话模型', 'chat')
         this.Segment('决策模型', 'decision')
         if (this.showReranker) {
           this.Segment('重排模型', 'rerank')

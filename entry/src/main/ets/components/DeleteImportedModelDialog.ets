@@ -19,6 +19,9 @@ export struct DeleteModelDialog {
     if (model !== undefined && model.source === 'builtin') {
       return '删除后会清理该内置模型在 App 沙箱中的文件，模型条目仍会保留，可在需要时重新下载安装。当前对话不会被删除。'
     }
+    if (model?.catalogItemId) {
+      return '将删除该模型的本地文件和列表条目，可从模型广场重新下载。当前对话会保留。'
+    }
     return '删除后会移除该导入模型条目和 App 沙箱中的文件，当前对话不会被删除。'
   }
 

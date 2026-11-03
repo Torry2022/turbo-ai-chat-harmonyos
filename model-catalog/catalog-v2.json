@@ -14,7 +14,7 @@
       "provider": "MNN",
       "supportsImage": false,
       "capabilities": [
-        "文本"
+        "对话"
       ],
       "source": {
         "type": "modelscope",
@@ -71,7 +71,7 @@
       "provider": "MNN",
       "supportsImage": false,
       "capabilities": [
-        "文本"
+        "对话"
       ],
       "source": {
         "type": "modelscope",
@@ -128,7 +128,7 @@
       "provider": "MNN",
       "supportsImage": false,
       "capabilities": [
-        "文本"
+        "对话"
       ],
       "source": {
         "type": "modelscope",
@@ -185,7 +185,7 @@
       "provider": "MNN",
       "supportsImage": false,
       "capabilities": [
-        "文本"
+        "对话"
       ],
       "source": {
         "type": "modelscope",
@@ -238,7 +238,7 @@
       "provider": "MNN",
       "supportsImage": false,
       "capabilities": [
-        "文本"
+        "对话"
       ],
       "source": {
         "type": "modelscope",
@@ -295,7 +295,7 @@
       "provider": "MNN",
       "supportsImage": false,
       "capabilities": [
-        "文本"
+        "对话"
       ],
       "source": {
         "type": "modelscope",
@@ -352,7 +352,7 @@
       "provider": "Qwen",
       "supportsImage": false,
       "capabilities": [
-        "文本"
+        "对话"
       ],
       "source": {
         "type": "modelscope",
@@ -409,8 +409,8 @@
       "provider": "Qwen",
       "supportsImage": true,
       "capabilities": [
-        "文本",
-        "图片"
+        "对话",
+        "图像理解"
       ],
       "source": {
         "type": "modelscope",
@@ -475,7 +475,7 @@
       "provider": "Qwen",
       "supportsImage": false,
       "capabilities": [
-        "文本"
+        "对话"
       ],
       "source": {
         "type": "modelscope",
@@ -532,7 +532,7 @@
       "provider": "Qwen",
       "supportsImage": false,
       "capabilities": [
-        "文本"
+        "对话"
       ],
       "source": {
         "type": "modelscope",
@@ -589,7 +589,7 @@
       "provider": "MiniCPM",
       "supportsImage": false,
       "capabilities": [
-        "文本"
+        "对话"
       ],
       "source": {
         "type": "modelscope",
@@ -646,7 +646,7 @@
       "provider": "MiniCPM",
       "supportsImage": false,
       "capabilities": [
-        "文本"
+        "对话"
       ],
       "source": {
         "type": "modelscope",

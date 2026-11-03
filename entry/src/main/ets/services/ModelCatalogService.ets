@@ -11,7 +11,9 @@ import {
   ModelCatalogRefreshResult,
   RemoteModelCatalogManifest
 } from '../models/ModelCatalogTypes'
+import { LAYA_DOWNLOAD_SPEC } from '../models/LayaModelConfig'
 import { ModelProfile } from '../models/ModelProfile'
+import { OfficialCatalog, officialModelRepo, parseOfficialModelCatalog, parseOfficialRerankerCatalog, parseOfficialRepoFiles, resolveOfficialCatalogItem } from '../utils/officialModelCatalog'
 import {
   catalogItemToProfile,
   mergeCatalogItems,
@@ -27,11 +29,22 @@ export const REMOTE_MODEL_CATALOG_URL: string =
 const REMOTE_MODEL_CATALOG_API_URL: string =
   'https://api.github.com/repos/Torry2022/turbo-ai-chat-harmonyos/contents/model-catalog/catalog-v2.json?ref=main'
 
+export const OFFICIAL_MODEL_CATALOG_URL: string = 'https://meta.alicdn.com/data/mnn/apis/model_market.json'
+const OFFICIAL_CATALOG_CACHE_FILE: string = 'model-catalog-official.json'
+const RERANKER_CATALOG_CACHE_FILE: string = 'model-catalog-rerank.json'
+
+const OFFICIAL_RESOLVED_CACHE_FILE: string = 'model-catalog-official-files.json'
+
 const CATALOG_CACHE_FILE: string = 'model-catalog-cache-v2.json'
 const INSTALLED_CATALOG_FILE: string = 'model-catalog-installs-v2.json'
 const LEGACY_INSTALLED_CATALOG_FILE: string = 'model-catalog-installs.json'
 
 export class ModelCatalogService {
+  private rerankerItems: ModelCatalogItem[] = []
+  private rerankerCatalogStatus: string = '正在读取重排模型目录...'
+  private officialItems: ModelCatalogItem[] = []
+  private resolvedItems: ModelCatalogItem[] = []
+  private officialVersion: number = 0
   private marketItems: ModelCatalogItem[] = MODEL_CATALOG_ITEMS.slice()
   private installedItems: ModelCatalogItem[] = []
   private catalogVersion: number = 0
@@ -39,11 +52,13 @@ export class ModelCatalogService {
   private source: string = '内置目录'
 
   items(): ModelCatalogItem[] {
-    return this.marketItems
+    const official = this.officialItems.concat(this.rerankerItems).map((item: ModelCatalogItem) =>
+      this.findItem(this.resolvedItems, item.id) ?? item)
+    return mergeCatalogItems(mergeCatalogItems(official, this.marketItems), [LAYA_DOWNLOAD_SPEC])
   }
 
   knownItems(): ModelCatalogItem[] {
-    return mergeCatalogItems(mergeCatalogItems(this.installedItems, this.marketItems), MODEL_CATALOG_ITEMS)
+    return mergeCatalogItems(mergeCatalogItems(this.installedItems, this.items()), MODEL_CATALOG_ITEMS)
   }
 
   bundledItems(): ModelCatalogItem[] {
@@ -63,7 +78,7 @@ export class ModelCatalogService {
   }
 
   findMarketItem(id: string | undefined): ModelCatalogItem | undefined {
-    return this.findItem(this.marketItems, id)
+    return this.findItem(this.items(), id)
   }
 
   findInstallItem(id: string | undefined): ModelCatalogItem | undefined {
@@ -86,68 +101,156 @@ export class ModelCatalogService {
     await this.loadInstalledItems(filesDir)
     const cachePath = `${filesDir}/${CATALOG_CACHE_FILE}`
     await this.recoverAtomicFile(cachePath)
-    if (!await this.exists(cachePath)) {
-      return this.result('内置目录', '正在使用安装包内置模型目录')
+    if (await this.exists(cachePath)) {
+      try {
+        this.applyManifest(parseRemoteModelCatalog(await fs.readText(cachePath)), '本地缓存')
+      } catch (_) {
+        hilog.warn(0, 'TurboAIChat', 'Ignoring invalid supplemental catalog cache')
+      }
     }
-    try {
-      const text = await fs.readText(cachePath)
-      const manifest = parseRemoteModelCatalog(text)
-      this.applyManifest(manifest, '本地缓存')
-      return this.result('本地缓存', '已载入上次更新的模型目录')
-    } catch (_) {
-      this.marketItems = MODEL_CATALOG_ITEMS.slice()
-      this.catalogVersion = 0
-      this.publishedAt = ''
-      this.source = '内置目录'
-      return this.result('内置目录', '模型目录缓存无效，已使用安装包内置目录')
+    const resolvedPath = `${filesDir}/${OFFICIAL_RESOLVED_CACHE_FILE}`
+    await this.recoverAtomicFile(resolvedPath)
+    if (await this.exists(resolvedPath)) {
+      try { this.resolvedItems = parseInstalledCatalog(await fs.readText(resolvedPath)) } catch (_) {
+        this.resolvedItems = []
+      }
     }
+    const officialPath = `${filesDir}/${OFFICIAL_CATALOG_CACHE_FILE}`
+    await this.recoverAtomicFile(officialPath)
+    if (await this.exists(officialPath)) {
+      try { this.applyOfficialCatalog(parseOfficialModelCatalog(await fs.readText(officialPath), this.marketItems)) } catch (_) {
+        hilog.warn(0, 'TurboAIChat', 'Ignoring invalid official catalog cache')
+      }
+    }
+    const rerankerPath = `${filesDir}/${RERANKER_CATALOG_CACHE_FILE}`
+    await this.recoverAtomicFile(rerankerPath)
+    if (await this.exists(rerankerPath)) {
+      try {
+        this.rerankerItems = parseOfficialRerankerCatalog(await fs.readText(rerankerPath))
+        this.rerankerCatalogStatus = '已载入缓存的重排模型目录'
+      } catch (_) { this.rerankerCatalogStatus = '重排模型目录缓存无效，请刷新重试' }
+    } else { this.rerankerCatalogStatus = '尚未获取重排模型目录，请刷新' }
+    return this.result(this.source, this.officialVersion > 0 ? '已载入缓存的官方模型目录' :
+      this.catalogVersion > 0 ? '已载入上次更新的模型目录' : '正在使用安装包内置模型目录')
   }
 
   async refresh(filesDir: string): Promise<ModelCatalogRefreshResult> {
+    let officialError: Error | undefined = undefined
+    let supplementalError: Error | undefined = undefined
+    let rerankerError: Error | undefined = undefined
+    let updated = false
+    await Promise.all([
+      this.refreshOfficial(filesDir).then((changed: boolean) => { updated = updated || changed })
+        .catch((err: Error) => {
+          officialError = err
+          hilog.warn(0, 'TurboAIChat', 'Official catalog refresh failed: %{public}s', formatError(err))
+        }),
+      this.refreshSupplemental(filesDir).then((changed: boolean) => { updated = updated || changed })
+        .catch((err: Error) => {
+          supplementalError = err
+          hilog.warn(0, 'TurboAIChat', 'Supplemental catalog refresh failed: %{public}s', formatError(err))
+        }),
+      this.refreshRerankers(filesDir).then((changed: boolean) => { updated = updated || changed })
+        .catch((err: Error) => {
+          rerankerError = err
+          this.rerankerCatalogStatus = this.rerankerItems.length > 0 ? '重排目录更新失败，已保留缓存' : '重排目录更新失败，请重试'
+          hilog.warn(0, 'TurboAIChat', 'Reranker catalog refresh failed: %{public}s', formatError(err))
+        })
+    ])
+    if (officialError !== undefined && supplementalError !== undefined && rerankerError !== undefined) throw officialError as Error
+    const result = this.result(this.source, officialError !== undefined ?
+      (this.officialVersion > 0 ? '官方目录更新失败，已保留缓存' : '官方目录暂不可用，已使用补充目录') :
+      updated ? '模型广场已更新' : '模型广场已是最新')
+    return { source: result.source, catalogVersion: result.catalogVersion,
+      publishedAt: result.publishedAt, message: result.message, updated }
+  }
+
+  rerankerStatus(): string { return this.rerankerCatalogStatus }
+
+  private async refreshRerankers(filesDir: string): Promise<boolean> {
+    const text = await this.requestCatalog('https://modelscope.cn/api/v1/models', 'application/json', 15000,
+      http.RequestMethod.PUT, JSON.stringify({ Path: 'MNN', Name: 'Qwen3-Reranker', PageNumber: 1, PageSize: 100 }))
+    const items = parseOfficialRerankerCatalog(text)
+    const changed = JSON.stringify(items) !== JSON.stringify(this.rerankerItems)
+    await this.writeTextAtomically(`${filesDir}/${RERANKER_CATALOG_CACHE_FILE}`, text)
+    this.rerankerItems = items
+    this.rerankerCatalogStatus = '重排模型目录已更新'
+    return changed
+  }
+
+  private async refreshOfficial(filesDir: string): Promise<boolean> {
+    const text = await this.requestCatalog(OFFICIAL_MODEL_CATALOG_URL, 'application/json')
+    const catalog = parseOfficialModelCatalog(text, this.marketItems)
+    if (catalog.version < this.officialVersion) throw new Error('官方目录版本较旧，已保留当前目录')
+    const changed = catalog.version !== this.officialVersion
+    await this.writeTextAtomically(`${filesDir}/${OFFICIAL_CATALOG_CACHE_FILE}`, text)
+    this.applyOfficialCatalog(catalog)
+    return changed
+  }
+
+  private async refreshSupplemental(filesDir: string): Promise<boolean> {
     let text: string
     try {
-      text = await this.requestCatalog(REMOTE_MODEL_CATALOG_URL, 'application/json')
-    } catch (err) {
-      hilog.warn(0, 'TurboAIChat', 'Model catalog raw request failed: %{public}s', formatError(err as Object))
-      text = await this.requestCatalog(REMOTE_MODEL_CATALOG_API_URL, 'application/vnd.github.raw+json')
+      text = await this.requestCatalog(REMOTE_MODEL_CATALOG_URL, 'application/json', 5000)
+    } catch (_) {
+      text = await this.requestCatalog(REMOTE_MODEL_CATALOG_API_URL, 'application/vnd.github.raw+json', 5000)
     }
     const manifest = parseRemoteModelCatalog(text)
-    if (manifest.catalogVersion <= this.catalogVersion) {
-      return {
-        updated: false,
-        source: this.source,
-        catalogVersion: this.catalogVersion,
-        publishedAt: this.publishedAt,
-        message: manifest.catalogVersion === this.catalogVersion ?
-          '模型广场已是最新' : '在线目录版本较旧，已保留当前目录'
-      }
-    }
+    if (manifest.catalogVersion <= this.catalogVersion) return false
     const nextItems = mergeRemoteModelCatalog(MODEL_CATALOG_ITEMS, manifest)
     await this.writeTextAtomically(`${filesDir}/${CATALOG_CACHE_FILE}`, JSON.stringify(manifest, undefined, 2))
     this.marketItems = nextItems
     this.catalogVersion = manifest.catalogVersion
     this.publishedAt = manifest.publishedAt
     this.source = '在线目录'
-    return {
-      updated: true,
-      source: this.source,
-      catalogVersion: this.catalogVersion,
-      publishedAt: this.publishedAt,
-      message: '模型广场已更新'
-    }
+    // A supplemental update may claim a repository that was discovered earlier.
+    this.officialItems = this.officialItems.filter((item: ModelCatalogItem) =>
+      !this.marketItems.some((known: ModelCatalogItem) =>
+        known.sourceUrl.toLowerCase() === item.sourceUrl.toLowerCase() ||
+        known.directoryName.toLowerCase() === item.directoryName.toLowerCase()))
+    return true
   }
 
-  private async requestCatalog(url: string, accept: string): Promise<string> {
+  private applyOfficialCatalog(catalog: OfficialCatalog): void {
+    this.officialVersion = catalog.version
+    this.officialItems = catalog.items.filter((item: ModelCatalogItem) =>
+      !this.marketItems.some((known: ModelCatalogItem) =>
+        known.sourceUrl.toLowerCase() === item.sourceUrl.toLowerCase() ||
+        known.directoryName.toLowerCase() === item.directoryName.toLowerCase()))
+  }
+
+  async resolveInstallItem(filesDir: string, id: string): Promise<ModelCatalogItem> {
+    const item = this.findMarketItem(id) ?? this.findInstallItem(id)
+    if (item === undefined) throw new Error('模型广场条目不存在')
+    if (item.files.length > 0) return item
+    const repo = officialModelRepo(item)
+    const text = await this.requestCatalog(
+      `https://modelscope.cn/api/v1/models/${repo}/repo/files?Revision=master&Recursive=true`, 'application/json')
+    const listing = parseOfficialRepoFiles(text, repo)
+    const root = `https://modelscope.cn/models/${repo}/resolve/${listing.revision}`
+    const config = await this.requestCatalog(`${root}/config.json`, 'application/json')
+    const llmConfig = await this.requestCatalog(`${root}/llm_config.json`, 'application/json')
+    const resolved = resolveOfficialCatalogItem(item, listing.files, config, llmConfig)
+    const next = this.resolvedItems.filter((value: ModelCatalogItem) => value.id !== id)
+    next.push(resolved)
+    await this.writeTextAtomically(`${filesDir}/${OFFICIAL_RESOLVED_CACHE_FILE}`, serializeInstalledCatalog(next))
+    this.resolvedItems = next
+    return resolved
+  }
+
+  private async requestCatalog(url: string, accept: string, timeout: number = 15000,
+    method: http.RequestMethod = http.RequestMethod.GET, extraData?: string): Promise<string> {
     const request = http.createHttp()
     try {
       const response = await request.request(url, {
-        method: http.RequestMethod.GET,
+        method, extraData,
         expectDataType: http.HttpDataType.STRING,
         usingCache: false,
-        connectTimeout: 10000,
-        readTimeout: 15000,
+        connectTimeout: Math.min(10000, timeout),
+        readTimeout: timeout,
         header: {
           'Accept': accept,
+          'Content-Type': 'application/json',
           'User-Agent': 'Turbo-AI-Chat-HarmonyOS'
         }
       })
@@ -165,6 +268,7 @@ export class ModelCatalogService {
   }
 
   async recordInstalled(filesDir: string, item: ModelCatalogItem): Promise<void> {
+    if (item.files.length === 0) throw new Error('模型文件信息尚未解析，不能记录为已安装')
     const next = this.installedItems.slice()
     const existingIndex = this.findItemIndex(next, item.id)
     if (existingIndex >= 0) {
@@ -217,9 +321,9 @@ export class ModelCatalogService {
 
   private result(source: string, message: string): ModelCatalogLoadResult {
     return {
-      source,
-      catalogVersion: this.catalogVersion,
-      publishedAt: this.publishedAt,
+      source: this.officialVersion > 0 ? 'MNN 官方目录' : source,
+      catalogVersion: this.officialVersion > 0 ? this.officialVersion : this.catalogVersion,
+      publishedAt: this.officialVersion > 0 ? '' : this.publishedAt,
       message
     }
   }

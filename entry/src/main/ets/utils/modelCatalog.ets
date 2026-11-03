@@ -26,6 +26,16 @@ const FILE_PATH_PATTERN: RegExp = /^[A-Za-z0-9._\/-]+$/
 const REPO_PATTERN: RegExp = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/
 const REVISION_PATTERN: RegExp = /^[A-Za-z0-9._-]+$/
 
+export function catalogCapabilityLabels(capabilities: string[]): string[] {
+  const labels: string[] = []
+  for (const value of capabilities) {
+    if (value === '通用' || value === '轻量' || value === '超轻量' || value === '中档' || value === '低内存' || value === '大内存') continue
+    const label = value === '文本' ? '对话' : value === '图片' ? '图像理解' : value === '思考' ? '深度思考' : value
+    if (!labels.includes(label)) labels.push(label)
+  }
+  return labels
+}
+
 export function catalogCompatibilityMessage(item: BuiltinModelDownloadSpec, appVersionCode: number): string {
   if (item.minAppVersionCode === undefined) {
     return ''
@@ -113,7 +123,7 @@ export function mergeRemoteModelCatalog(
 }
 
 export function catalogItemToProfile(item: ModelCatalogItem): ModelProfile | undefined {
-  if (item.runtime === undefined) {
+  if ((item.modelType !== undefined && item.modelType !== 'chat') || item.runtime === undefined) {
     return undefined
   }
   const runtime = item.runtime
@@ -233,6 +243,8 @@ function validateOptionalNumber(value: number | undefined, message: string, mini
 }
 
 function validateInstalledItem(item: ModelCatalogItem): void {
+  requireCondition(item.modelType === undefined || ['chat', 'decision', 'rerank'].includes(item.modelType),
+    '已安装模型分类无效')
   validateMinAppVersionCode(item.minAppVersionCode)
   requireCondition(isValidId(item.id), '已安装市场模型 ID 无效')
   requireCondition(isSafeDirectoryName(item.directoryName), `已安装模型目录无效：${item.id}`)
@@ -344,4 +356,8 @@ function requireCondition(condition: boolean, message: string): void {
   if (!condition) {
     throw new Error(message)
   }
+}
+
+export function modelInstallDirectory(filesDir: string, spec: BuiltinModelDownloadSpec): string {
+  return `${filesDir}/${spec.modelType === 'rerank' ? 'rerank-models/' : ''}${spec.directoryName}`
 }

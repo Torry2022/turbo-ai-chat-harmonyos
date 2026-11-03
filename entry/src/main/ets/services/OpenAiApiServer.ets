@@ -826,8 +826,8 @@ export class OpenAiApiServer {
   ): void {
     const apiPath = responsesApi ? '/v1/responses' : '/v1/chat/completions'
     if (!this.callbacks.isModelLoaded()) {
-      this.callbacks.onLog('ERROR', `503 POST ${apiPath} · 聊天模型未加载`)
-      this.sendError(state, 503, 'model_not_ready', '请先在模型页加载聊天模型。')
+      this.callbacks.onLog('ERROR', `503 POST ${apiPath} · 对话模型未加载`)
+      this.sendError(state, 503, 'model_not_ready', '请先在模型页加载对话模型。')
       return
     }
     if (this.activeClientId >= 0 || this.rerankConnection !== undefined || !this.callbacks.isGenerationReady()) {

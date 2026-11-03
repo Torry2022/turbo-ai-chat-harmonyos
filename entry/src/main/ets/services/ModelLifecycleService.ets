@@ -7,6 +7,7 @@ import {
 import { GenerationSettings } from '../models/ChatTypes'
 import { ModelImportResult, ModelImportScanResult } from '../models/ImportedModelTypes'
 import { ModelProfile } from '../models/ModelProfile'
+import { modelInstallDirectory } from '../utils/modelCatalog'
 import { formatError } from '../utils/formatters'
 import { BuiltinModelInstallService } from './BuiltinModelInstallService'
 import { ModelDirectoryPreflightService } from './ModelDirectoryPreflightService'
@@ -73,10 +74,17 @@ export class ModelLifecycleService {
     onProgress: (progress: BuiltinModelInstallProgress) => void
   ): Promise<void> {
     await this.installService.installCatalogItem(context, spec, onProgress)
+    if (spec.modelType === 'decision') {
+      const item = this.installService.getCatalogItem(spec.id)
+      if (item === undefined || !await this.installService.isCatalogItemInstalled(context.filesDir, item)) {
+        throw new Error('决策模型文件不完整')
+      }
+      return
+    }
     await this.preflightService.requireCompatible(
-      `${context.filesDir}/${spec.directoryName}/config.json`,
+      `${modelInstallDirectory(context.filesDir, spec)}/config.json`,
       supportsImage,
-      spec.files
+      spec.files, spec.modelType !== 'rerank'
     )
   }
 

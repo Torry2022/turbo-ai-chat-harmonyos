@@ -1,6 +1,8 @@
 # 在线模型广场目录
 
-在线目录分为两条兼容通道。升级 MNN 的新版 App 读取 `catalog-v2.json`；使用 MNN 3.6.0 的旧版 App 继续读取 `catalog.json`。App 始终保留安装包内置目录；在线文件只需要声明新增模型、需要覆盖的既有条目，以及需要下架的非预置条目。
+模型广场按对话、决策和重排分类。对话模型读取 MNN 官方广场 `https://meta.alicdn.com/data/mnn/apis/model_market.json`，重排模型查询魔搭 MNN 组织的 Qwen3-Reranker 仓库，决策模型沿用 Laya 下载配置。各分类共用现有下载流程，安装后在对应模型列表中手动加载。
+
+本目录作为补充来源，保留预置条目和兼容性配置。补充目录分为两条兼容通道。升级 MNN 的新版 App 读取 `catalog-v2.json`；使用 MNN 3.6.0 的旧版 App 继续读取 `catalog.json`。App 始终保留安装包内置目录；在线文件只需要声明新增模型、需要覆盖的既有条目，以及需要下架的非预置条目。
 
 `v2` 表示运行时兼容通道，不是 JSON 格式版本；两份文件的 `schemaVersion` 都是 1，`catalogVersion` 各自递增。新目录从旧目录复制已有条目，后续互不自动同步。需要新 MNN 算子的模型只能加入新目录，不能依靠旧客户端不认识的最低版本字段进行隔离。发布器只校验目录结构，不能替代两种运行时的真机验证。
 
@@ -8,7 +10,7 @@
 
 ## App 版本要求
 
-每个模型可声明整数 `minAppVersionCode`，与安装包自身的 `versionCode` 比较；它与 `catalogVersion` 无关，也不能按版本名称的字符串大小比较。当前新版为 v1.10.1 / 1100100。要求不满足时条目仍显示，提示“需升级 App”并禁用下载；实际下载及目录模型加载入口也检查，目录缓存和安装快照保留此字段。读取安装包版本失败时，有要求的模型暂不可下载或加载。已安装快照按安装时的文件及版本要求判断，不用在线新权重的要求替换旧权重记录。
+每个模型可声明整数 `minAppVersionCode`，与安装包自身的 `versionCode` 比较；它与 `catalogVersion` 无关，也不能按版本名称的字符串大小比较。要求不满足时条目仍显示，提示“需升级 App”并禁用下载；实际下载及目录模型加载入口也检查，目录缓存和安装快照保留此字段。读取安装包版本失败时，有要求的模型暂不可下载或加载。已安装快照按安装时的文件及版本要求判断，不用在线新权重的要求替换旧权重记录。
 
 旧数据缺少字段时保持兼容读取；显式 null、字符串、负数、小数等无效值会使目录校验失败并保留已有目录。发布器新增或更新条目必须指定最低版本，不自动猜测。导入模型不属于这套目录声明的验证范围。
 
@@ -41,13 +43,13 @@
 
 ## Fork 与二次开发
 
-发布器只负责更新当前仓库中选中的目录，不会自动改变 App 请求在线目录的地址。当前 App 在 [`ModelCatalogService.ets`](../entry/src/main/ets/services/ModelCatalogService.ets) 中固定读取：
+发布器只更新当前仓库中选中的补充目录，不改变 MNN 官方来源。App 在 [`ModelCatalogService.ets`](../entry/src/main/ets/services/ModelCatalogService.ets) 中固定读取：
 
 ```text
 https://raw.githubusercontent.com/Torry2022/turbo-ai-chat-harmonyos/main/model-catalog/catalog-v2.json
 ```
 
-因此，直接 Fork 或克隆后构建的 App 仍会读取 Torry2022 仓库的模型目录。在 Fork 中运行 `Publish model catalog` 只会更新该 Fork 自己的目录，不会影响本仓库；若要让二次开发版本维护独立模型广场，需要将 `REMOTE_MODEL_CATALOG_URL` 改为：
+因此，直接 Fork 或克隆后构建的 App 仍会读取 Torry2022 仓库的补充目录。在 Fork 中运行 `Publish model catalog` 只会更新该 Fork 自己的目录，不会影响本仓库；若要让二次开发版本维护独立模型广场，需要将 `REMOTE_MODEL_CATALOG_URL` 及对应的 `REMOTE_MODEL_CATALOG_API_URL` 改为自己的仓库地址，Raw 地址例如：
 
 ```text
 https://raw.githubusercontent.com/<仓库所有者>/<仓库名>/<默认分支>/model-catalog/catalog-v2.json
@@ -144,7 +146,7 @@ python scripts/model_catalog.py --catalog model-catalog/catalog.json validate
 
 候选生成参数与发布器使用相同的读取规则：优先读取 MNN `config.json`，缺失字段从同一固定提交的 `generation_config.json` 回退；两处都未提供的字段使用预设值。贪心解码配置或无效参数会记录为扫描错误，需人工处理，不静默生成默认参数。旧真机失败记录仅作为复核提示保留，不判定当前版本不兼容；这类候选不会自动进入优先测试队列，也不意味着所有旧模型都要重测。真机验证以当前 App 内的 MNN Runtime 为准。
 
-仓库不会把 MNN 官方组织中的全部模型直接发布到正式模型广场。MNN 组织同时包含文本、多模态、音频、Embedding、图像生成等不同用途的模型，其中部分模型超出移动设备的存储和内存范围，或需要当前 App 尚未接入的输入与预处理链路。
+App 接入官方广场时按当前支持的模态筛选，不会把 MNN 官方组织中的全部模型加入对话列表。MNN 组织同时包含文本、多模态、音频、Embedding、图像生成等不同用途的模型，其中部分模型超出移动设备的存储和内存范围，或需要当前 App 尚未接入的输入与预处理链路。
 
 候选扫描器会读取 MNN 官方组织的在线模型列表，并依次检查：
 
@@ -168,4 +170,6 @@ python scripts/mnn_catalog_sync.py
 
 GitHub Actions 中的 **Scan MNN catalog candidates** 会在每月 1 日自动扫描，也可手动运行；结果作为 `mnn-catalog-candidates` Artifact 保留 30 天。该流程只有仓库读取权限，**不会修改或发布 `catalog.json`**。
 
-通过静态筛选只代表目录结构符合当前 App 的基本要求。候选模型仍需在 HarmonyOS 真机上验证下载、加载、生成、停止、内存占用和重复输出后，再通过 `model_catalog.py add` 发布到正式目录。
+候选扫描用于维护补充目录和安排兼容性测试，不决定官方广场的在线条目。需要固定运行参数或补充兼容性要求的模型，可在真机验证后通过 `model_catalog.py add` 加入补充目录。
+
+官方条目在开始下载时才解析文件清单，读取同一提交的 `config.json` 和 `llm_config.json` 并执行目录预检。预检通过后固定提交用于下载和续传。重排模型安装在 `rerank-models/` 下，Laya 沿用 `laya-probe/`，不会注册为对话模型。官方目录的 `min_app_version` 是 MNN Chat 的版本要求，不用于比较本 App 的版本。能力标签沿用官方名称，如“对话”“图像理解”“深度思考”；`Think` 仅表示能力标签，不代表已提供统一的思考开关。

@@ -13,6 +13,9 @@ let requestedUrl;
 let replies = [];
 let requests = [];
 let destroyed = 0;
+let officialResponse;
+let rerankerResponse;
+let urlResponses = new Map();
 const mockFs = {
   OpenMode: { WRITE_ONLY: 1, CREATE: 2, TRUNC: 4 },
   access: async (name) => files.has(name),
@@ -42,11 +45,21 @@ function load(name) {
     if (id === '@kit.PerformanceAnalysisKit') return { hilog: { warn: () => {}, info: () => {} } };
     if (id === '@ohos.file.fs') return { default: mockFs };
     if (id === '@ohos.net.http') return { default: {
-      RequestMethod: { GET: 'GET' }, HttpDataType: { STRING: 'string' },
+      RequestMethod: { GET: 'GET', PUT: 'PUT' }, HttpDataType: { STRING: 'string' },
       createHttp: () => ({
         request: async (url, options) => {
           requestedUrl = url;
           requests.push({ url, options });
+          if (urlResponses.has(url)) {
+            const reply = urlResponses.get(url);
+            if (reply instanceof Error) throw reply;
+            return reply;
+          }
+          if (url === 'https://modelscope.cn/api/v1/models') return rerankerResponse || { responseCode: 503, result: '' };
+          if (url.includes('meta.alicdn.com')) {
+            if (officialResponse instanceof Error) throw officialResponse;
+            return officialResponse || { responseCode: 503, result: '' };
+          }
           if (replies.length) {
             const reply = replies.shift();
             if (reply instanceof Error) throw reply;
@@ -75,7 +88,7 @@ const newCache = '/test/model-catalog-cache-v2.json';
 const snapshot = serializeInstalledCatalog([MODEL_CATALOG_ITEMS[0]]);
 async function check(name, test) {
   files.clear();
-  replies = []; requests = []; destroyed = 0;
+  replies = []; requests = []; destroyed = 0; officialResponse = undefined; rerankerResponse = undefined; urlResponses = new Map();
   await test();
   console.log('PASS', name);
 }
@@ -187,7 +200,7 @@ async function main() {
     assert.equal((await service.load('/test')).catalogVersion, 0);
     remote = { ...manifest, catalogVersion: 2 };
     assert((await service.refresh('/test')).updated);
-    assert(requestedUrl.endsWith('/model-catalog/catalog-v2.json'));
+    assert(requests.some(request => request.url.endsWith('/model-catalog/catalog-v2.json')));
     assert.equal(files.get(oldCache), oldText);
     assert.equal(JSON.parse(files.get(newCache)).catalogVersion, 2);
     assert.equal((await new ModelCatalogService().load('/test')).catalogVersion, 2);
@@ -197,11 +210,12 @@ async function main() {
     replies.push(Object.assign(new Error('Operation timeout'), { code: 2300028 }));
     const service = new ModelCatalogService();
     assert((await service.refresh('/test')).updated);
-    assert.equal(requests.length, 2);
-    assert(requests[0].url.startsWith('https://raw.githubusercontent.com/'));
-    assert.equal(requests[1].url, 'https://api.github.com/repos/Torry2022/turbo-ai-chat-harmonyos/contents/model-catalog/catalog-v2.json?ref=main');
-    assert.equal(requests[1].options.header.Accept, 'application/vnd.github.raw+json');
-    assert.equal(destroyed, 2);
+    const supplemental = requests.filter(request => !request.url.includes('meta.alicdn.com') && request.url !== 'https://modelscope.cn/api/v1/models');
+    assert.equal(supplemental.length, 2);
+    assert(supplemental[0].url.startsWith('https://raw.githubusercontent.com/'));
+    assert.equal(supplemental[1].url, 'https://api.github.com/repos/Torry2022/turbo-ai-chat-harmonyos/contents/model-catalog/catalog-v2.json?ref=main');
+    assert.equal(supplemental[1].options.header.Accept, 'application/vnd.github.raw+json');
+    assert.equal(destroyed, requests.length);
     assert.equal((await new ModelCatalogService().load('/test')).catalogVersion, remote.catalogVersion);
   });
   await check('both endpoints failing preserves valid cached catalog', async () => {
@@ -210,10 +224,10 @@ async function main() {
     const cached = files.get(newCache);
     const items = JSON.stringify(service.items());
     replies.push({ responseCode: 503, result: '' }, Object.assign(new Error('Operation timeout'), { code: 2300028 }));
-    await assert.rejects(service.refresh('/test'), /Operation timeout/);
+    await assert.rejects(service.refresh('/test'), /HTTP 503/);
     assert.equal(files.get(newCache), cached);
     assert.equal(JSON.stringify(service.items()), items);
-    assert.equal(destroyed, 3);
+    assert.equal(destroyed, requests.length);
   });
   await check('invalid catalog content is rejected without another network request or cache mutation', async () => {
     const service = new ModelCatalogService();
@@ -221,24 +235,24 @@ async function main() {
     const cached = files.get(newCache);
     replies.push({ responseCode: 200, result: '<html>error</html>' });
     await assert.rejects(service.refresh('/test'));
-    assert.equal(requests.length, 2);
-    assert.equal(destroyed, 2);
+    assert.equal(requests.filter(request => !request.url.includes('meta.alicdn.com') && request.url !== 'https://modelscope.cn/api/v1/models').length, 2);
+    assert.equal(destroyed, requests.length);
     assert.equal(files.get(newCache), cached);
   });
   await check('reopening gallery retries failed refresh, clears failure after success, and avoids concurrent refresh', async () => {
     const source = fs.readFileSync(path.join(sourceRoot, 'state/ChatViewModel.ets'), 'utf8');
     const ast = ts.createSourceFile('ChatViewModel.ts', source, ts.ScriptTarget.Latest, true);
     const declaration = ast.statements.find((node) => ts.isClassDeclaration(node) && node.name.text === 'ChatViewModel');
-    const names = ['openModelMarketDialog', 'refreshModelCatalog'];
+    const names = ['openModelMarketDialog', 'updateModelMarketCategory', 'refreshModelCatalog'];
     const methods = declaration.members.filter((node) => node.name && names.includes(node.name.getText(ast)));
     const code = ts.transpileModule(`class Subject { ${methods.map((node) => node.getText(ast)).join('\n')} }`, {
       compilerOptions: { target: ts.ScriptTarget.ES2020 }
     }).outputText;
     const { formatError } = load(path.join(sourceRoot, 'utils/formatters.ets'));
-    const Subject = vm.runInNewContext(code + '\nSubject', { formatError });
+    const Subject = vm.runInNewContext(code + '\nSubject', { formatError, MODEL_CATALOG_FILTER_ALL: '全部' });
     const subject = new Subject();
     let count = 0;
-    Object.assign(subject, { filesDir: '/test', notify: () => {}, refreshModelMarketInstallStates: () => {},
+    Object.assign(subject, { filesDir: '/test', modelPageCategory: 'chat', modelMarketCategory: 'chat', notify: () => {}, refreshModelMarketInstallStates: () => {},
       applyCatalogResult: () => {}, toastCallback: () => {},
       modelCatalogService: { refresh: async () => { count++; throw { code: 2300028, message: 'Operation timeout' }; } }
     });
@@ -256,6 +270,192 @@ async function main() {
     assert.equal(subject.modelCatalogRefreshFailed, false);
     subject.openModelMarketDialog();
     assert.equal(count, 3);
+  });
+  const { parseOfficialModelCatalog, parseOfficialRepoFiles, resolveOfficialCatalogItem } =
+    load(path.join(sourceRoot, 'utils/officialModelCatalog.ets'));
+  const officialUrl = 'https://meta.alicdn.com/data/mnn/apis/model_market.json';
+  const official = (version = '21', models) => ({ version, models: models || [{ modelName: 'Example-MNN', vendor: 'Example',
+    file_size: 1234, sources: { ModelScope: 'MNN/Example-MNN' }, tags: ['Think', 'Code'] }] });
+  const response = value => ({ responseCode: 200, result: JSON.stringify(value) });
+  const revision = '0123456789abcdef0123456789abcdef01234567';
+  const blobs = ['config.json', 'llm_config.json', 'tokenizer.txt', 'llm.mnn', 'llm.mnn.weight'].map(Path =>
+    ({ Type: 'blob', Path, Size: 12, Revision: revision }));
+  const listing = (Files = blobs) => ({ Success: true, Data: { Files, LatestCommitter: { ShortId: revision.slice(0, 8) } } });
+  const config = { llm_model: 'llm.mnn', llm_weight: 'llm.mnn.weight', temperature: 0.7, topP: 0.8, topK: 20, penalty: 1.1 };
+  const llm = { jinja: { chat_template: 'a valid template' }, is_visual: false };
+  const raw = JSON.stringify;
+  await check('official parser deduplicates curated repositories, ignores Android versions, and filters unsupported tasks', async () => {
+    const entry = official().models[0];
+    const models = [entry, entry, { ...entry, min_app_version: '999.0', sources: { ModelScope: 'MNN/Other-MNN' } },
+      { ...entry, sources: { ModelScope: 'MNN/../bad' } },
+      ...['ImageGen', 'Audio', 'AudioGen', 'Video', 'NPU'].map(tag =>
+        ({ ...entry, tags: [tag], sources: { ModelScope: `MNN/${tag}-MNN` } })),
+      { ...entry, sources: { ModelScope: MODEL_CATALOG_ITEMS[0].sourceUrl.split('/models/')[1] } }];
+    const items = parseOfficialModelCatalog(raw(official('21', models)), MODEL_CATALOG_ITEMS).items;
+    assert.equal(items.length, 2);
+    assert.equal(items[1].minAppVersionCode, undefined);
+    assert.equal(items[0].files.length, 0);
+    assert.equal(items[0].runtime, undefined);
+    assert.deepEqual(items[0].capabilities, ['对话', '深度思考', '代码']);
+    const { catalogCapabilityLabels } = load(path.join(sourceRoot, 'utils/modelCatalog.ets'));
+    assert.deepEqual(catalogCapabilityLabels(['文本', '对话', '通用', '轻量', '超轻量', '低内存', '大内存', '图片', '思考']), ['对话', '图像理解', '深度思考']);
+    const translated = { ...official(), tagTranslations: { Chat: '对话', Think: '深度思考', Code: '代码' } };
+    assert.deepEqual(parseOfficialModelCatalog(raw(translated), []).items[0].capabilities, ['对话', '深度思考', '代码']);
+    for (const value of [null, {}, { version: true, models }, official('21', [null]), official('21', [])]) {
+      assert.throws(() => parseOfficialModelCatalog(raw(value), []));
+    }
+  });
+  await check('official refresh needs no per-model HTTP calls and survives a supplemental outage and restart', async () => {
+    officialResponse = response(official());
+    replies.push(new Error('raw unavailable'), new Error('API unavailable'));
+    const service = new ModelCatalogService();
+    const result = await service.refresh('/test');
+    assert.equal(result.source, 'MNN 官方目录');
+    assert.equal(result.catalogVersion, 21);
+    assert.equal(result.publishedAt, '');
+    assert.equal(requests.length, 4);
+    assert(!requests.some(request => request.url.includes('/repo/files')));
+    const restored = new ModelCatalogService();
+    assert.equal((await restored.load('/test')).catalogVersion, 21);
+    assert(restored.findMarketItem('official-example-mnn'));
+    assert(restored.findMarketItem(MODEL_CATALOG_ITEMS[0].id));
+  });
+  await check('invalid official refresh retains its cache and reports fallback rather than claiming it is current', async () => {
+    officialResponse = response(official());
+    remote = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../model-catalog/catalog-v2.json'), 'utf8'));
+    const service = new ModelCatalogService(); await service.refresh('/test');
+    const cached = files.get('/test/model-catalog-official.json');
+    officialResponse = response(official('22', [null]));
+    const result = await service.refresh('/test');
+    assert.equal(result.message, '官方目录更新失败，已保留缓存');
+    assert.equal(files.get('/test/model-catalog-official.json'), cached);
+    assert(service.findMarketItem('official-example-mnn'));
+  });
+  await check('official file resolution pins the full commit and rejects traversal, duplicates, and missing configs', async () => {
+    const selected = parseOfficialRepoFiles(raw(listing([...blobs, { Type: 'blob', Path: 'README.md', Size: 5 }])), 'MNN/Example-MNN');
+    assert.equal(selected.revision, revision);
+    assert.equal(selected.files.length, 5);
+    assert(selected.files.every(file => file.url.includes(`/resolve/${revision}/`)));
+    for (const Files of [blobs.slice(1), [...blobs, blobs[0]], [...blobs, { Type: 'blob', Path: '../evil.mnn', Size: 1 }]]) {
+      assert.throws(() => parseOfficialRepoFiles(raw(listing(Files)), 'MNN/Example-MNN'));
+    }
+    assert.throws(() => parseOfficialRepoFiles(raw({ Success: true, Data: { Files: blobs } }), 'MNN/Example-MNN'));
+    const item = parseOfficialModelCatalog(raw(official()), []).items[0];
+    const resolved = resolveOfficialCatalogItem(item, selected.files, raw(config), raw(llm));
+    assert.equal(resolved.totalBytes, 60);
+    assert.equal(resolved.runtime.generationDefaults.topP, 0.8);
+    assert.equal(resolved.runtime.generationDefaults.repetitionPenalty, 1.1);
+    assert.throws(() => resolveOfficialCatalogItem(item, selected.files, raw({ ...config, llm_model: 'missing.mnn' }), raw(llm)));
+    assert.throws(() => resolveOfficialCatalogItem(item, selected.files, raw(config), raw({})));
+  });
+  await check('resolved official downloads keep their pinned manifest across refreshes and restarts', async () => {
+    officialResponse = response(official());
+    const service = new ModelCatalogService(); await service.refresh('/test');
+    const id = 'official-example-mnn';
+    await assert.rejects(service.recordInstalled('/test', service.findMarketItem(id)), /尚未解析/);
+    const repoRoot = `https://modelscope.cn/models/MNN/Example-MNN/resolve/${revision}`;
+    urlResponses.set('https://modelscope.cn/api/v1/models/MNN/Example-MNN/repo/files?Revision=master&Recursive=true', response(listing()));
+    urlResponses.set(repoRoot + '/config.json', response(config));
+    urlResponses.set(repoRoot + '/llm_config.json', response(llm));
+    const resolved = await service.resolveInstallItem('/test', id);
+    assert.equal(resolved.files.length, 5);
+    const before = requests.length;
+    const reloaded = new ModelCatalogService(); await reloaded.load('/test');
+    await reloaded.resolveInstallItem('/test', id);
+    assert.equal(requests.length, before, 'resume uses the saved pinned manifest');
+    officialResponse = response(official('22')); await reloaded.refresh('/test');
+    assert.equal(raw(reloaded.findMarketItem(id)), raw(resolved));
+    await reloaded.recordInstalled('/test', resolved);
+    assert(reloaded.profiles().some(profile => profile.id === id));
+    assert.equal(parseInstalledCatalog(files.get(current)).find(item => item.id === id).files[0].url, resolved.files[0].url);
+  });
+  await check('metadata errors and cancellation cannot start downloads or leave the app busy', async () => {
+    const source = fs.readFileSync(path.join(sourceRoot, 'state/ChatViewModel.ets'), 'utf8');
+    const ast = ts.createSourceFile('ChatViewModel.ts', source, ts.ScriptTarget.Latest, true);
+    const declaration = ast.statements.find(node => ts.isClassDeclaration(node) && node.name.text === 'ChatViewModel');
+    const names = ['prepareAndStartBuiltinModelInstall', 'cancelBuiltinModelInstall'];
+    const methods = declaration.members.filter(node => node.name && names.includes(node.name.getText(ast)));
+    const code = ts.transpileModule(`class Subject { ${methods.map(node => node.getText(ast)).join('\n')} }`, {
+      compilerOptions: { target: ts.ScriptTarget.ES2020 }
+    }).outputText;
+    const { formatDownloadError } = load(path.join(sourceRoot, 'utils/formatters.ets'));
+    const { calculateDownloadProgress } = load(path.join(sourceRoot, 'utils/downloadProgress.ets'));
+    const Subject = vm.runInNewContext(code + '\nSubject', { formatDownloadError, calculateDownloadProgress, setTimeout: () => 0 });
+    const item = parseOfficialModelCatalog(raw(official()), []).items[0];
+    let downloads = 0;
+    const subject = new Subject();
+    Object.assign(subject, { filesDir: '/test', notify: () => {}, setStatus: value => { subject.status = value; },
+      rejectIncompatibleCatalogItem: () => false,
+      builtinModelInstallService: { cancelInstall: () => {}, existingPartialDownloadBytes: async () => 0 },
+      modelLifecycleService: { installCatalogItem: async () => { downloads++; } },
+      modelCatalogService: { resolveInstallItem: async () => { throw new Error('metadata unavailable'); } }
+    });
+    await subject.prepareAndStartBuiltinModelInstall({}, item); await new Promise(setImmediate);
+    assert.equal(downloads, 0); assert.equal(subject.busy, false); assert.equal(subject.builtinModelInstalling, false);
+    assert(subject.builtinModelInstallError.includes('metadata unavailable'));
+    let resolve;
+    subject.modelCatalogService.resolveInstallItem = () => new Promise(done => { resolve = done; });
+    await subject.prepareAndStartBuiltinModelInstall({}, item);
+    subject.cancelBuiltinModelInstall();
+    resolve({ ...item, files: blobs }); await new Promise(setImmediate);
+    assert.equal(downloads, 0); assert.equal(subject.busy, false); assert.equal(subject.builtinModelInstalling, false);
+    assert.equal(subject.builtinModelInstallCanceled, true);
+  });
+  await check('specialized catalogs stay out of conversation profiles and resolve rerankers without chat templates', async () => {
+    const { parseOfficialRerankerCatalog } = load(path.join(sourceRoot, 'utils/officialModelCatalog.ets'));
+    const { modelInstallDirectory, catalogItemToProfile } = load(path.join(sourceRoot, 'utils/modelCatalog.ets'));
+    const page = { Data: { TotalCount: 3, Models: [
+      { Path: 'MNN', Name: 'Qwen3-Reranker-4B-MNN', StorageSize: 200 },
+      { Path: 'MNN', Name: 'Qwen3-Reranker-0.6B-MNN', StorageSize: 100 },
+      { Path: 'MNN', Name: 'bge-large-MNN', StorageSize: 100 }] } };
+    const items = parseOfficialRerankerCatalog(raw(page));
+    assert.equal(items.length, 2);
+    assert(items[0].displayName.includes('0.6B'));
+    assert.equal(items[0].modelType, 'rerank');
+    assert.equal(catalogItemToProfile(items[0]), undefined);
+    assert.equal(modelInstallDirectory('/test', items[0]), '/test/rerank-models/Qwen3-Reranker-0.6B-MNN');
+    const resolved = resolveOfficialCatalogItem(items[0], parseOfficialRepoFiles(raw(listing()), 'MNN/Example-MNN').files, raw(config), '{}');
+    assert.equal(resolved.modelType, 'rerank');
+    assert.equal(resolved.runtime, undefined);
+    assert.equal(resolved.capabilities.length, 0);
+    rerankerResponse = response(page); officialResponse = response(official());
+    const service = new ModelCatalogService(); await service.refresh('/test');
+    const laya = service.findMarketItem('laya-multilingual-mnn-fp16');
+    assert.equal(laya.modelType, 'decision');
+    assert.equal(modelInstallDirectory('/test', laya), '/test/laya-probe');
+    assert.equal(catalogItemToProfile(laya), undefined);
+    assert(service.items().some(item => item.modelType === 'rerank'));
+    const reloaded = new ModelCatalogService(); await reloaded.load('/test');
+    assert(reloaded.items().some(item => item.modelType === 'rerank'));
+    assert.throws(() => parseOfficialRerankerCatalog(raw({ Data: { TotalCount: 10, Models: [] } })), /不完整/);
+  });
+  await check('gallery categories follow the model page and keep tag filters scoped to their category', async () => {
+    const source = fs.readFileSync(path.join(sourceRoot, 'state/ChatViewModel.ets'), 'utf8');
+    const ast = ts.createSourceFile('ChatViewModel.ts', source, ts.ScriptTarget.Latest, true);
+    const declaration = ast.statements.find(node => ts.isClassDeclaration(node) && node.name.text === 'ChatViewModel');
+    const names = ['modelCatalogItems', 'modelCategoryItems', 'catalogCapabilities', 'modelCatalogFilterTags',
+      'openModelMarketDialog', 'updateModelMarketCategory'];
+    const methods = declaration.members.filter(node => node.name && names.includes(node.name.getText(ast)));
+    const code = ts.transpileModule(`class Subject { ${methods.map(node => node.getText(ast)).join('\n')} }`, {
+      compilerOptions: { target: ts.ScriptTarget.ES2020 }
+    }).outputText;
+    const { catalogCapabilityLabels } = load(path.join(sourceRoot, 'utils/modelCatalog.ets'));
+    const Subject = vm.runInNewContext(code + '\nSubject', { MODEL_CATALOG_FILTER_ALL: '全部', catalogCapabilityLabels });
+    const subject = new Subject();
+    const item = parseOfficialModelCatalog(raw(official()), []).items[0];
+    Object.assign(subject, { modelPageCategory: 'rerank', modelMarketCategory: 'chat', modelMarketSearchText: 'old',
+      modelMarketCapabilityFilter: '代码', notify: () => {}, refreshModelMarketInstallStates: () => {},
+      modelCatalogService: { items: () => [item, { ...item, id: 'rank', modelType: 'rerank', capabilities: [] }] }
+    });
+    subject.openModelMarketDialog();
+    assert.equal(subject.modelMarketCategory, 'rerank');
+    assert.equal(subject.modelMarketSearchText, '');
+    assert.deepEqual(Array.from(subject.modelCatalogFilterTags()), ['全部']);
+    assert.equal(subject.modelCatalogItems()[0].id, 'rank');
+    subject.updateModelMarketCategory('chat');
+    assert(subject.modelCatalogFilterTags().includes('深度思考'));
+    assert.equal(subject.modelCatalogItems()[0].id, item.id);
+    assert.equal(subject.modelPageCategory, 'rerank', 'gallery selection must not change model-page selection');
   });
   await check('new installations never write the legacy snapshot', async () => {
     const service = new ModelCatalogService();

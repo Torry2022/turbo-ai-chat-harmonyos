@@ -1,3 +1,5 @@
+export type CatalogModelType = 'chat' | 'decision' | 'rerank'
+
 export interface BuiltinModelFileSpec {
   relativePath: string
   sizeBytes: number
@@ -22,6 +24,7 @@ export interface CatalogRuntimeSpec {
 }
 
 export interface BuiltinModelDownloadSpec {
+  modelType?: CatalogModelType
   minAppVersionCode?: number
   id: string
   modelId: string
@@ -95,7 +98,7 @@ function createSpec(
     sourceName: 'ModelScope',
     sourceUrl: `${MODELSCOPE_BASE_URL}/${repo}`,
     supportsImage: false,
-    capabilities: ['文本'],
+    capabilities: ['对话'],
     recommended: true,
     files: resolvedFiles,
     totalBytes
@@ -144,7 +147,7 @@ export const MODEL_CATALOG_ITEMS: ModelCatalogItem[] = [
       { relativePath: 'llm.mnn', sizeBytes: 592336 },
       { relativePath: 'llm.mnn.weight', sizeBytes: 2709972658 }
     ]
-  ), 'Qwen3-4B-Instruct', '通用中文文本模型，适合作为默认本地对话。', 'MNN', false, ['文本', '通用']),
+  ), 'Qwen3-4B-Instruct', '通用中文文本模型，适合作为默认本地对话。', 'MNN', false, ['对话']),
   withCatalogMeta(createSpec(
     'gemma4',
     'gemma4',
@@ -163,7 +166,7 @@ export const MODEL_CATALOG_ITEMS: ModelCatalogItem[] = [
       { relativePath: 'audio.mnn', sizeBytes: 1428288 },
       { relativePath: 'audio.mnn.weight', sizeBytes: 589877376 }
     ]
-  ), 'Gemma-4-E2B', '图片理解实验模型，支持文本和图片输入。', 'MNN', true, ['文本', '图片']),
+  ), 'Gemma-4-E2B', '图片理解实验模型，支持文本和图片输入。', 'MNN', true, ['对话', '图像理解']),
   withCatalogMeta(createSpec(
     'qwen3-vl-4b-instruct',
     'qwen3-vl-4b-instruct',
@@ -179,7 +182,7 @@ export const MODEL_CATALOG_ITEMS: ModelCatalogItem[] = [
       { relativePath: 'visual.mnn', sizeBytes: 502512 },
       { relativePath: 'visual.mnn.weight', sizeBytes: 242953564 }
     ]
-  ), 'Qwen3-VL-4B', '中文图像理解模型，支持文本、图片和视觉问答。', 'MNN', true, ['文本', '图片'], false),
+  ), 'Qwen3-VL-4B', '中文图像理解模型，支持文本、图片和视觉问答。', 'MNN', true, ['对话', '图像理解'], false),
   withCatalogMeta(createSpec(
     'minicpm5-1b',
     'minicpm5-1b',
@@ -194,7 +197,7 @@ export const MODEL_CATALOG_ITEMS: ModelCatalogItem[] = [
       { relativePath: 'llm.mnn.weight', sizeBytes: 1760636928 },
       { relativePath: 'embeddings_bf16.bin', sizeBytes: 401080320 }
     ]
-  ), 'MiniCPM5-1B', '超小参数文本模型，适合轻量本地对话与快速验证。', 'TorryJi', false, ['文本', '轻量']),
+  ), 'MiniCPM5-1B', '超小参数文本模型，适合轻量本地对话与快速验证。', 'TorryJi', false, ['对话']),
   withCatalogMeta(createSpec(
     'qwen3-0.6b',
     'qwen3-0.6b',
@@ -208,7 +211,7 @@ export const MODEL_CATALOG_ITEMS: ModelCatalogItem[] = [
       { relativePath: 'llm.mnn', sizeBytes: 461520 },
       { relativePath: 'llm.mnn.weight', sizeBytes: 450810338 }
     ]
-  ), 'Qwen3-0.6B', '超轻量 Qwen3 文本模型，适合快速响应和低存储占用。', 'MNN', false, ['文本', '超轻量'], false),
+  ), 'Qwen3-0.6B', '超轻量 Qwen3 文本模型，适合快速响应和低存储占用。', 'MNN', false, ['对话'], false),
   withCatalogMeta(createSpec(
     'qwen3-1.7b',
     'qwen3-1.7b',
@@ -222,7 +225,7 @@ export const MODEL_CATALOG_ITEMS: ModelCatalogItem[] = [
       { relativePath: 'llm.mnn', sizeBytes: 461520 },
       { relativePath: 'llm.mnn.weight', sizeBytes: 1231860194 }
     ]
-  ), 'Qwen3-1.7B', '轻量 Qwen3 文本模型，兼顾速度、效果和占用。', 'MNN', false, ['文本', '轻量'], false),
+  ), 'Qwen3-1.7B', '轻量 Qwen3 文本模型，兼顾速度、效果和占用。', 'MNN', false, ['对话'], false),
   withCatalogMeta(createSpec(
     'qwen2.5-1.5b-instruct',
     'qwen2.5-1.5b-instruct',
@@ -236,7 +239,7 @@ export const MODEL_CATALOG_ITEMS: ModelCatalogItem[] = [
       { relativePath: 'llm.mnn', sizeBytes: 1145128 },
       { relativePath: 'llm.mnn.weight', sizeBytes: 868491506 }
     ]
-  ), 'Qwen2.5-1.5B', '低内存 Qwen2.5 指令模型，适合常规文本对话。', 'MNN', false, ['文本', '低内存'], false),
+  ), 'Qwen2.5-1.5B', '低内存 Qwen2.5 指令模型，适合常规文本对话。', 'MNN', false, ['对话'], false),
   withCatalogMeta(createSpec(
     'qwen2.5-3b-instruct',
     'qwen2.5-3b-instruct',
@@ -251,7 +254,7 @@ export const MODEL_CATALOG_ITEMS: ModelCatalogItem[] = [
       { relativePath: 'llm.mnn.weight', sizeBytes: 1736078786 },
       { relativePath: 'embeddings_bf16.bin', sizeBytes: 622329856 }
     ]
-  ), 'Qwen2.5-3B', '中档 Qwen2.5 指令模型，适合对话、摘要和轻量写作。', 'MNN', false, ['文本', '中档'], false),
+  ), 'Qwen2.5-3B', '中档 Qwen2.5 指令模型，适合对话、摘要和轻量写作。', 'MNN', false, ['对话'], false),
   withCatalogMeta(createSpec(
     'qwen3-8b',
     'qwen3-8b',
@@ -266,7 +269,7 @@ export const MODEL_CATALOG_ITEMS: ModelCatalogItem[] = [
       { relativePath: 'llm.mnn.weight', sizeBytes: 4259526082 },
       { relativePath: 'embeddings_bf16.bin', sizeBytes: 1244659712 }
     ]
-  ), 'Qwen3-8B', '较大参数 Qwen3 文本模型，适合大内存设备尝试。', 'MNN', false, ['文本', '大内存'], false)
+  ), 'Qwen3-8B', '较大参数 Qwen3 文本模型，适合大内存设备尝试。', 'MNN', false, ['对话'], false)
 ]
 
 export const BUILTIN_MODEL_DOWNLOADS: BuiltinModelDownloadSpec[] = MODEL_CATALOG_ITEMS

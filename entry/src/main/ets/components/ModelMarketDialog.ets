@@ -1,5 +1,6 @@
 import { InputFieldStyle } from './ControlStyles'
 import { ActionButtonStyle, CompactActionStyle } from './ButtonStyles'
+import { ModelType, ModelTypeSelector } from './ModelTypeSelector'
 import { ChatViewModel } from '../state/ChatViewModel'
 import { ModelCatalogItem, formatBytes } from '../models/BuiltinModelDownloadTypes'
 
@@ -13,32 +14,24 @@ export struct ModelMarketDialog {
   @State isClosePressed: boolean = false
   private searchController: TextInputController = new TextInputController()
 
-  private padTimePart(value: number): string {
-    return value < 10 ? `0${value}` : `${value}`
+  private twoColumnCards(): boolean {
+    return Math.min(840, this.availableWidth - 32) >= 720
   }
 
-  private formatCatalogPublishedAt(value: string): string {
-    if (value.length <= 0) {
-      return ''
+  private catalogRows(): ModelCatalogItem[][] {
+    const items = this.viewModel.modelCatalogItems()
+    const columns = this.twoColumnCards() ? 2 : 1
+    const rows: ModelCatalogItem[][] = []
+    for (let index = 0; index < items.length; index += columns) {
+      rows.push(items.slice(index, index + columns))
     }
-    const publishedAt = new Date(value)
-    if (!Number.isFinite(publishedAt.getTime())) {
-      return value.replace('T', ' ').substring(0, Math.min(16, value.length))
-    }
-    return `${publishedAt.getFullYear()}年${publishedAt.getMonth() + 1}月${publishedAt.getDate()}日 ` +
-      `${this.padTimePart(publishedAt.getHours())}:${this.padTimePart(publishedAt.getMinutes())}`
+    return rows
   }
 
-  private catalogMetadata(): string {
-    let metadata = this.viewModel.modelCatalogSource
-    if (this.viewModel.modelCatalogVersion > 0) {
-      metadata += `，目录版本 ${this.viewModel.modelCatalogVersion}`
-    }
-    const publishedAt = this.formatCatalogPublishedAt(this.viewModel.modelCatalogPublishedAt)
-    if (publishedAt.length > 0) {
-      metadata += `，发布于 ${publishedAt}`
-    }
-    return metadata
+  private catalogWarning(): string {
+    if (this.viewModel.modelMarketCategory === 'decision' || this.viewModel.modelCatalogRefreshing) return ''
+    const status = this.viewModel.modelMarketStatus()
+    return /失败|不可用|无效|尚未获取/.test(status) ? status : ''
   }
 
   @Builder
@@ -91,9 +84,9 @@ export struct ModelMarketDialog {
   private CapabilityTag(text: string) {
     Text(text)
       .fontSize(10)
-      .fontColor(text === '图片' ? $r('app.color.tag_green_text') : $r('app.color.tag_blue_text'))
+      .fontColor(text === '图像理解' ? $r('app.color.tag_green_text') : $r('app.color.tag_blue_text'))
       .padding({ left: 6, right: 6, top: 2, bottom: 2 })
-      .backgroundColor(text === '图片' ? $r('app.color.tag_green_background') : $r('app.color.tag_blue_background'))
+      .backgroundColor(text === '图像理解' ? $r('app.color.tag_green_background') : $r('app.color.tag_blue_background'))
       .borderRadius(4)
   }
 
@@ -120,9 +113,12 @@ export struct ModelMarketDialog {
         }
       }.width('100%')
 
-      Text(item.description)
-        .fontSize(12).lineHeight(17).fontColor($r('app.color.text_hint'))
-        .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis }).width('100%')
+      Column() {
+        Text(item.description)
+          .fontSize(12).lineHeight(17).fontColor($r('app.color.text_hint'))
+          .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis }).width('100%')
+      }.width('100%').alignItems(HorizontalAlign.Start)
+        .constraintSize({ minHeight: this.twoColumnCards() ? 34 : 0 })
 
       if (this.viewModel.catalogCompatibilityMessage(item).length > 0) {
         Text(this.viewModel.catalogCompatibilityMessage(item))
@@ -131,11 +127,11 @@ export struct ModelMarketDialog {
 
       Row({ space: 10 }) {
         Column({ space: 3 }) {
-          Text(`${formatBytes(item.totalBytes)}  ${item.provider} / ${item.sourceName}`)
+          Text(`${item.files.length === 0 ? '约 ' : ''}${formatBytes(item.totalBytes)}  ${item.provider} / ${item.sourceName}`)
             .fontSize(11).lineHeight(16).fontColor($r('app.color.text_muted'))
             .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).width('100%')
           Row({ space: 4 }) {
-            ForEach(item.capabilities, (capability: string) => {
+            ForEach(this.viewModel.catalogCapabilities(item), (capability: string) => {
               this.CapabilityTag(capability)
             }, (capability: string) => capability)
           }
@@ -201,6 +197,7 @@ export struct ModelMarketDialog {
             .layoutWeight(1)
           Button(this.viewModel.modelCatalogRefreshing ? '更新中' : '刷新', { type: ButtonType.Normal })
             .attributeModifier(new CompactActionStyle())
+            .visibility(this.viewModel.modelMarketCategory === 'decision' ? Visibility.None : Visibility.Visible)
             .height($r('app.float.button_height'))
             .responseRegion({ x: 0, y: 0, width: '100%', height: '100%' })
             .constraintSize({ minWidth: 64 })
@@ -236,25 +233,20 @@ export struct ModelMarketDialog {
         .padding({ left: 2 })
         .width('100%')
 
-        Column({ space: 2 }) {
-          Text(this.viewModel.modelCatalogStatus)
+        ModelTypeSelector({ selected: this.viewModel.modelMarketCategory, showReranker: true,
+          onChange: (type: ModelType): void => {
+            this.searchController.stopEditing()
+            if (type === 'chat' || type === 'decision' || type === 'rerank') this.viewModel.updateModelMarketCategory(type)
+          } })
+          .width('100%')
+
+        if (this.catalogWarning().length > 0) {
+          Text(this.catalogWarning())
             .fontSize(12)
             .lineHeight(17)
-            .fontColor(this.viewModel.modelCatalogStatus.indexOf('失败') >= 0 ? $r('app.color.status_warning') : $r('app.color.text_muted'))
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-            .width('100%')
-
-          Text(this.catalogMetadata())
-            .fontSize(10)
-            .lineHeight(15)
-            .fontColor($r('app.color.text_gallery_hint'))
-            .maxLines(2)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .fontColor($r('app.color.status_warning'))
             .width('100%')
         }
-        .alignItems(HorizontalAlign.Start)
-        .width('100%')
 
         TextInput({ text: this.viewModel.modelMarketSearchText, placeholder: '搜索模型名称或厂商',
           controller: this.searchController })
@@ -265,28 +257,40 @@ export struct ModelMarketDialog {
             this.viewModel.updateModelMarketSearchText(value)
           })
 
-        Scroll() {
-          Row({ space: 6 }) {
-            ForEach(this.viewModel.modelCatalogFilterTags(), (tag: string) => {
-              this.FilterButton(tag)
-            }, (tag: string) => tag)
+        if (this.viewModel.modelCatalogFilterTags().length > 1) {
+          Scroll() {
+            Row({ space: 6 }) {
+              ForEach(this.viewModel.modelCatalogFilterTags(), (tag: string) => {
+                this.FilterButton(tag)
+              }, (tag: string) => tag)
+            }
           }
+          .width('100%')
+          .height(40)
+          .scrollable(ScrollDirection.Horizontal)
+          .align(Alignment.Start)
+          .scrollBar(BarState.Off)
+          .edgeEffect(EdgeEffect.Spring)
+
         }
-        .width('100%')
-        .height(40)
-        .scrollable(ScrollDirection.Horizontal)
-        .align(Alignment.Start)
-        .scrollBar(BarState.Off)
-        .edgeEffect(EdgeEffect.Spring)
 
         Scroll() {
           Column({ space: 8 }) {
             if (this.viewModel.modelCatalogItems().length === 0) {
               this.EmptyResults()
             }
-            ForEach(this.viewModel.modelCatalogItems(), (item: ModelCatalogItem) => {
-              this.CatalogItemCard(item)
-            }, (item: ModelCatalogItem) => item.id)
+            ForEach(this.catalogRows(), (items: ModelCatalogItem[]) => {
+              Row({ space: 8 }) {
+                ForEach(items, (item: ModelCatalogItem) => {
+                  Column() {
+                    this.CatalogItemCard(item)
+                  }.layoutWeight(1)
+                }, (item: ModelCatalogItem) => item.id)
+                if (this.twoColumnCards() && items.length === 1) {
+                  Column().layoutWeight(1)
+                }
+              }.width('100%').alignItems(VerticalAlign.Top)
+            }, (items: ModelCatalogItem[]) => items.map((item: ModelCatalogItem) => item.id).join('|'))
           }
           .width('100%')
         }

@@ -9,6 +9,7 @@ import cryptoFramework from '@ohos.security.cryptoFramework'
 import { ChatMessage, ChatTurn, GenerationResult, GenerationSettings, PerfMetrics } from '../models/ChatTypes'
 import { ImportedModelDraft } from '../models/ImportedModelTypes'
 import {
+  CatalogModelType,
   BuiltinModelDownloadSpec,
   BuiltinModelInstallProgress,
   MODEL_CATALOG_FILTER_ALL,
@@ -38,7 +39,7 @@ import { ImagePayloadService } from '../services/ImagePayloadService'
 import { BuiltinModelInstallService } from '../services/BuiltinModelInstallService'
 import { ModelImportService } from '../services/ModelImportService'
 import { ModelCatalogService } from '../services/ModelCatalogService'
-import { catalogCompatibilityMessage } from '../utils/modelCatalog'
+import { catalogCapabilityLabels, catalogCompatibilityMessage } from '../utils/modelCatalog'
 import { NativeInferenceService } from '../services/NativeInferenceService'
 import {
   ApiGenerationRequest,
@@ -132,6 +133,8 @@ export class ChatViewModel {
   builtinModelInstallTotalBytes: number = 0
   builtinModelInstallError: string = ''
   builtinModelInstallCanceled: boolean = false
+  modelPageCategory: CatalogModelType = 'chat'
+  modelMarketCategory: CatalogModelType = 'chat'
   showModelMarketDialog: boolean = false
   modelMarketSearchText: string = ''
   modelMarketCapabilityFilter: string = MODEL_CATALOG_FILTER_ALL
@@ -481,7 +484,9 @@ export class ChatViewModel {
     this.notify()
     try {
       if (id === this.reranker.loadedId) await this.reranker.release()
+      const profile = this.rerankProfiles.find((item: ModelProfile) => item.id === id)
       this.rerankProfiles = await this.rerankImport.deleteImportedProfile(this.filesDir, id)
+      if (profile?.catalogItemId) await this.removeInstalledCatalogState(profile)
       this.rerankSelectedId = this.rerankProfiles[0]?.id ?? ''
       this.rerankMessage = ''
     } catch (error) { this.rerankMessage = `删除失败：${formatError(error as Object)}` }
@@ -528,8 +533,8 @@ export class ChatViewModel {
   modelCatalogItems(): ModelCatalogItem[] {
     const searchText = this.modelMarketSearchText.trim().toLowerCase()
     const filter = this.modelMarketCapabilityFilter
-    const visibleItems = this.modelCatalogService.items().filter((item: ModelCatalogItem) => {
-      if (filter !== MODEL_CATALOG_FILTER_ALL && item.capabilities.indexOf(filter) < 0) {
+    const visibleItems = this.modelCategoryItems().filter((item: ModelCatalogItem) => {
+      if (filter !== MODEL_CATALOG_FILTER_ALL && this.catalogCapabilities(item).indexOf(filter) < 0) {
         return false
       }
       if (searchText.length <= 0) {
@@ -544,10 +549,37 @@ export class ChatViewModel {
     return regularItems.concat(presetItems)
   }
 
+  private modelCategoryItems(): ModelCatalogItem[] {
+    return this.modelCatalogService.items().filter((item: ModelCatalogItem) =>
+      (item.modelType ?? 'chat') === this.modelMarketCategory)
+  }
+
+  updateModelPageCategory(type: CatalogModelType): void {
+    this.modelPageCategory = type
+    this.notify()
+  }
+
+  updateModelMarketCategory(type: CatalogModelType): void {
+    if (this.modelMarketCategory === type) return
+    this.modelMarketCategory = type
+    this.modelMarketSearchText = ''
+    this.modelMarketCapabilityFilter = MODEL_CATALOG_FILTER_ALL
+    this.notify()
+  }
+
+  modelMarketStatus(): string {
+    return this.modelMarketCategory === 'rerank' && !this.modelCatalogRefreshing ?
+      this.modelCatalogService.rerankerStatus() : this.modelCatalogStatus
+  }
+
+  catalogCapabilities(item: ModelCatalogItem): string[] {
+    return catalogCapabilityLabels(item.capabilities)
+  }
+
   modelCatalogFilterTags(): string[] {
     const tags: string[] = [MODEL_CATALOG_FILTER_ALL]
-    this.modelCatalogService.items().forEach((item: ModelCatalogItem) => {
-      item.capabilities.forEach((capability: string) => {
+    this.modelCategoryItems().forEach((item: ModelCatalogItem) => {
+      this.catalogCapabilities(item).forEach((capability: string) => {
         if (tags.indexOf(capability) < 0) {
           tags.push(capability)
         }
@@ -580,6 +612,7 @@ export class ChatViewModel {
     if (this.modelLoading || this.modelImporting || this.builtinModelInstalling) {
       return
     }
+    this.updateModelMarketCategory(this.modelPageCategory)
     this.showModelMarketDialog = true
     if (this.modelCatalogRefreshFailed) {
       this.refreshModelCatalog(false)
@@ -758,7 +791,7 @@ export class ChatViewModel {
       return
     }
     this.pendingInstallCatalogItemId = item.id
-    this.autoLoadAfterInstall = item.modelId === this.selectedModelId
+    this.autoLoadAfterInstall = (item.modelType ?? 'chat') === 'chat' && item.modelId === this.selectedModelId
     this.showModelMarketDialog = false
     this.openBuiltinModelInstallDialog(item, this.autoLoadAfterInstall)
     this.startBuiltinModelInstall()
@@ -2261,41 +2294,58 @@ export class ChatViewModel {
     this.builtinModelInstallTotalBytes = spec.totalBytes
     this.builtinModelInstallModelName = spec.displayName
     this.builtinModelInstallSourceName = spec.sourceName
-    let existingBytes = 0
-    try {
-      existingBytes = await this.builtinModelInstallService.existingPartialDownloadBytes(this.filesDir, spec)
-    } catch (_err) {
-      existingBytes = 0
-    }
-    this.builtinModelInstallDownloadedBytes = existingBytes
-    this.builtinModelInstallProgress = calculateDownloadProgress(existingBytes, spec.totalBytes)
-    this.builtinModelInstallMessage = existingBytes > 0 ?
-      `正在继续下载 ${spec.displayName}。请保持 App 在前台。` :
-      `正在从 ${spec.sourceName} 下载 ${spec.displayName}。请保持 App 在前台。`
-    this.setStatus(`正在安装 ${spec.displayName}...`, 'neutral')
-    this.notify()
-
-    const supportsImage = this.modelCatalogService.findInstallItem(spec.id)?.supportsImage ?? false
-    this.modelLifecycleService.installCatalogItem(context, spec, supportsImage, (progress: BuiltinModelInstallProgress) => {
-      if (this.builtinModelInstallCancelRequested) {
-        return
+    const install = async (): Promise<void> => {
+      if (spec.files.length === 0) {
+        this.builtinModelInstallMessage = '正在读取模型文件信息...'
+        this.notify()
+        spec = await this.modelCatalogService.resolveInstallItem(this.filesDir, spec.id)
+        this.builtinModelInstallTotalBytes = spec.totalBytes
       }
-      if (progress.downloadedBytes < this.builtinModelInstallDownloadedBytes) {
-        return
+      let existingBytes = 0
+      try {
+        existingBytes = await this.builtinModelInstallService.existingPartialDownloadBytes(this.filesDir, spec)
+      } catch (_err) {
+        existingBytes = 0
       }
-      this.builtinModelInstallProgress = progress.progress
-      this.builtinModelInstallDownloadedBytes = progress.downloadedBytes
-      this.builtinModelInstallTotalBytes = progress.totalBytes
-      this.builtinModelInstallFileName = progress.fileName
-      this.builtinModelInstallMessage = `${progress.message}：${progress.fileName}`
-      this.setStatus(`正在安装 ${progress.modelName}...`, 'neutral')
+      this.builtinModelInstallDownloadedBytes = existingBytes
+      this.builtinModelInstallProgress = calculateDownloadProgress(existingBytes, spec.totalBytes)
+      this.builtinModelInstallMessage = existingBytes > 0 ?
+        `正在继续下载 ${spec.displayName}。请保持 App 在前台。` :
+        `正在从 ${spec.sourceName} 下载 ${spec.displayName}。请保持 App 在前台。`
+      this.setStatus(`正在安装 ${spec.displayName}...`, 'neutral')
       this.notify()
-    }).then(async () => {
+
+      if (this.builtinModelInstallCancelRequested) throw new Error('下载已取消')
+      const supportsImage = this.modelCatalogService.findInstallItem(spec.id)?.supportsImage ?? false
+      await this.modelLifecycleService.installCatalogItem(context, spec, supportsImage, (progress: BuiltinModelInstallProgress) => {
+        if (this.builtinModelInstallCancelRequested) {
+          return
+        }
+        if (progress.downloadedBytes < this.builtinModelInstallDownloadedBytes) {
+          return
+        }
+        this.builtinModelInstallProgress = progress.progress
+        this.builtinModelInstallDownloadedBytes = progress.downloadedBytes
+        this.builtinModelInstallTotalBytes = progress.totalBytes
+        this.builtinModelInstallFileName = progress.fileName
+        this.builtinModelInstallMessage = `${progress.message}：${progress.fileName}`
+        this.setStatus(`正在安装 ${progress.modelName}...`, 'neutral')
+        this.notify()
+      })
+    }
+    install().then(async () => {
       const installedItem = this.modelCatalogService.findMarketItem(spec.id) ??
         this.modelCatalogService.findInstallItem(spec.id)
       if (installedItem !== undefined) {
         await this.modelCatalogService.recordInstalled(this.filesDir, installedItem)
         this.modelManager.updateCatalogProfiles(this.modelCatalogService.profiles(), this.filesDir)
+        if (installedItem.modelType === 'rerank') {
+          const profiles = await this.rerankImport.registerCatalogModel(this.filesDir, installedItem)
+          this.rerankProfiles = profiles
+          this.rerankSelectedId = profiles.find((profile: ModelProfile) => profile.catalogItemId === installedItem.id)?.id ?? this.rerankSelectedId
+          this.rerankMessage = ''
+        }
+        if (installedItem.modelType === 'decision') this.refreshLayaReady()
       }
       this.builtinModelInstalling = false
       this.busy = false

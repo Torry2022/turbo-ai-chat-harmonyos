@@ -28,7 +28,6 @@ export struct ModelTab {
   @Prop @Watch('onRenderVersionChange') renderVersion: number = 0
   @Prop layaReady: boolean = false
   @Prop layaStatus: string = '未安装'
-  @State private modelCategory: number = 0
   onLayaDecision: () => void = () => {}
   onDragStateChange: (dragging: boolean) => void = (_dragging: boolean) => {}
   @State sliderMaxNewTokens: number = DEFAULT_MAX_NEW_TOKENS
@@ -248,9 +247,9 @@ export struct ModelTab {
             this.CapabilityTag('导入', $r('app.color.tag_import_text'), $r('app.color.tag_green_background'))
           }
           this.CapabilityTag(
-            profile.supportsImage ? '文本 + 图片' : '仅文本',
-            profile.supportsImage ? $r('app.color.tag_green_text') : $r('app.color.tag_amber_text'),
-            profile.supportsImage ? $r('app.color.tag_green_background') : $r('app.color.tag_amber_background')
+            profile.supportsImage ? '图像理解' : '对话',
+            profile.supportsImage ? $r('app.color.tag_green_text') : $r('app.color.tag_blue_text'),
+            profile.supportsImage ? $r('app.color.tag_green_background') : $r('app.color.tag_blue_background')
           )
         }
         .width('100%')
@@ -345,19 +344,19 @@ export struct ModelTab {
     Column({ space: 10 }) {
       this.SectionTitle('模型列表')
       ModelTypeSelector({
-        selected: this.modelCategory === 0 ? 'chat' : this.modelCategory === 1 ? 'decision' : 'rerank',
+        selected: this.viewModel.modelPageCategory,
         showReranker: true,
         onChange: (type: ModelType): void => {
           this.cancelModelDrag()
-          this.modelCategory = type === 'chat' ? 0 : type === 'decision' ? 1 : 2
+          if (type === 'chat' || type === 'decision' || type === 'rerank') this.viewModel.updateModelPageCategory(type)
         }
       })
       .width('100%')
       Text('各类模型独立加载，切换分类不影响已加载模型。')
         .fontSize(11).lineHeight(17).fontColor($r('app.color.text_muted')).width('100%')
-      if (this.modelCategory === 1) {
+      if (this.viewModel.modelPageCategory === 'decision') {
         this.DecisionModelCard()
-      } else if (this.modelCategory === 2) {
+      } else if (this.viewModel.modelPageCategory === 'rerank') {
         RerankerModels({ viewModel: this.viewModel, renderVersion: this.renderVersion })
       } else {
         Column({ space: 8 }) {
@@ -460,7 +459,10 @@ export struct ModelTab {
       Button(this.layaReady ? '进入决策' : '下载模型')
         .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
         .width('100%')
-        .onClick(() => this.onLayaDecision())
+        .onClick(() => {
+          if (this.layaReady) this.onLayaDecision()
+          else this.viewModel.openModelMarketDialog()
+        })
     }
     .width('100%')
   }
@@ -992,13 +994,13 @@ export struct ModelTab {
         .zIndex(this.draggingModelId.length > 0 ? 10 : 0)
         .margin({ right: this.contentWidth >= 800 ? 16 : 0, bottom: this.contentWidth >= 800 ? 0 : 12 })
         Column({ space: 12 }) {
-          if (this.modelCategory === 0) {
+          if (this.viewModel.modelPageCategory === 'chat') {
             this.GenerationSettingsCard()
             this.RuntimeSettingsCard()
             this.ImportedModelConfigCard()
             this.ContextCard()
             this.ModelManagementCard()
-          } else if (this.modelCategory === 2) {
+          } else if (this.viewModel.modelPageCategory === 'rerank') {
             Column() {
               RerankerModels({ viewModel: this.viewModel, renderVersion: this.renderVersion, settings: true })
             }.width('100%').padding(12).backgroundColor($r('app.color.inset')).borderRadius($r('app.float.card_radius'))
