@@ -138,7 +138,7 @@ Turbo AI Chat 采用原生推理链路（ArkTS → N-API → MNN → CPU），�
 
 - 默认文本模型切换为 Qwen3-4B-Instruct，并支持在 App 内通过模型广场从 ModelScope 安装预置模型和更多 MNN 模型条目。
 - 模型广场支持在线刷新；网络不可用时使用本地缓存。兼容模型可通过更新目录上架，无需重新安装 App；依赖新版推理运行时的模型会提示先升级 App。
-- Fork 或二次开发版本默认仍读取本仓库的在线目录；如需维护独立模型广场，应修改 [`ModelCatalogService.ets`](entry/src/main/ets/services/ModelCatalogService.ets) 中的 `REMOTE_MODEL_CATALOG_URL`，指向自己的 Raw 目录地址并重新构建 App。
+- Fork 或二次开发版本默认仍读取本仓库的在线目录；如需维护独立模型广场，应修改 [`ModelCatalogService.ets`](entry/src/main/ets/services/ModelCatalogService.ets) 中的 `REMOTE_MODEL_CATALOG_URL` 和 `REMOTE_MODEL_CATALOG_API_URL`，分别指向自己的 Raw 目录及 GitHub Contents 接口，再重新构建 App。
 - 模型广场下载支持停止后断点续传；关闭已停止的安装弹窗会清理未完成的临时下载文件，避免沙箱残留。
 - 模型默认生成参数来自仓库配置或 App 预设，可在模型页调整；刷新目录不会自动覆盖内置预设和已安装模型的配置快照。参数来源与更新方式见[生成参数说明](model-catalog/generation-defaults.md)。
 - 除 zip 导入外，支持将完整 MNN 模型目录推送到 App 沙箱后，在模型页一键扫描注册，适合绕过大 zip 导入失败的问题。
@@ -303,7 +303,7 @@ hdc install -r turbo-ai-chat-harmonyos-vX.Y.Z-signed.hap
 
 推荐优先使用 App 内模型广场安装模型；本地转换的模型可以选择文件夹或 zip 导入，大模型也可通过 hdc 推送完整目录。
 
-- **模型广场**：在模型页打开模型广场，可刷新在线目录并从 ModelScope 下载预置或扩展模型；网络失败时继续使用最近一次有效缓存或安装包内置目录。
+- **模型广场**：在模型页打开模型广场，可刷新在线目录并从 ModelScope 下载预置或扩展模型；目录更新会在 GitHub Raw 访问失败后尝试官方 Contents 接口；均不可用时继续使用最近一次有效缓存或安装包内置目录。
 - **选择文件夹导入**：通过系统选择器选择一个完整 MNN 模型目录。App 会检查可用存储空间，将文件复制到沙箱并校验，不修改原目录；若无法打开选择器，可重试或改用压缩包导入。
 - **导入 zip**：选择结构完整的 MNN 模型目录压缩包。导入前检查暂存空间，解压仍需额外空间；失败提示区分复制、解压、校验与保存阶段。ZIP 导入没有固定的 2 GB 大小限制，实际可导入大小取决于系统支持和可用存储空间。
 - **手动推送目录**：适合大模型、离线导入或 zip 导入失败时使用，推送后在模型页扫描注册。

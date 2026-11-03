@@ -138,7 +138,7 @@ The project can serve as a development and integration reference for local AI ap
 
 - Switched the default text model to Qwen3-4B-Instruct, with in-app model-market installation from ModelScope for preset models and additional MNN model entries.
 - The Model Gallery refreshes its catalog online and uses a local cache when offline. Compatible models can be added through catalog updates without reinstalling the app; models requiring a newer runtime prompt users to upgrade first.
-- Forks and derivative builds still read this repository's online catalog by default. To maintain an independent Model Gallery, change `REMOTE_MODEL_CATALOG_URL` in [`ModelCatalogService.ets`](entry/src/main/ets/services/ModelCatalogService.ets) to your own Raw catalog URL and rebuild the app.
+- Forks and derivative builds still read this repository's online catalog by default. To maintain an independent Model Gallery, change `REMOTE_MODEL_CATALOG_URL` and `REMOTE_MODEL_CATALOG_API_URL` in [`ModelCatalogService.ets`](entry/src/main/ets/services/ModelCatalogService.ets) to your own Raw catalog and GitHub Contents URLs, then rebuild the app.
 - Default generation settings come from repository configuration or app presets and can be adjusted on the Model tab. Catalog refresh does not overwrite bundled presets or installed-model configuration snapshots. See the [parameter sourcing and update notes (Chinese)](model-catalog/generation-defaults.md).
 - Model-market downloads support stop-and-resume behavior. Closing a stopped install dialog clears unfinished temporary download files to avoid sandbox leftovers.
 - In addition to zip import, you can push a complete MNN model directory into the app sandbox and scan it from the Model tab to avoid large zip import failures.
@@ -303,7 +303,7 @@ Import and independently load reranking models under Models → Reranking models
 
 The recommended path is to install models from the in-app Model Gallery. Import local conversions by selecting a folder or zip, or push a complete directory through hdc for large models.
 
-- **Model Gallery**: refresh the online catalog and install preset or extended models from ModelScope; if refresh fails, the app keeps the last valid cache or its bundled catalog.
+- **Model Gallery**: refresh the online catalog and install preset or extended models from ModelScope; catalog updates fall back from GitHub Raw to the official Contents API; if both are unavailable, the app keeps the last valid cache or its bundled catalog.
 - **Folder import**: select a complete MNN model directory through the system picker. The app checks available storage, then copies and validates the files without changing the source directory. If the picker cannot open, retry or use zip import.
 - **Zip import**: select a ZIP containing a complete MNN model directory. The app checks space for the staging copy; extraction needs additional space. Error messages identify the failed stage: copying, extraction, validation, or saving. The app does not impose a 2 GB limit, but large imports still depend on system support and available storage.
 - **Manual directory push**: useful for large models, offline imports, or when zip import fails; push the directory and scan it from the Model tab.

@@ -1,4 +1,6 @@
+import { hilog } from '@kit.PerformanceAnalysisKit'
 import fs from '@ohos.file.fs'
+import { formatError } from '../utils/formatters'
 import http from '@ohos.net.http'
 import {
   MODEL_CATALOG_ITEMS,
@@ -21,6 +23,9 @@ import {
 
 export const REMOTE_MODEL_CATALOG_URL: string =
   'https://raw.githubusercontent.com/Torry2022/turbo-ai-chat-harmonyos/main/model-catalog/catalog-v2.json'
+
+const REMOTE_MODEL_CATALOG_API_URL: string =
+  'https://api.github.com/repos/Torry2022/turbo-ai-chat-harmonyos/contents/model-catalog/catalog-v2.json?ref=main'
 
 const CATALOG_CACHE_FILE: string = 'model-catalog-cache-v2.json'
 const INSTALLED_CATALOG_FILE: string = 'model-catalog-installs-v2.json'
@@ -99,16 +104,50 @@ export class ModelCatalogService {
   }
 
   async refresh(filesDir: string): Promise<ModelCatalogRefreshResult> {
+    let text: string
+    try {
+      text = await this.requestCatalog(REMOTE_MODEL_CATALOG_URL, 'application/json')
+    } catch (err) {
+      hilog.warn(0, 'TurboAIChat', 'Model catalog raw request failed: %{public}s', formatError(err as Object))
+      text = await this.requestCatalog(REMOTE_MODEL_CATALOG_API_URL, 'application/vnd.github.raw+json')
+    }
+    const manifest = parseRemoteModelCatalog(text)
+    if (manifest.catalogVersion <= this.catalogVersion) {
+      return {
+        updated: false,
+        source: this.source,
+        catalogVersion: this.catalogVersion,
+        publishedAt: this.publishedAt,
+        message: manifest.catalogVersion === this.catalogVersion ?
+          '模型广场已是最新' : '在线目录版本较旧，已保留当前目录'
+      }
+    }
+    const nextItems = mergeRemoteModelCatalog(MODEL_CATALOG_ITEMS, manifest)
+    await this.writeTextAtomically(`${filesDir}/${CATALOG_CACHE_FILE}`, JSON.stringify(manifest, undefined, 2))
+    this.marketItems = nextItems
+    this.catalogVersion = manifest.catalogVersion
+    this.publishedAt = manifest.publishedAt
+    this.source = '在线目录'
+    return {
+      updated: true,
+      source: this.source,
+      catalogVersion: this.catalogVersion,
+      publishedAt: this.publishedAt,
+      message: '模型广场已更新'
+    }
+  }
+
+  private async requestCatalog(url: string, accept: string): Promise<string> {
     const request = http.createHttp()
     try {
-      const response = await request.request(REMOTE_MODEL_CATALOG_URL, {
+      const response = await request.request(url, {
         method: http.RequestMethod.GET,
         expectDataType: http.HttpDataType.STRING,
         usingCache: false,
-        connectTimeout: 15000,
-        readTimeout: 30000,
+        connectTimeout: 10000,
+        readTimeout: 15000,
         header: {
-          'Accept': 'application/json',
+          'Accept': accept,
           'User-Agent': 'Turbo-AI-Chat-HarmonyOS'
         }
       })
@@ -118,30 +157,8 @@ export class ModelCatalogService {
       if (typeof response.result !== 'string') {
         throw new Error('服务器未返回文本目录')
       }
-      const manifest = parseRemoteModelCatalog(response.result)
-      if (manifest.catalogVersion <= this.catalogVersion) {
-        return {
-          updated: false,
-          source: this.source,
-          catalogVersion: this.catalogVersion,
-          publishedAt: this.publishedAt,
-          message: manifest.catalogVersion === this.catalogVersion ?
-            '模型广场已是最新' : '在线目录版本较旧，已保留当前目录'
-        }
-      }
-      const nextItems = mergeRemoteModelCatalog(MODEL_CATALOG_ITEMS, manifest)
-      await this.writeTextAtomically(`${filesDir}/${CATALOG_CACHE_FILE}`, JSON.stringify(manifest, undefined, 2))
-      this.marketItems = nextItems
-      this.catalogVersion = manifest.catalogVersion
-      this.publishedAt = manifest.publishedAt
-      this.source = '在线目录'
-      return {
-        updated: true,
-        source: this.source,
-        catalogVersion: this.catalogVersion,
-        publishedAt: this.publishedAt,
-        message: '模型广场已更新'
-      }
+      hilog.info(0, 'TurboAIChat', 'Model catalog received from %{public}s', url)
+      return response.result
     } finally {
       request.destroy()
     }

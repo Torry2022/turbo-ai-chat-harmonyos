@@ -43,12 +43,16 @@ export struct ModelMarketDialog {
 
   @Builder
   private FilterButton(label: string) {
-    Button(label)
+    Button(label, { type: ButtonType.Normal })
       .attributeModifier(new ActionButtonStyle(
         this.viewModel.modelMarketCapabilityFilter === label ?
-          $r('app.color.button_primary_background') : $r('app.color.button_secondary_background'),
+          $r('app.color.gallery_entry_background') : $r('app.color.input_background'),
         this.viewModel.modelMarketCapabilityFilter === label ?
-          $r('app.color.button_primary_text') : $r('app.color.button_secondary_text')))
+          $r('app.color.nav_mobile_selected') : $r('app.color.text_secondary')))
+      .height(32).fontSize(12).padding({ left: 12, right: 12 })
+      .fontWeight(this.viewModel.modelMarketCapabilityFilter === label ? FontWeight.Medium : FontWeight.Normal)
+      .responseRegion({ x: 0, y: -4, width: '100%', height: 40 })
+      .id(`model-market-filter-${label}`)
       .onClick(() => {
         this.viewModel.updateModelMarketCapabilityFilter(label)
       })
@@ -70,7 +74,7 @@ export struct ModelMarketDialog {
         .fontSize(13)
         .fontColor($r('app.color.text_muted'))
         .textAlign(TextAlign.Center)
-      Button('清空筛选')
+      Button('清空筛选', { type: ButtonType.Normal })
         .attributeModifier(new ActionButtonStyle(
           $r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
         .onClick(() => {
@@ -105,73 +109,75 @@ export struct ModelMarketDialog {
 
   @Builder
   private CatalogItemCard(item: ModelCatalogItem) {
-    Row({ space: 10 }) {
-      Column({ space: 6 }) {
-        Row({ space: 6 }) {
-          Text(item.displayName)
-            .fontSize(15)
-            .fontWeight(FontWeight.Bold)
-            .fontColor($r('app.color.text_title'))
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-            .layoutWeight(item.recommended ? 0 : 1)
-          if (item.recommended) {
-            this.PresetTag()
-          }
+    Column({ space: 5 }) {
+      Row({ space: 6 }) {
+        Text(item.displayName)
+          .fontSize(14).fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.text_title'))
+          .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).layoutWeight(1)
+        if (item.recommended) {
+          this.PresetTag()
         }
-        .width('100%')
+      }.width('100%')
 
-        Text(`${formatBytes(item.totalBytes)} · ${item.provider} · ${item.sourceName}`)
-          .fontSize(12)
-          .fontColor($r('app.color.text_muted'))
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-          .width('100%')
+      Text(item.description)
+        .fontSize(12).lineHeight(17).fontColor($r('app.color.text_hint'))
+        .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis }).width('100%')
 
-        Text(item.description)
-          .fontSize(12)
-          .lineHeight(17)
-          .fontColor($r('app.color.text_hint'))
-          .maxLines(2)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-          .width('100%')
-
-        if (this.viewModel.catalogCompatibilityMessage(item).length > 0) {
-          Text(this.viewModel.catalogCompatibilityMessage(item))
-            .fontSize(12)
-            .fontColor($r('app.color.text_hint'))
-        }
-
-        Row({ space: 6 }) {
-          ForEach(item.capabilities, (capability: string) => {
-            this.CapabilityTag(capability)
-          }, (capability: string) => capability)
-        }
-        .width('100%')
+      if (this.viewModel.catalogCompatibilityMessage(item).length > 0) {
+        Text(this.viewModel.catalogCompatibilityMessage(item))
+          .fontSize(11).lineHeight(16).fontColor($r('app.color.text_hint')).width('100%')
       }
-      .layoutWeight(1)
-      .alignItems(HorizontalAlign.Start)
 
-      Button(this.viewModel.isCatalogItemInstalled(item.id) ? '已安装' : '下载')
-        .attributeModifier(new ActionButtonStyle(this.viewModel.isCatalogItemInstalled(item.id) ? $r('app.color.tag_green_background') : $r('app.color.button_primary_background'), this.viewModel.isCatalogItemInstalled(item.id) ? $r('app.color.tag_green_text') : $r('app.color.button_primary_text')))
-        .width(68)
-        .fontSize(this.viewModel.isCatalogItemInstalled(item.id) ? $r('app.float.button_compact_font_size') : $r('app.float.button_font_size'))
-        .fontWeight(this.viewModel.isCatalogItemInstalled(item.id) ? FontWeight.Normal : FontWeight.Medium)
-        .enabled(!this.viewModel.isCatalogItemInstalled(item.id) &&
-          this.viewModel.catalogCompatibilityMessage(item).length === 0 &&
-          !this.viewModel.busy &&
-          !this.viewModel.modelLoading &&
-          !this.viewModel.modelImporting &&
-          !this.viewModel.builtinModelInstalling &&
-          !this.viewModel.modelCatalogRefreshing)
-        .onClick(() => {
-          this.viewModel.installCatalogItem(item.id)
-        })
+      Row({ space: 10 }) {
+        Column({ space: 3 }) {
+          Text(`${formatBytes(item.totalBytes)}  ${item.provider} / ${item.sourceName}`)
+            .fontSize(11).lineHeight(16).fontColor($r('app.color.text_muted'))
+            .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).width('100%')
+          Row({ space: 4 }) {
+            ForEach(item.capabilities, (capability: string) => {
+              this.CapabilityTag(capability)
+            }, (capability: string) => capability)
+          }
+        }.layoutWeight(1).alignItems(HorizontalAlign.Start)
+        if (this.viewModel.isCatalogItemInstalled(item.id)) {
+          Row({ space: 4 }) {
+            Image($r('app.media.icon_message_check')).width(16).height(16)
+              .fillColor($r('app.color.tag_green_text'))
+            Text('已安装').fontSize(12).fontWeight(FontWeight.Medium)
+              .fontColor($r('app.color.tag_green_text'))
+          }.width(76).height(30).justifyContent(FlexAlign.Center)
+            .padding({ left: 8, right: 8 })
+            .backgroundColor($r('app.color.tag_green_background'))
+            .borderRadius($r('app.float.button_radius'))
+            .border({ width: 0.5, color: $r('app.color.border'), radius: $r('app.float.button_radius') })
+            .id(`model-market-installed-${item.id}`)
+        } else {
+          Button({ type: ButtonType.Normal }) {
+            Row({ space: 4 }) {
+              Image($r('app.media.icon_download')).width(16).height(16)
+                .fillColor($r('app.color.button_action_text'))
+              Text('下载').fontSize(12).fontWeight(FontWeight.Medium)
+                .fontColor($r('app.color.button_action_text'))
+            }.justifyContent(FlexAlign.Center)
+          }
+            .attributeModifier(new ActionButtonStyle(
+              $r('app.color.tag_blue_background'), $r('app.color.button_action_text')))
+            .height(30).width(76).padding({ left: 8, right: 8 })
+            .border({ width: 0.5, color: $r('app.color.border'), radius: $r('app.float.button_radius') })
+            .responseRegion({ x: 0, y: -5, width: '100%', height: 40 })
+            .accessibilityText(`下载 ${item.displayName}`)
+            .id(`model-market-download-${item.id}`)
+            .enabled(this.viewModel.catalogCompatibilityMessage(item).length === 0 &&
+              !this.viewModel.busy && !this.viewModel.modelLoading && !this.viewModel.modelImporting &&
+              !this.viewModel.builtinModelInstalling && !this.viewModel.modelCatalogRefreshing)
+            .onClick(() => { this.viewModel.installCatalogItem(item.id) })
+        }
+      }.width('100%')
     }
-    .width('100%')
-    .padding(12)
+    .width('100%').alignItems(HorizontalAlign.Start).padding(10)
     .backgroundColor($r('app.color.input_background'))
-    .borderRadius(8)
+    .borderRadius($r('app.float.card_radius')).id(`model-market-item-${item.id}`)
   }
 
   build() {
@@ -186,14 +192,14 @@ export struct ModelMarketDialog {
           this.viewModel.dismissTopDialogIfIdle()
         })
 
-      Column({ space: 12 }) {
+      Column({ space: 10 }) {
         Row() {
           Text('模型广场')
             .fontSize(20)
             .fontWeight(FontWeight.Bold)
             .fontColor($r('app.color.text_title'))
             .layoutWeight(1)
-          Button(this.viewModel.modelCatalogRefreshing ? '更新中' : '刷新')
+          Button(this.viewModel.modelCatalogRefreshing ? '更新中' : '刷新', { type: ButtonType.Normal })
             .attributeModifier(new CompactActionStyle())
             .height($r('app.float.button_height'))
             .responseRegion({ x: 0, y: 0, width: '100%', height: '100%' })
@@ -253,27 +259,28 @@ export struct ModelMarketDialog {
         TextInput({ text: this.viewModel.modelMarketSearchText, placeholder: '搜索模型名称或厂商',
           controller: this.searchController })
           .attributeModifier(new InputFieldStyle())
-          .height(40)
+          .height(36)
           .fontSize(13)
           .onChange((value: string) => {
             this.viewModel.updateModelMarketSearchText(value)
           })
 
         Scroll() {
-          Row({ space: 8 }) {
+          Row({ space: 6 }) {
             ForEach(this.viewModel.modelCatalogFilterTags(), (tag: string) => {
               this.FilterButton(tag)
             }, (tag: string) => tag)
           }
         }
         .width('100%')
+        .height(40)
         .scrollable(ScrollDirection.Horizontal)
         .align(Alignment.Start)
         .scrollBar(BarState.Off)
         .edgeEffect(EdgeEffect.Spring)
 
         Scroll() {
-          Column({ space: 10 }) {
+          Column({ space: 8 }) {
             if (this.viewModel.modelCatalogItems().length === 0) {
               this.EmptyResults()
             }
@@ -293,8 +300,10 @@ export struct ModelMarketDialog {
         .onClick(() => this.searchController.stopEditing())
       }
       .width(Math.max(1, Math.min(840, this.availableWidth - 32)))
-      .height(Math.max(1, Math.min(800, this.availableHeight * 0.85)))
-      .padding({ top: 14, bottom: 14, left: 12, right: 12 })
+      .height(Math.max(1, Math.min(this.availableWidth < 600 ? 640 : 800,
+        this.availableHeight * (this.availableWidth < 600 ? 0.72 : 0.85))))
+      .padding({ top: 12, bottom: 12, left: 12, right: 12 })
+      .id('model-market-panel')
       .backgroundColor($r('app.color.dialog'))
       .border({ width: 1, color: $r('app.color.border') })
       .borderRadius($r('app.float.dialog_radius'))

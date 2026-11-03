@@ -192,6 +192,7 @@ export class ChatViewModel {
   )
 
   private imageService: ImagePayloadService = new ImagePayloadService()
+  private modelCatalogRefreshFailed: boolean = false
   private modelCatalogService: ModelCatalogService = new ModelCatalogService()
   private builtinModelInstallService: BuiltinModelInstallService =
     new BuiltinModelInstallService(this.modelCatalogService)
@@ -580,6 +581,9 @@ export class ChatViewModel {
       return
     }
     this.showModelMarketDialog = true
+    if (this.modelCatalogRefreshFailed) {
+      this.refreshModelCatalog(false)
+    }
     this.refreshModelMarketInstallStates()
     this.notify()
   }
@@ -713,6 +717,7 @@ export class ChatViewModel {
     this.notify()
     this.modelCatalogService.refresh(this.filesDir).then((result: ModelCatalogRefreshResult) => {
       this.modelCatalogRefreshing = false
+      this.modelCatalogRefreshFailed = false
       this.applyCatalogResult(result)
       this.refreshModelMarketInstallStates()
       if (showResultToast) {
@@ -720,14 +725,16 @@ export class ChatViewModel {
       }
     }).catch((err: Error) => {
       this.modelCatalogRefreshing = false
+      this.modelCatalogRefreshFailed = true
       const errorText = formatError(err as Object)
       const httpIndex = errorText.indexOf('HTTP ')
       const httpStatus = httpIndex >= 0 ?
         errorText.substring(httpIndex, Math.min(errorText.length, httpIndex + 8)) : ''
       this.modelCatalogStatus = httpStatus.length > 0 ?
-        `在线更新失败（${httpStatus}），已保留当前目录` : '在线更新失败，已保留当前目录'
+        `目录更新失败（${httpStatus}），当前目录仍可使用` :
+          errorText.includes('2300028') ? '目录更新超时，当前目录仍可使用' : '暂时无法更新目录，当前目录仍可使用'
       if (showResultToast) {
-        this.toastCallback('模型广场更新失败，已保留当前目录')
+        this.toastCallback(this.modelCatalogStatus)
       }
       this.notify()
     })

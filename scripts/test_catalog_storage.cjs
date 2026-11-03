@@ -10,6 +10,9 @@ const modules = new Map();
 const files = new Map();
 let remote;
 let requestedUrl;
+let replies = [];
+let requests = [];
+let destroyed = 0;
 const mockFs = {
   OpenMode: { WRITE_ONLY: 1, CREATE: 2, TRUNC: 4 },
   access: async (name) => files.has(name),
@@ -36,12 +39,22 @@ function load(name) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 }
   }).outputText;
   const localRequire = (id) => {
+    if (id === '@kit.PerformanceAnalysisKit') return { hilog: { warn: () => {}, info: () => {} } };
     if (id === '@ohos.file.fs') return { default: mockFs };
     if (id === '@ohos.net.http') return { default: {
       RequestMethod: { GET: 'GET' }, HttpDataType: { STRING: 'string' },
       createHttp: () => ({
-        request: async (url) => { requestedUrl = url; return { responseCode: 200, result: JSON.stringify(remote) }; },
-        destroy: () => {}
+        request: async (url, options) => {
+          requestedUrl = url;
+          requests.push({ url, options });
+          if (replies.length) {
+            const reply = replies.shift();
+            if (reply instanceof Error) throw reply;
+            return reply;
+          }
+          return { responseCode: 200, result: JSON.stringify(remote) };
+        },
+        destroy: () => { destroyed++; }
       })
     } };
     assert(id.startsWith('.'), `Unexpected import ${id}`);
@@ -62,6 +75,7 @@ const newCache = '/test/model-catalog-cache-v2.json';
 const snapshot = serializeInstalledCatalog([MODEL_CATALOG_ITEMS[0]]);
 async function check(name, test) {
   files.clear();
+  replies = []; requests = []; destroyed = 0;
   await test();
   console.log('PASS', name);
 }
@@ -177,6 +191,71 @@ async function main() {
     assert.equal(files.get(oldCache), oldText);
     assert.equal(JSON.parse(files.get(newCache)).catalogVersion, 2);
     assert.equal((await new ModelCatalogService().load('/test')).catalogVersion, 2);
+  });
+  await check('raw timeout falls back to official API and destroys both requests', async () => {
+    remote = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../model-catalog/catalog-v2.json'), 'utf8'));
+    replies.push(Object.assign(new Error('Operation timeout'), { code: 2300028 }));
+    const service = new ModelCatalogService();
+    assert((await service.refresh('/test')).updated);
+    assert.equal(requests.length, 2);
+    assert(requests[0].url.startsWith('https://raw.githubusercontent.com/'));
+    assert.equal(requests[1].url, 'https://api.github.com/repos/Torry2022/turbo-ai-chat-harmonyos/contents/model-catalog/catalog-v2.json?ref=main');
+    assert.equal(requests[1].options.header.Accept, 'application/vnd.github.raw+json');
+    assert.equal(destroyed, 2);
+    assert.equal((await new ModelCatalogService().load('/test')).catalogVersion, remote.catalogVersion);
+  });
+  await check('both endpoints failing preserves valid cached catalog', async () => {
+    const service = new ModelCatalogService();
+    await service.refresh('/test');
+    const cached = files.get(newCache);
+    const items = JSON.stringify(service.items());
+    replies.push({ responseCode: 503, result: '' }, Object.assign(new Error('Operation timeout'), { code: 2300028 }));
+    await assert.rejects(service.refresh('/test'), /Operation timeout/);
+    assert.equal(files.get(newCache), cached);
+    assert.equal(JSON.stringify(service.items()), items);
+    assert.equal(destroyed, 3);
+  });
+  await check('invalid catalog content is rejected without another network request or cache mutation', async () => {
+    const service = new ModelCatalogService();
+    await service.refresh('/test');
+    const cached = files.get(newCache);
+    replies.push({ responseCode: 200, result: '<html>error</html>' });
+    await assert.rejects(service.refresh('/test'));
+    assert.equal(requests.length, 2);
+    assert.equal(destroyed, 2);
+    assert.equal(files.get(newCache), cached);
+  });
+  await check('reopening gallery retries failed refresh, clears failure after success, and avoids concurrent refresh', async () => {
+    const source = fs.readFileSync(path.join(sourceRoot, 'state/ChatViewModel.ets'), 'utf8');
+    const ast = ts.createSourceFile('ChatViewModel.ts', source, ts.ScriptTarget.Latest, true);
+    const declaration = ast.statements.find((node) => ts.isClassDeclaration(node) && node.name.text === 'ChatViewModel');
+    const names = ['openModelMarketDialog', 'refreshModelCatalog'];
+    const methods = declaration.members.filter((node) => node.name && names.includes(node.name.getText(ast)));
+    const code = ts.transpileModule(`class Subject { ${methods.map((node) => node.getText(ast)).join('\n')} }`, {
+      compilerOptions: { target: ts.ScriptTarget.ES2020 }
+    }).outputText;
+    const { formatError } = load(path.join(sourceRoot, 'utils/formatters.ets'));
+    const Subject = vm.runInNewContext(code + '\nSubject', { formatError });
+    const subject = new Subject();
+    let count = 0;
+    Object.assign(subject, { filesDir: '/test', notify: () => {}, refreshModelMarketInstallStates: () => {},
+      applyCatalogResult: () => {}, toastCallback: () => {},
+      modelCatalogService: { refresh: async () => { count++; throw { code: 2300028, message: 'Operation timeout' }; } }
+    });
+    subject.refreshModelCatalog(false);
+    await new Promise(setImmediate);
+    assert.equal(subject.modelCatalogStatus, '目录更新超时，当前目录仍可使用');
+    assert.equal(subject.modelCatalogRefreshFailed, true);
+    subject.openModelMarketDialog();
+    subject.openModelMarketDialog();
+    assert.equal(count, 2);
+    await new Promise(setImmediate);
+    subject.modelCatalogService.refresh = async () => { count++; return {}; };
+    subject.openModelMarketDialog();
+    await new Promise(setImmediate);
+    assert.equal(subject.modelCatalogRefreshFailed, false);
+    subject.openModelMarketDialog();
+    assert.equal(count, 3);
   });
   await check('new installations never write the legacy snapshot', async () => {
     const service = new ModelCatalogService();
