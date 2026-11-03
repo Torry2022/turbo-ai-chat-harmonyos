@@ -19,15 +19,16 @@ using MNN::Transformer::PromptImagePart;
 
 namespace {
 
-class ScopedTitleTemplate {
+class ScopedThinkingTemplate {
 public:
-    ScopedTitleTemplate(Llm* llm, bool enabled) : llm_(enabled ? llm : nullptr) {
+    ScopedThinkingTemplate(Llm* llm, int mode) : llm_(mode >= 0 ? llm : nullptr) {
         if (llm_ == nullptr) return;
         originalConfig_ = llm_->dump_config();
-        llm_->set_config(R"({"jinja":{"context":{"enable_thinking":false}}})");
+        llm_->set_config(mode == 0 ? R"({"jinja":{"context":{"enable_thinking":false}}})"
+                                   : R"({"jinja":{"context":{"enable_thinking":true}}})");
     }
 
-    ~ScopedTitleTemplate() {
+    ~ScopedThinkingTemplate() {
         if (llm_ == nullptr) return;
         // set_config merges objects: clear the temporary context before restoring
         // it, including models whose original context had no thinking option.
@@ -353,6 +354,7 @@ std::string MnnLlmRunner::generate(const std::string& prompt, const SamplingConf
         llm_->set_config(BuildGenerationConfig(sampling));
     }
 
+    ScopedThinkingTemplate thinkingTemplate(llm_.get(), sampling.thinkingMode);
     stopRequested_.store(false);
     ResetForGeneration(llm_.get());
     std::ostringstream output;
@@ -377,6 +379,7 @@ MnnLlmRunner::GenerationResult MnnLlmRunner::generateStreaming(
         llm_->set_config(BuildGenerationConfig(sampling));
     }
 
+    ScopedThinkingTemplate thinkingTemplate(llm_.get(), sampling.thinkingMode);
     stopRequested_.store(false);
     ResetForGeneration(llm_.get());
     ChunkStreamBuffer buffer(onChunk, [this]() {
@@ -500,7 +503,7 @@ MnnLlmRunner::GenerationResult MnnLlmRunner::generateChatStreaming(
         return {};
     }
 
-    ScopedTitleTemplate titleTemplate(llm_.get(), cancellation != nullptr);
+    ScopedThinkingTemplate thinkingTemplate(llm_.get(), cancellation != nullptr ? 0 : sampling.thinkingMode);
     stopRequested_.store(false);
     ChunkStreamBuffer buffer(onChunk, [this, cancellation]() {
         if (cancellation != nullptr && cancellation->load()) stopRequested_.store(true);
@@ -581,6 +584,7 @@ MnnLlmRunner::GenerationResult MnnLlmRunner::generateImageChatStreaming(
         llm_->set_config(BuildGenerationConfig(sampling));
     }
 
+    ScopedThinkingTemplate thinkingTemplate(llm_.get(), sampling.thinkingMode);
     std::string userContent;
     for (auto it = messages.rbegin(); it != messages.rend(); ++it) {
         if (it->role == "user" && !it->content.empty()) {

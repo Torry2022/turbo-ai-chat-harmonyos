@@ -205,6 +205,14 @@ MnnLlmRunner::SamplingConfig ReadSamplingConfig(
         ReadNamedInt(env, args[settingsIndex], "penaltyWindow", sampling.penaltyWindow),
         0,
         2048);
+    napi_value thinking = nullptr;
+    napi_valuetype thinkingType = napi_undefined;
+    if (napi_get_named_property(env, args[settingsIndex], "thinkingEnabled", &thinking) == napi_ok &&
+        napi_typeof(env, thinking, &thinkingType) == napi_ok && thinkingType == napi_boolean) {
+        bool enabled = false;
+        napi_get_value_bool(env, thinking, &enabled);
+        sampling.thinkingMode = enabled ? 1 : 0;
+    }
     return sampling;
 }
 

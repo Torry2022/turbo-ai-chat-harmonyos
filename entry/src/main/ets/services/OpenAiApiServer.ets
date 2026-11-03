@@ -812,7 +812,8 @@ export class OpenAiApiServer {
         repetitionPenalty: defaults.repetitionPenalty,
         frequencyPenalty: defaults.frequencyPenalty,
         presencePenalty: defaults.presencePenalty,
-        penaltyWindow: defaults.penaltyWindow
+        penaltyWindow: defaults.penaltyWindow,
+        thinkingEnabled: defaults.thinkingEnabled
       }
     }
   }

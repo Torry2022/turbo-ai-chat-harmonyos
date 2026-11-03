@@ -225,7 +225,7 @@ With a physical keyboard, Enter sends from the chat input and Shift+Enter insert
 - Stop generation: interrupt the current response while it is streaming. Output-limit and timeout notices appear in the answer and are saved with chat history
 - Voice input: offline Mandarin recognition through Core Speech Kit, with live partial results and manual stop
 - Model switching: switch between preset models, installed market models, and imported models
-- Thinking blocks: separate reasoning from the final answer, including models whose chat template already supplies the opening `<think>` tag. The model's default thinking setting is preserved. Reasoning counts toward the maximum output length, so reaching the limit may cut the answer short.
+- Thinking blocks: separate reasoning from the final answer, including models whose chat template already supplies the opening `<think>` tag. Models with a supported template expose a Deep thinking switch below the model list. The choice is saved per model and applies to the next request; untouched settings retain the model default. Reasoning counts toward the maximum output length, so reaching the limit may cut the answer short.
 - Markdown rendering: code blocks (with copy button), tables, blockquotes, links, etc., with compatibility handling for incomplete inline code, empty table cells, and table column jitter during streaming output
 - Long-conversation scrolling optimization: caches Markdown / thinking-block parsing and pauses auto-follow while the user is scrolling
 - Generation parameter controls: temperature, Top-P/K and penalties take effect on the next generation request. Zero temperature selects the highest-scoring token; a zero penalty window includes all recorded tokens.

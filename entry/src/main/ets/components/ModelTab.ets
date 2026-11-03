@@ -77,6 +77,7 @@ export struct ModelTab {
   }
 
   private resetGenerationSliders(): void {
+    this.viewModel.resetThinkingMode()
     this.viewModel.resetGenerationSettings(false)
     this.syncGenerationSlidersFromViewModel()
   }
@@ -370,6 +371,19 @@ export struct ModelTab {
         Divider()
           .color($r('app.color.divider'))
           .opacity(0.6)
+        if (this.viewModel.thinkingSupported) {
+          Row({ space: 12 }) {
+            Text('深度思考')
+              .fontSize(13)
+              .fontColor($r('app.color.text_secondary'))
+              .layoutWeight(1)
+            Toggle({ type: ToggleType.Switch, isOn: this.viewModel.thinkingEnabled })
+              .height(22).margin(0).selectedColor($r('app.color.status_good'))
+              .enabled(this.controlsEnabled())
+              .onChange((enabled: boolean) => this.viewModel.setThinkingEnabled(enabled))
+              .id('model-thinking-switch')
+          }.width('100%')
+        }
         Column() {
           Row({ space: 12 }) {
             Text('启动应用时加载当前模型')
@@ -391,7 +405,7 @@ export struct ModelTab {
           }
           .width('100%')
           Text(this.viewModel.startupAutoLoadEnabled ?
-            `当前自动加载：${this.viewModel.startupModelName()}` : '未设置自动加载模型')
+            `当前自动加载：${this.viewModel.startupModelName()}` : '当前未选择自动加载的模型')
             .fontSize(12)
             .lineHeight(18)
             .fontColor($r('app.color.text_muted'))

@@ -16,6 +16,7 @@ class Llm;
 class MnnLlmRunner {
 public:
     struct SamplingConfig {
+        int thinkingMode = -1; // -1 preserves the model default; 0/1 overrides this request.
         int maxNewTokens = 256;
         double temperature = 0.6;
         double topP = 0.9;

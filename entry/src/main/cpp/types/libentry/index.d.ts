@@ -15,6 +15,7 @@ export interface GenerationResult {
 }
 
 export interface GenerationSettings {
+  thinkingEnabled?: boolean;
   temperature: number;
   topP: number;
   topK: number;

@@ -1,3 +1,5 @@
+import fs from '@ohos.file.fs'
+import { modelThinkingSupport } from '../utils/modelThinking'
 import { RerankerService } from '../services/RerankerService'
 import { ConversationTitleService, ConversationTitleRequest, conversationTitleSignature } from '../services/ConversationTitleService'
 import { decideLaya, loadLaya, isLayaLoaded, isLayaReady, LayaRuntimeState, observeLayaRuntime, releaseLaya } from '../services/LayaDecisionService'
@@ -133,6 +135,12 @@ export class ChatViewModel {
   builtinModelInstallTotalBytes: number = 0
   builtinModelInstallError: string = ''
   builtinModelInstallCanceled: boolean = false
+  thinkingSupported: boolean = false
+  thinkingEnabled: boolean = true
+  private thinkingDefaultEnabled: boolean = true
+  private thinkingOverrides: Record<string, boolean | undefined> = {}
+  private thinkingSettingsReady: boolean = false
+  private thinkingReadSerial: number = 0
   modelPageCategory: CatalogModelType = 'chat'
   modelMarketCategory: CatalogModelType = 'chat'
   showModelMarketDialog: boolean = false
@@ -314,6 +322,7 @@ export class ChatViewModel {
     this.loadModelOrder()
     this.loadStartupModelSettings()
     this.loadChatActionSettings()
+    this.loadThinkingSettings()
     this.loadApiServerSettings()
     this.resetGenerationSettings(false)
     this.historyService.onAttachmentError = () => {
@@ -825,6 +834,7 @@ export class ChatViewModel {
     if (!this.modelManager.updateModelPath(value)) {
       return
     }
+    this.refreshThinkingMode()
     this.runtimeConfigDirty = true
     this.setStatus(this.loaded ? '运行配置已修改，应用并重新加载后生效。' : '运行配置已修改，应用并加载后生效。', 'neutral')
     this.notify()
@@ -2199,6 +2209,7 @@ export class ChatViewModel {
         throw new Error('模型加载未完成。')
       }
       this.loaded = loaded
+      this.refreshThinkingMode()
       this.runtimeConfigDirty = false
       this.setStatus(`${this.currentModel().shortName} 已加载`, 'success')
       this.modelLoadMessage = `${this.currentModel().shortName} 加载完成，可以开始聊天。`
@@ -2611,6 +2622,7 @@ export class ChatViewModel {
   }
 
   private resetLoadedModel(status: string): void {
+    this.refreshThinkingMode()
     this.stopApiServerForModelChange(false)
     if (this.loaded) {
       this.modelLifecycleService.reset()
@@ -2780,8 +2792,67 @@ export class ChatViewModel {
     return ''
   }
 
+  private loadThinkingSettings(): void {
+    if (this.context === undefined) return
+    preferences.getPreferences(this.context, 'model-thinking').then((store: preferences.Preferences) =>
+      store.get('models', '{}')).then((value: preferences.ValueType) => {
+      const parsed = JSON.parse(typeof value === 'string' ? value : '{}') as Record<string, boolean>
+      for (const id of Object.keys(parsed)) {
+        if (typeof parsed[id] === 'boolean') this.thinkingOverrides[id] = parsed[id]
+      }
+    }).catch(() => {}).finally(() => {
+      this.thinkingSettingsReady = true
+      this.refreshThinkingMode()
+    })
+  }
+
+  private refreshThinkingMode(): void {
+    if (this.context === undefined || !this.thinkingSettingsReady) return
+    const serial = ++this.thinkingReadSerial
+    const id = this.selectedModelId
+    const path = this.modelPath
+    this.thinkingSupported = false
+    const root = path.substring(0, path.lastIndexOf('/'))
+    Promise.all([fs.readText(path), fs.readText(`${root}/llm_config.json`)]).then((texts: string[]) => {
+      if (serial !== this.thinkingReadSerial || id !== this.selectedModelId || path !== this.modelPath) return
+      const support = modelThinkingSupport(texts[0], texts[1])
+      this.thinkingSupported = support.supported
+      this.thinkingDefaultEnabled = support.defaultEnabled
+      this.thinkingEnabled = this.thinkingOverrides[id] ?? support.defaultEnabled
+      this.notify()
+    }).catch(() => {
+      if (serial === this.thinkingReadSerial) { this.thinkingSupported = false; this.notify() }
+    })
+  }
+
+  setThinkingEnabled(enabled: boolean): void {
+    if (!this.thinkingSupported || enabled === this.thinkingEnabled || this.busy || this.modelLoading ||
+      this.modelImporting || this.builtinModelInstalling) return
+    this.thinkingOverrides[this.selectedModelId] = enabled
+    this.thinkingEnabled = enabled
+    this.saveThinkingSettings()
+    this.notify()
+  }
+
+  resetThinkingMode(): void {
+    if (!this.thinkingSupported) return
+    this.thinkingOverrides[this.selectedModelId] = undefined
+    this.thinkingEnabled = this.thinkingDefaultEnabled
+    this.saveThinkingSettings()
+    this.notify()
+  }
+
+  private saveThinkingSettings(): void {
+    if (this.context === undefined) return
+    preferences.getPreferences(this.context, 'model-thinking').then(async (store: preferences.Preferences) => {
+      await store.put('models', JSON.stringify(this.thinkingOverrides))
+      await store.flush()
+    }).catch(() => { this.toastCallback('思考模式设置未能保存，请重试') })
+  }
+
   private currentGenerationSettings(): GenerationSettings {
     return {
+      thinkingEnabled: this.thinkingSupported ? this.thinkingOverrides[this.selectedModelId] : undefined,
       temperature: this.temperature,
       topP: this.topP,
       topK: this.topK,
