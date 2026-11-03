@@ -84,7 +84,10 @@ export struct AppHeader {
           .fontSize(12)
           .fontColor(this.statusColor)
           .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .textOverflow({ overflow: TextOverflow.MARQUEE })
+          .marqueeOptions({ start: true, step: 1, loop: -1, delay: 1000, fadeout: true,
+            marqueeUpdatePolicy: MarqueeUpdatePolicy.PRESERVE_POSITION })
+          .id('app-header-status')
           .width('100%')
           .height(18)
       }
