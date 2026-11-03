@@ -170,6 +170,7 @@ std::string BuildRuntimeConfig(int threadNum, const MnnLlmRunner::SamplingConfig
            << "\"tmp_path\":\"tmp\","
            << "\"backend_type\":\"cpu\","
            << "\"thread_num\":" << threadNum << ","
+           << "\"mllm\":{\"thread_num\":" << threadNum << "},"
            << "\"precision\":\"low\","
            << "\"memory\":\"low\","
            << BuildSamplingConfigProperties(sampling) << ","
@@ -177,6 +178,18 @@ std::string BuildRuntimeConfig(int threadNum, const MnnLlmRunner::SamplingConfig
            << "\"prompt_cache\":false"
            << "}";
     return config.str();
+}
+
+std::string LegacyVisionConfig(const std::string& modelConfig) {
+    // The pinned MNN fallback infers 14px patches for legacy Gemma 4 exports.
+    // Supply the export's 16px patch size without overriding explicit descriptors.
+    static const std::regex model(R"("model_type"\s*:\s*"gemma4")");
+    static const std::regex visual(R"("is_visual"\s*:\s*true)");
+    if (std::regex_search(modelConfig, model) && std::regex_search(modelConfig, visual) &&
+        modelConfig.find("\"vision_processor\"") == std::string::npos) {
+        return R"({"vision_processor":{"type":"padded_patches","patch_size":16}})";
+    }
+    return "{}";
 }
 
 std::string BuildGenerationConfig(const MnnLlmRunner::SamplingConfig& sampling) {
@@ -306,6 +319,7 @@ bool MnnLlmRunner::load(
         return false;
     }
 
+    candidate->set_config(LegacyVisionConfig(candidate->dump_config()));
     candidate->set_config(BuildRuntimeConfig(threadNum, sampling));
     PrepareMnnCpuCapacity(candidate->dump_config());
 
@@ -316,7 +330,8 @@ bool MnnLlmRunner::load(
 
     const int actualThreads = candidate->cpu_thread_count();
     if (actualThreads != threadNum) {
-        error = "CPU runtime thread width does not match the requested configuration";
+        error = "CPU runtime thread width does not match the requested configuration (requested " +
+            std::to_string(threadNum) + ", actual " + std::to_string(actualThreads) + ")";
         return false;
     }
     llm_ = std::move(candidate);

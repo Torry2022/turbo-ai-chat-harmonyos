@@ -17,6 +17,18 @@
 using namespace MNN::Transformer;
 void check(bool value) { if (!value) throw std::runtime_error("Sampler regression"); }
 int main() {
+    check(LegacyVisionConfig(R"({"model_type":"gemma4","is_visual":true})") ==
+        R"({"vision_processor":{"type":"padded_patches","patch_size":16}})");
+    check(LegacyVisionConfig(R"({"model_type":"gemma4","is_visual":true,"vision_processor":{"family":"gemma4","patch_size":32}})") == "{}");
+    check(LegacyVisionConfig(R"({"model_type":"qwen3_vl","is_visual":true})") == "{}");
+    check(LegacyVisionConfig(R"({"model_type":"gemma4","is_visual":false})") == "{}");
+
+    auto multimodal = std::make_shared<LlmConfig>();
+    multimodal->config_ = ujson::json::parse(R"({"thread_num":4,"mllm":{"thread_num":4,"backend_type":"cpu","precision":"normal","memory":"low"}})");
+    multimodal->config_.merge(ujson::json::parse(BuildRuntimeConfig(6, MnnLlmRunner::SamplingConfig{})));
+    multimodal->mllm_config_ = multimodal->config_["mllm"];
+    check(multimodal->thread_num() == 6 && multimodal->thread_num(true) == 6);
+    check(multimodal->precision(true) == "normal" && multimodal->backend_type(true) == "cpu");
     auto context = std::make_shared<LlmContext>();
     auto config = std::make_shared<LlmConfig>();
     config->config_ = ujson::json::parse(R"({"sampler_type":"mixed","mixed_samplers":["penalty","topK","topP","temperature"],"temperature":0.7,"top_k":3,"top_p":0.9,"repetition_penalty":1.05,"presence_penalty":0,"frequency_penalty":0,"penalty_window":256})");
