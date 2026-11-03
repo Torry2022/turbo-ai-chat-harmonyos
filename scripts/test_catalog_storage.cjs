@@ -15,6 +15,7 @@ let requests = [];
 let destroyed = 0;
 let officialResponse;
 let rerankerResponse;
+let descriptionResponse;
 let urlResponses = new Map();
 const mockFs = {
   OpenMode: { WRITE_ONLY: 1, CREATE: 2, TRUNC: 4 },
@@ -55,6 +56,10 @@ function load(name) {
             if (reply instanceof Error) throw reply;
             return reply;
           }
+          if (url.includes('model_descriptions_zh.json')) {
+            if (descriptionResponse instanceof Error) throw descriptionResponse;
+            return descriptionResponse || { responseCode: 503, result: '' };
+          }
           if (url === 'https://modelscope.cn/api/v1/models') return rerankerResponse || { responseCode: 503, result: '' };
           if (url.includes('meta.alicdn.com')) {
             if (officialResponse instanceof Error) throw officialResponse;
@@ -88,7 +93,8 @@ const newCache = '/test/model-catalog-cache-v2.json';
 const snapshot = serializeInstalledCatalog([MODEL_CATALOG_ITEMS[0]]);
 async function check(name, test) {
   files.clear();
-  replies = []; requests = []; destroyed = 0; officialResponse = undefined; rerankerResponse = undefined; urlResponses = new Map();
+  replies = []; requests = []; destroyed = 0; officialResponse = undefined; rerankerResponse = undefined;
+  descriptionResponse = undefined; urlResponses = new Map();
   await test();
   console.log('PASS', name);
 }
@@ -210,7 +216,7 @@ async function main() {
     replies.push(Object.assign(new Error('Operation timeout'), { code: 2300028 }));
     const service = new ModelCatalogService();
     assert((await service.refresh('/test')).updated);
-    const supplemental = requests.filter(request => !request.url.includes('meta.alicdn.com') && request.url !== 'https://modelscope.cn/api/v1/models');
+    const supplemental = requests.filter(request => !request.url.includes('meta.alicdn.com') && request.url !== 'https://modelscope.cn/api/v1/models' && !request.url.includes('model_descriptions_zh.json'));
     assert.equal(supplemental.length, 2);
     assert(supplemental[0].url.startsWith('https://raw.githubusercontent.com/'));
     assert.equal(supplemental[1].url, 'https://api.github.com/repos/Torry2022/turbo-ai-chat-harmonyos/contents/model-catalog/catalog-v2.json?ref=main');
@@ -235,7 +241,7 @@ async function main() {
     const cached = files.get(newCache);
     replies.push({ responseCode: 200, result: '<html>error</html>' });
     await assert.rejects(service.refresh('/test'));
-    assert.equal(requests.filter(request => !request.url.includes('meta.alicdn.com') && request.url !== 'https://modelscope.cn/api/v1/models').length, 2);
+    assert.equal(requests.filter(request => !request.url.includes('meta.alicdn.com') && request.url !== 'https://modelscope.cn/api/v1/models' && !request.url.includes('model_descriptions_zh.json')).length, 2);
     assert.equal(destroyed, requests.length);
     assert.equal(files.get(newCache), cached);
   });
@@ -313,7 +319,7 @@ async function main() {
     assert.equal(result.source, 'MNN 官方目录');
     assert.equal(result.catalogVersion, 21);
     assert.equal(result.publishedAt, '');
-    assert.equal(requests.length, 4);
+    assert.equal(requests.filter(request => !request.url.includes('model_descriptions_zh.json')).length, 4);
     assert(!requests.some(request => request.url.includes('/repo/files')));
     const restored = new ModelCatalogService();
     assert.equal((await restored.load('/test')).catalogVersion, 21);
@@ -456,6 +462,97 @@ async function main() {
     assert(subject.modelCatalogFilterTags().includes('深度思考'));
     assert.equal(subject.modelCatalogItems()[0].id, item.id);
     assert.equal(subject.modelPageCategory, 'rerank', 'gallery selection must not change model-page selection');
+  });
+  const descriptionCache = '/test/model-descriptions-zh-v1.json';
+  const describedItem = MODEL_CATALOG_ITEMS[0];
+  const describedRepo = describedItem.sourceUrl.split('/models/')[1];
+  const descriptions = (version, text = '经核实的模型用途描述', entries) => JSON.stringify({
+    schemaVersion: 1, descriptionVersion: version, publishedAt: '2026-11-03T06:00:00Z',
+    entries: entries ?? [{repo: describedRepo, description: text, sources: ['https://example.com/model-card']}]
+  });
+  await check('bundled descriptions are immediate and only exact repositories receive them', async () => {
+    const service = new ModelCatalogService(); await service.load('/test', descriptions(1));
+    const described = service.findMarketItem(describedItem.id);
+    assert.equal(described.description, '经核实的模型用途描述');
+    assert.equal(MODEL_CATALOG_ITEMS[0].description, describedItem.description, 'do not mutate the bundled model item');
+    const untouched = MODEL_CATALOG_ITEMS.find(item => item.sourceUrl !== describedItem.sourceUrl);
+    assert.equal(service.findMarketItem(untouched.id).description, untouched.description);
+    assert.deepEqual(described.files, describedItem.files);
+    assert.deepEqual(described.runtime, describedItem.runtime);
+    assert(!files.has(descriptionCache), 'bundled descriptions do not masquerade as downloaded cache');
+  });
+  await check('new official variants without an exact description keep the catalog fallback', async () => {
+    remote = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../model-catalog/catalog-v2.json'), 'utf8'));
+    officialResponse = response(official('22', [{...official().models[0],
+      sources: {ModelScope: describedRepo + '-New'}, tags: ['Vision']} ]));
+    const service = new ModelCatalogService(); await service.load('/test', descriptions(1)); await service.refresh('/test');
+    const fresh = service.items().find(item => item.sourceUrl.endsWith(describedRepo + '-New'));
+    assert(fresh); assert.equal(fresh.description, '支持文本与图片输入的多模态对话模型。');
+  });
+  await check('description cache recovery failures cannot prevent the normal catalog from loading', async () => {
+    files.set(descriptionCache + '.bak', descriptions(2));
+    const rename = mockFs.rename;
+    mockFs.rename = async (from, to) => {
+      if (to === descriptionCache) throw Error('cache permission error');
+      return rename(from, to);
+    };
+    try {
+      const service = new ModelCatalogService(); await service.load('/test', descriptions(1, '包内可用描述'));
+      assert.equal(service.findMarketItem(describedItem.id).description, '包内可用描述');
+      assert(service.items().length > 0);
+    } finally { mockFs.rename = rename; }
+  });
+  await check('newer cached descriptions override the bundle, older or malformed caches do not', async () => {
+    files.set(descriptionCache, descriptions(2, '较新的描述'));
+    const cached = new ModelCatalogService(); await cached.load('/test', descriptions(1));
+    assert.equal(cached.findMarketItem(describedItem.id).description, '较新的描述');
+    files.set(descriptionCache, descriptions(1, '过期缓存'));
+    const bundled = new ModelCatalogService(); await bundled.load('/test', descriptions(2, '包内较新描述'));
+    assert.equal(bundled.findMarketItem(describedItem.id).description, '包内较新描述');
+    files.set(descriptionCache, '{broken');
+    const recovered = new ModelCatalogService(); await recovered.load('/test', descriptions(2, '包内较新描述'));
+    assert.equal(recovered.findMarketItem(describedItem.id).description, '包内较新描述');
+    const defaults = new ModelCatalogService(); await defaults.load('/test', '{broken');
+    assert.equal(defaults.findMarketItem(describedItem.id).description, describedItem.description);
+  });
+  await check('description-only update persists without changing installation snapshots or runtime settings', async () => {
+    remote = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../model-catalog/catalog-v2.json'), 'utf8'));
+    const service = new ModelCatalogService(); await service.load('/test', descriptions(1));
+    await service.refresh('/test');
+    await service.recordInstalled('/test', service.findMarketItem(describedItem.id));
+    const saved = files.get(current), catalog = files.get(newCache);
+    descriptionResponse = {responseCode: 200, result: descriptions(2, '在线修订后的描述')};
+    assert((await service.refresh('/test')).updated);
+    assert.equal(service.findMarketItem(describedItem.id).description, '在线修订后的描述');
+    assert.equal(files.get(current), saved); assert.equal(files.get(newCache), catalog);
+    const restart = new ModelCatalogService(); await restart.load('/test', descriptions(1));
+    assert.equal(restart.findMarketItem(describedItem.id).description, '在线修订后的描述');
+    descriptionResponse = {responseCode: 200, result: descriptions(1, '远程旧版本')};
+    await restart.refresh('/test');
+    assert.equal(restart.findMarketItem(describedItem.id).description, '在线修订后的描述');
+    descriptionResponse = new Error('offline'); await restart.refresh('/test');
+    assert.equal(restart.findMarketItem(describedItem.id).description, '在线修订后的描述');
+    descriptionResponse = {responseCode: 200, result: '{broken'}; await restart.refresh('/test');
+    assert.equal(JSON.parse(files.get(descriptionCache)).descriptionVersion, 2);
+    descriptionResponse = {responseCode: 200, result: descriptions(3, '', [])}; await restart.refresh('/test');
+    assert.equal(restart.findMarketItem(describedItem.id).description, describedItem.description,
+      'a newer complete manifest can remove an override and restore the normal fallback');
+  });
+  await check('description Raw failures use the Contents API and retain atomic cache recovery', async () => {
+    remote = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../model-catalog/catalog-v2.json'), 'utf8'));
+    const raw = 'https://raw.githubusercontent.com/Torry2022/turbo-ai-chat-harmonyos/main/entry/src/main/resources/rawfile/model_descriptions_zh.json';
+    const api = 'https://api.github.com/repos/Torry2022/turbo-ai-chat-harmonyos/contents/entry/src/main/resources/rawfile/model_descriptions_zh.json?ref=main';
+    urlResponses.set(raw, new Error('timeout'));
+    urlResponses.set(api, {responseCode: 200, result: descriptions(2, '备用接口的描述')});
+    const service = new ModelCatalogService(); await service.load('/test', descriptions(1)); await service.refresh('/test');
+    assert.equal(service.findMarketItem(describedItem.id).description, '备用接口的描述');
+    assert(requests.some(request => request.url === api && request.options.header.Accept === 'application/vnd.github.raw+json'));
+    files.set(descriptionCache + '.bak', files.get(descriptionCache)); files.delete(descriptionCache);
+    files.set(descriptionCache + '.tmp', 'interrupted');
+    const recovered = new ModelCatalogService(); await recovered.load('/test', descriptions(1));
+    assert.equal(recovered.findMarketItem(describedItem.id).description, '备用接口的描述');
+    assert(!files.has(descriptionCache + '.tmp')); assert(!files.has(descriptionCache + '.bak'));
+    assert.equal(destroyed, requests.length);
   });
   await check('new installations never write the legacy snapshot', async () => {
     const service = new ModelCatalogService();

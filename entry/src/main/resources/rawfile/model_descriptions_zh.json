@@ -1,0 +1,859 @@
+{
+  "schemaVersion": 1,
+  "descriptionVersion": 1,
+  "publishedAt": "2026-11-03T06:00:00Z",
+  "entries": [
+    {
+      "repo": "MNN/Qwen3.5-2B-MNN",
+      "description": "Qwen3.5 图文系列，结合图片理解与文本推理，适合轻量问答和内容整理。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen3.5-2B"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen3.5-0.8B-MNN",
+      "description": "Qwen3.5 图文系列的小型版本，支持图片问答与文本任务，面向轻量部署。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen3.5-0.8B"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen3.5-4B-MNN",
+      "description": "Qwen3.5 图文系列，支持视觉理解、写作和代码任务，适合综合图文问答。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen3.5-4B"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen3.5-35B-A3B-MNN",
+      "description": "Qwen3.5 图文系列的混合专家版本，按需激活部分参数处理图文与推理任务。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen3.5-35B-A3B"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen3.5-9B-MNN",
+      "description": "Qwen3.5 图文系列的较大稠密版本，面向图文理解、代码与复杂问题处理。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen3.5-9B"
+      ]
+    },
+    {
+      "repo": "MNN/Hunyuan-MT-7B-MNN",
+      "description": "混元专用翻译模型，支持中英等多语言互译，也覆盖部分中国少数民族语言。",
+      "sources": [
+        "https://huggingface.co/tencent/Hunyuan-MT-7B"
+      ]
+    },
+    {
+      "repo": "MNN/MiniMind2-MNN",
+      "description": "MiniMind 超小型中文对话模型，主要面向教学、从零训练研究与轻量部署。",
+      "sources": [
+        "https://huggingface.co/jingyaogong/MiniMind2"
+      ]
+    },
+    {
+      "repo": "MNN/Nanbeige4-3B-Thinking-2511-MNN",
+      "description": "南北阁推理模型，面向中英文问答、数学与代码任务，作答前会展开思考。",
+      "sources": [
+        "https://huggingface.co/Nanbeige/Nanbeige4-3B-Thinking-2511"
+      ]
+    },
+    {
+      "repo": "MNN/QwQ-32B-Preview-MNN",
+      "description": "Qwen 早期推理预览版，侧重数学与代码解题，会生成较长的思考过程。",
+      "sources": [
+        "https://huggingface.co/Qwen/QwQ-32B-Preview"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen3-4B-SafeRL-MNN",
+      "description": "Qwen3 安全对齐版本，通过强化学习训练，重点改善有害与对抗性提示的应对。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen3-4B-SafeRL"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen3-VL-2B-Instruct-MNN",
+      "description": "Qwen3 图文指令系列的小型版本，支持图片问答、文字识别和视觉内容描述。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen3-VL-2B-Instruct"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen3-VL-2B-Thinking-MNN",
+      "description": "Qwen3 图文推理系列的小型版本，结合图像内容展开思考，面向视觉推理问题。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen3-VL-2B-Thinking"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen3-VL-32B-Instruct-MNN",
+      "description": "Qwen3 图文指令系列的较大版本，面向图片、文档和图表的综合理解与问答。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen3-VL-32B-Instruct"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen3-VL-32B-Thinking-MNN",
+      "description": "Qwen3 图文推理系列的较大版本，面向复杂图表理解与需要多步思考的视觉问题。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen3-VL-32B-Thinking"
+      ]
+    },
+    {
+      "repo": "MNN/SmolDocling-256M-preview-MNN",
+      "description": "SmolDocling 文档解析预览版，将页面图片转成含布局、表格和公式的结构化文本。",
+      "sources": [
+        "https://huggingface.co/docling-project/SmolDocling-256M-preview"
+      ]
+    },
+    {
+      "repo": "MNN/VibeThinker-1.5B-MNN",
+      "description": "微博推出的小型推理模型，重点训练竞赛数学与代码解题，作答前会展开思考。",
+      "sources": [
+        "https://huggingface.co/WeiboAI/VibeThinker-1.5B"
+      ]
+    },
+    {
+      "repo": "MNN/bge-large-zh-MNN",
+      "description": "BGE 中文文本向量模型，用于语义检索和相似度计算，不是生成式对话模型。",
+      "sources": [
+        "https://huggingface.co/BAAI/bge-large-zh"
+      ]
+    },
+    {
+      "repo": "MNN/chatglm-6b-MNN",
+      "description": "ChatGLM 第一代中英双语对话模型，面向日常问答与中文文本生成。",
+      "sources": [
+        "https://huggingface.co/THUDM/chatglm-6b"
+      ]
+    },
+    {
+      "repo": "MNN/chatglm2-6b-MNN",
+      "description": "ChatGLM 第二代中英双语对话模型，改进推理与长文本处理，支持多轮问答。",
+      "sources": [
+        "https://huggingface.co/THUDM/chatglm2-6b"
+      ]
+    },
+    {
+      "repo": "MNN/codegeex2-6b-MNN",
+      "description": "智谱代码生成模型，基于 ChatGLM2，面向代码补全与多种编程语言的代码编写。",
+      "sources": [
+        "https://huggingface.co/THUDM/codegeex2-6b"
+      ]
+    },
+    {
+      "repo": "MNN/gemma-3-270m-it-MNN",
+      "description": "Gemma 3 的超小型文本版本，适合明确、简短的指令任务和定向微调。",
+      "sources": [
+        "https://huggingface.co/google/gemma-3-270m-it"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen3-VL-4B-Thinking-MNN",
+      "description": "Qwen3 图文推理系列，支持图片与文档问答，侧重需要多步思考的视觉任务。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen3-VL-4B-Thinking"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen3-VL-8B-Thinking-MNN",
+      "description": "Qwen3 图文推理系列，面向图表、空间关系与复杂图片问题，先思考再作答。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen3-VL-8B-Thinking"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen3-VL-30B-A3B-Instruct-MNN",
+      "description": "Qwen3 图文指令系列的混合专家版本，面向图片、文档与图表理解。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen3-VL-30B-A3B-Instruct"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen3-VL-30B-A3B-Thinking-MNN",
+      "description": "Qwen3 图文推理系列的混合专家版本，结合视觉信息进行多步分析与作答。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen3-VL-30B-A3B-Thinking"
+      ]
+    },
+    {
+      "repo": "MNN/WebSailor-3B-MNN",
+      "description": "阿里网页检索代理模型，面向多步信息查找与推理，完整能力需外部检索工具配合。",
+      "sources": [
+        "https://huggingface.co/Alibaba-NLP/WebSailor-3B"
+      ]
+    },
+    {
+      "repo": "MNN/Lingshu-7B-MNN",
+      "description": "灵枢医学图文模型，面向医学影像问答、专业文本理解与报告生成研究。",
+      "sources": [
+        "https://huggingface.co/lingshu-medical-mllm/Lingshu-7B"
+      ]
+    },
+    {
+      "repo": "MNN/MiniCPM-V-4-MNN",
+      "description": "MiniCPM 端侧图文系列，支持图片问答、文字识别和文档理解，兼顾文本对话。",
+      "sources": [
+        "https://huggingface.co/openbmb/MiniCPM-V-4"
+      ]
+    },
+    {
+      "repo": "MNN/MiniCPM4-0.5B-MNN",
+      "description": "MiniCPM 端侧文本系列的小型版本，面向简短问答和资源受限设备上的文本任务。",
+      "sources": [
+        "https://huggingface.co/openbmb/MiniCPM4-0.5B"
+      ]
+    },
+    {
+      "repo": "MNN/gpt-oss-20b-MNN",
+      "description": "OpenAI 开放权重推理模型，采用混合专家结构，面向代码、分析与多步问题。",
+      "sources": [
+        "https://huggingface.co/openai/gpt-oss-20b"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen3-4B-Thinking-2507-MNN",
+      "description": "Qwen3 推理增强版，重点处理数学、代码与复杂问题，可能生成较长的思考过程。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen3-4B-Thinking-2507"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen3-Coder-30B-A3B-Instruct-MNN",
+      "description": "Qwen3 代码专用混合专家模型，面向编程、代码库理解及工具辅助开发。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen3-Coder-30B-A3B-Instruct"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen3-30B-A3B-Thinking-2507-MNN",
+      "description": "Qwen3 推理增强混合专家模型，面向复杂数学、编程与多步分析任务。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen3-30B-A3B-Thinking-2507"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen3-30B-A3B-Instruct-2507-MNN",
+      "description": "Qwen3 指令优化混合专家模型，支持多语言问答、写作和代码任务，直接输出回答。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen3-30B-A3B-Instruct-2507"
+      ]
+    },
+    {
+      "repo": "MNN/Hunyuan-1.8B-Instruct-MNN",
+      "description": "混元轻量文本系列，支持中英文问答和混合推理，面向资源受限的本地应用。",
+      "sources": [
+        "https://huggingface.co/tencent/Hunyuan-1.8B-Instruct"
+      ]
+    },
+    {
+      "repo": "MNN/Hunyuan-4B-Instruct-MNN",
+      "description": "混元文本指令系列，支持混合推理，面向日常问答、内容创作与代码任务。",
+      "sources": [
+        "https://huggingface.co/tencent/Hunyuan-4B-Instruct"
+      ]
+    },
+    {
+      "repo": "MNN/Hunyuan-7B-Instruct-MNN",
+      "description": "混元文本指令系列的较大版本，支持混合推理与多轮问答，可处理长文本任务。",
+      "sources": [
+        "https://huggingface.co/tencent/Hunyuan-7B-Instruct"
+      ]
+    },
+    {
+      "repo": "MNN/SmolLM3-3B-MNN",
+      "description": "SmolLM 多语言文本系列，支持思考与直接作答两种模式，也覆盖代码和长文本任务。",
+      "sources": [
+        "https://huggingface.co/HuggingFaceTB/SmolLM3-3B"
+      ]
+    },
+    {
+      "repo": "MNN/ERNIE-4.5-0.3B-PT-MNN",
+      "description": "文心小型文本模型，经过对话训练，面向轻量问答、文本生成与定向应用。",
+      "sources": [
+        "https://huggingface.co/baidu/ERNIE-4.5-0.3B-PT"
+      ]
+    },
+    {
+      "repo": "MNN/gemma-3-1b-it-qat-q4_0-gguf-MNN",
+      "description": "Gemma 3 轻量文本指令模型，采用量化感知训练版本，面向问答与文字处理。",
+      "sources": [
+        "https://huggingface.co/google/gemma-3-1b-it-qat-q4_0-gguf"
+      ]
+    },
+    {
+      "repo": "MNN/DeepSeek-R1-0528-Qwen3-8B-MNN",
+      "description": "DeepSeek 推理蒸馏系列，基于 Qwen3 学习 R1-0528，侧重数学与代码推理。",
+      "sources": [
+        "https://huggingface.co/deepseek-ai/DeepSeek-R1-0528-Qwen3-8B"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen3-30B-A3B-MNN",
+      "description": "Qwen3 通用混合专家系列，支持思考与直接作答，覆盖多语言问答、代码和推理。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen3-30B-A3B"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen3-32B-MNN",
+      "description": "Qwen3 通用文本系列的较大稠密版本，支持思考与直接作答，面向综合语言任务。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen3-32B"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen3-14B-MNN",
+      "description": "Qwen3 通用文本系列，支持思考与直接作答，覆盖写作、代码及多语言复杂问答。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen3-14B"
+      ]
+    },
+    {
+      "repo": "MNN/DeepSeek-R1-1.5B-Qwen-MNN",
+      "description": "DeepSeek R1 推理蒸馏系列的小型版本，基于 Qwen2.5，面向数学和代码解题。",
+      "sources": [
+        "https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
+      ]
+    },
+    {
+      "repo": "MNN/gemma-2-2b-it-MNN",
+      "description": "Gemma 2 轻量文本指令系列，以英语为主，适合问答、摘要与基础推理。",
+      "sources": [
+        "https://huggingface.co/google/gemma-2-2b-it"
+      ]
+    },
+    {
+      "repo": "MNN/DeepSeek-R1-7B-Qwen-MNN",
+      "description": "DeepSeek R1 推理蒸馏系列，基于 Qwen2.5，面向数学、代码和多步逻辑问题。",
+      "sources": [
+        "https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B"
+      ]
+    },
+    {
+      "repo": "MNN/deepseek-vl-7b-chat-MNN",
+      "description": "DeepSeek 早期图文对话模型，支持图片描述、图表解读及基于视觉内容的问答。",
+      "sources": [
+        "https://huggingface.co/deepseek-ai/deepseek-vl-7b-chat"
+      ]
+    },
+    {
+      "repo": "MNN/deepseek-llm-7b-chat-MNN",
+      "description": "DeepSeek 中英双语文本对话系列，经指令微调，面向日常问答与内容生成。",
+      "sources": [
+        "https://huggingface.co/deepseek-ai/deepseek-llm-7b-chat"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen2.5-VL-3B-Instruct-MNN",
+      "description": "Qwen2.5 图文系列的小型版本，支持图片问答、文字识别与文档内容理解。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct"
+      ]
+    },
+    {
+      "repo": "MNN/InternVL2_5-1B-MNN",
+      "description": "InternVL 轻量图文系列，结合视觉编码器与语言模型，面向图片问答和文字识别。",
+      "sources": [
+        "https://huggingface.co/OpenGVLab/InternVL2_5-1B"
+      ]
+    },
+    {
+      "repo": "MNN/Llama-3.2-3B-Instruct-MNN",
+      "description": "Llama 3.2 轻量文本系列，面向多语言问答、摘要和写作，官方支持语言不含中文。",
+      "sources": [
+        "https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct"
+      ]
+    },
+    {
+      "repo": "MNN/SmolVLM2-2.2B-Instruct-MNN",
+      "description": "SmolVLM 轻量图文系列的第二代，支持图片问答、视觉内容比较和文字识别。",
+      "sources": [
+        "https://huggingface.co/HuggingFaceTB/SmolVLM2-2.2B-Instruct"
+      ]
+    },
+    {
+      "repo": "MNN/gemma-2-9b-it-MNN",
+      "description": "Gemma 2 文本指令系列的较大版本，以英语为主，面向问答、摘要和推理任务。",
+      "sources": [
+        "https://huggingface.co/google/gemma-2-9b-it"
+      ]
+    },
+    {
+      "repo": "MNN/FastVLM-1.5B-Stage3-MNN",
+      "description": "Apple 高效图文系列的第三阶段版本，面向图片问答、文字识别和视觉内容理解。",
+      "sources": [
+        "https://github.com/apple-aiml-research/ml-fastvlm"
+      ]
+    },
+    {
+      "repo": "MNN/SmolVLM-500M-Instruct-MNN",
+      "description": "SmolVLM 轻量图文系列，支持图片描述、文字识别和问答，面向端侧视觉任务。",
+      "sources": [
+        "https://huggingface.co/HuggingFaceTB/SmolVLM-500M-Instruct"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen-VL-Chat-MNN",
+      "description": "Qwen 第一代图文对话系列，支持图片问答、文字识别及图像中的位置指代。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen-VL-Chat"
+      ]
+    },
+    {
+      "repo": "MNN/SmolLM2-360M-Instruct-MNN",
+      "description": "SmolLM 轻量文本指令系列，以英语为主，可用于简短问答、摘要与内容改写。",
+      "sources": [
+        "https://huggingface.co/HuggingFaceTB/SmolLM2-360M-Instruct"
+      ]
+    },
+    {
+      "repo": "MNN/SmolVLM-256M-Instruct-MNN",
+      "description": "SmolVLM 图文系列的超小型版本，面向基础图片问答、内容描述和文字识别。",
+      "sources": [
+        "https://huggingface.co/HuggingFaceTB/SmolVLM-256M-Instruct"
+      ]
+    },
+    {
+      "repo": "MNN/FastVLM-0.5B-Stage3-MNN",
+      "description": "Apple 高效图文系列的小型第三阶段版本，面向基础图片问答与文字识别。",
+      "sources": [
+        "https://github.com/apple-aiml-research/ml-fastvlm"
+      ]
+    },
+    {
+      "repo": "MNN/Yi-6B-Chat-MNN",
+      "description": "零一万物的中英双语对话模型，经过指令与偏好训练，面向问答、写作和摘要。",
+      "sources": [
+        "https://huggingface.co/01-ai/Yi-6B-Chat"
+      ]
+    },
+    {
+      "repo": "MNN/SmolVLM-Instruct-MNN",
+      "description": "SmolVLM 第一代轻量图文模型，支持图片描述、视觉问答和图中文字识别。",
+      "sources": [
+        "https://huggingface.co/HuggingFaceTB/SmolVLM-Instruct"
+      ]
+    },
+    {
+      "repo": "MNN/MiMo-7B-RL-MNN",
+      "description": "小米 MiMo 推理系列，经监督微调与强化学习训练，重点处理数学、代码和逻辑问题。",
+      "sources": [
+        "https://huggingface.co/XiaomiMiMo/MiMo-7B-RL"
+      ]
+    },
+    {
+      "repo": "MNN/TinyLlama-1.1B-Chat-MNN",
+      "description": "TinyLlama 轻量英文对话系列，基于 Llama 架构，面向基础问答与部署学习。",
+      "sources": [
+        "https://huggingface.co/TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+      ]
+    },
+    {
+      "repo": "MNN/internlm-chat-7b-MNN",
+      "description": "书生中英双语对话系列，面向多轮交流、知识问答与文本内容生成。",
+      "sources": [
+        "https://huggingface.co/internlm/internlm-chat-7b"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen2.5-Math-7B-Instruct-MNN",
+      "description": "Qwen 数学专用指令系列，支持中英文数学解题与多步推导，主要面向数学任务。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen2.5-Math-7B-Instruct"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen2-VL-2B-Instruct-MNN",
+      "description": "Qwen2 图文系列的小型版本，支持图片问答、场景描述与图中文字理解。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen2-VL-2B-Instruct"
+      ]
+    },
+    {
+      "repo": "MNN/FastVLM-0.5B-Stage2-MNN",
+      "description": "Apple 高效图文系列的小型第二阶段版本，面向图片问答与视觉内容描述。",
+      "sources": [
+        "https://github.com/apple-aiml-research/ml-fastvlm"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen2.5-VL-7B-Instruct-MNN",
+      "description": "Qwen2.5 图文系列，面向图片、文档与图表理解，也支持视觉内容定位。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct"
+      ]
+    },
+    {
+      "repo": "MNN/FastVLM-1.5B-Stage2-MNN",
+      "description": "Apple 高效图文系列的第二阶段版本，结合视觉编码与文本生成处理图片问答。",
+      "sources": [
+        "https://github.com/apple-aiml-research/ml-fastvlm"
+      ]
+    },
+    {
+      "repo": "MNN/DeepSeek-Prover-V2-7B-MNN",
+      "description": "DeepSeek 数学证明专用模型，面向 Lean 4 形式化定理证明，完整验证需配合证明工具。",
+      "sources": [
+        "https://huggingface.co/deepseek-ai/DeepSeek-Prover-V2-7B"
+      ]
+    },
+    {
+      "repo": "MNN/Baichuan2-7B-Chat-MNN",
+      "description": "百川中英双语文本对话系列，面向知识问答、内容创作与多轮交流。",
+      "sources": [
+        "https://huggingface.co/baichuan-inc/Baichuan2-7B-Chat"
+      ]
+    },
+    {
+      "repo": "MNN/phi-2-MNN",
+      "description": "微软 Phi 小型文本模型，侧重英语、常识和基础推理，适合研究与定向应用。",
+      "sources": [
+        "https://huggingface.co/microsoft/phi-2"
+      ]
+    },
+    {
+      "repo": "MNN/MobileLLM-125M-MNN",
+      "description": "Meta 端侧小模型研究系列的超小型版本，提供文本续写基础，面向定向微调。",
+      "sources": [
+        "https://huggingface.co/facebook/MobileLLM-125M",
+        "https://github.com/facebookresearch/MobileLLM"
+      ]
+    },
+    {
+      "repo": "MNN/Llama-2-7b-chat-ms-MNN",
+      "description": "Llama 2 英文对话系列，经过指令与偏好训练，面向通用问答和文本生成。",
+      "sources": [
+        "https://huggingface.co/meta-llama/Llama-2-7b-chat-hf"
+      ]
+    },
+    {
+      "repo": "MNN/SmolLM2-135M-Instruct-MNN",
+      "description": "SmolLM 文本指令系列的超小型版本，以英语为主，适合简短指令和基础问答。",
+      "sources": [
+        "https://huggingface.co/HuggingFaceTB/SmolLM2-135M-Instruct"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen-7B-Chat-MNN",
+      "description": "Qwen 第一代中英双语文本对话系列，面向通用问答、写作与代码任务。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen-7B-Chat"
+      ]
+    },
+    {
+      "repo": "MNN/Llama-3.2-1B-Instruct-MNN",
+      "description": "Llama 3.2 文本系列的小型版本，适合摘要与文本改写，官方支持语言不含中文。",
+      "sources": [
+        "https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct"
+      ]
+    },
+    {
+      "repo": "MNN/glm-4-9b-chat-MNN",
+      "description": "智谱 GLM 多语言文本对话系列，面向知识问答、代码与多步推理任务。",
+      "sources": [
+        "https://huggingface.co/THUDM/glm-4-9b-chat"
+      ]
+    },
+    {
+      "repo": "MNN/gemma-7b-it-MNN",
+      "description": "Gemma 第一代文本指令系列，以英语为主，面向问答、摘要与文字创作。",
+      "sources": [
+        "https://huggingface.co/google/gemma-7b-it"
+      ]
+    },
+    {
+      "repo": "MNN/TinyLlama-1.1B-Chat-v1.0-MNN",
+      "description": "TinyLlama 轻量英文对话系列的 v1.0 版本，经指令与偏好训练，面向基础问答。",
+      "sources": [
+        "https://huggingface.co/TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+      ]
+    },
+    {
+      "repo": "MNN/MobileLLM-1B-MNN",
+      "description": "Meta 端侧小模型研究系列的较大版本，提供文本生成基础，适合定向训练与评估。",
+      "sources": [
+        "https://huggingface.co/facebook/MobileLLM-1B",
+        "https://github.com/facebookresearch/MobileLLM"
+      ]
+    },
+    {
+      "repo": "MNN/Meta-Llama-3.1-8B-Instruct-MNN",
+      "description": "Llama 3.1 多语言文本系列，面向问答、写作和代码，官方支持语言不含中文。",
+      "sources": [
+        "https://huggingface.co/meta-llama/Meta-Llama-3.1-8B-Instruct"
+      ]
+    },
+    {
+      "repo": "MNN/chatglm3-6b-MNN",
+      "description": "ChatGLM 第三代中英双语对话系列，支持多轮问答与工具调用，兼顾代码任务。",
+      "sources": [
+        "https://huggingface.co/THUDM/chatglm3-6b"
+      ]
+    },
+    {
+      "repo": "MNN/MobileLLM-350M-MNN",
+      "description": "Meta 端侧小模型研究系列，采用适合小参数模型的结构，面向文本续写与微调。",
+      "sources": [
+        "https://huggingface.co/facebook/MobileLLM-350M",
+        "https://github.com/facebookresearch/MobileLLM"
+      ]
+    },
+    {
+      "repo": "MNN/SmolLM2-1.7B-Instruct-MNN",
+      "description": "SmolLM 文本指令系列的较大版本，以英语为主，面向问答、摘要和文本改写。",
+      "sources": [
+        "https://huggingface.co/HuggingFaceTB/SmolLM2-1.7B-Instruct"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen2.5-Coder-7B-Instruct-MNN",
+      "description": "Qwen 代码专用指令系列，面向多语言代码生成、问题修复和编程问答。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen2.5-Math-1.5B-Instruct-MNN",
+      "description": "Qwen 数学专用指令系列的小型版本，面向中英文数学解题与分步推导。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen2.5-Math-1.5B-Instruct"
+      ]
+    },
+    {
+      "repo": "MNN/QwQ-32B-MNN",
+      "description": "Qwen 专用推理系列，经强化学习训练，重点处理数学、编程和复杂逻辑问题。",
+      "sources": [
+        "https://huggingface.co/Qwen/QwQ-32B"
+      ]
+    },
+    {
+      "repo": "MNN/Meta-Llama-3-8B-Instruct-MNN",
+      "description": "Llama 3 英文文本对话系列，经过指令与偏好训练，面向通用问答与代码任务。",
+      "sources": [
+        "https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen2.5-Coder-1.5B-Instruct-MNN",
+      "description": "Qwen 代码专用指令系列的小型版本，面向代码生成、补全和基础编程问答。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct"
+      ]
+    },
+    {
+      "repo": "MNN/MobileLLM-600M-MNN",
+      "description": "Meta 端侧小模型研究系列，在小参数规模下探索语言理解，适合定向微调与评估。",
+      "sources": [
+        "https://huggingface.co/facebook/MobileLLM-600M",
+        "https://github.com/facebookresearch/MobileLLM"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen2-VL-7B-Instruct-MNN",
+      "description": "Qwen2 图文系列，面向图片问答、文字识别、场景理解和视觉内容推理。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen2-VL-7B-Instruct"
+      ]
+    },
+    {
+      "repo": "MNN/MiMo-7B-SFT-MNN",
+      "description": "小米 MiMo 推理系列的监督微调版本，面向数学与代码解题，可作为后续训练起点。",
+      "sources": [
+        "https://huggingface.co/XiaomiMiMo/MiMo-7B-SFT"
+      ]
+    },
+    {
+      "repo": "MNN/MiMo-7B-RL-Zero-MNN",
+      "description": "小米 MiMo 推理系列，从基础模型直接进行强化学习，面向数学与代码推理。",
+      "sources": [
+        "https://huggingface.co/XiaomiMiMo/MiMo-7B-RL-Zero"
+      ]
+    },
+    {
+      "repo": "MNN/gemma-3-4b-it-q4_0-mnn",
+      "description": "Gemma 3 多语言图文指令系列，支持图片理解、文本问答及图中文字识别。",
+      "sources": [
+        "https://huggingface.co/google/gemma-3-4b-it"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen3-4B-Instruct-2507-MNN",
+      "description": "Qwen3 指令优化版，支持多语言问答、写作与代码任务，直接输出回答。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507",
+        "https://artificialanalysis.ai/models/qwen3-4b-2507-instruct"
+      ]
+    },
+    {
+      "repo": "MNN/gemma-4-E2B-it-MNN",
+      "description": "Gemma 4 端侧图文系列，支持图片理解与多语言对话，兼顾代码和推理任务。",
+      "sources": [
+        "https://huggingface.co/google/gemma-4-E2B-it"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen3-VL-4B-Instruct-MNN",
+      "description": "Qwen3 图文指令系列，支持图片问答、文字识别，以及文档和图表理解。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen3-VL-4B-Instruct"
+      ]
+    },
+    {
+      "repo": "TorryJi/MiniCPM5-1B-MNN-BF16",
+      "description": "MiniCPM 端侧文本系列，面向问答、代码与工具使用任务，本包保留 BF16 权重。",
+      "sources": [
+        "https://huggingface.co/openbmb/MiniCPM5-1B"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen3-0.6B-MNN",
+      "description": "Qwen3 通用文本系列的小型版本，支持思考与直接作答，适合简短问答与轻量任务。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen3-0.6B"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen3-1.7B-MNN",
+      "description": "Qwen3 轻量文本系列，支持思考与直接作答，覆盖多语言问答、写作和基础推理。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen3-1.7B"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen2.5-1.5B-Instruct-MNN",
+      "description": "Qwen2.5 轻量文本指令系列，支持多语言问答、摘要与格式化输出。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen2.5-3B-Instruct-MNN",
+      "description": "Qwen2.5 文本指令系列，面向多语言问答、内容创作与结构化信息整理。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen2.5-3B-Instruct"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen3-8B-MNN",
+      "description": "Qwen3 通用文本系列，支持思考与直接作答，面向综合问答、代码与逻辑推理。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen3-8B"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen2.5-0.5B-Instruct-MNN",
+      "description": "Qwen2.5 文本指令系列的小型版本，面向简短问答、内容改写和轻量文本处理。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen2-1.5B-Instruct-MNN",
+      "description": "Qwen2 轻量文本指令系列，支持中英等多语言，面向问答、写作和基础代码任务。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen2-1.5B-Instruct"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen2-0.5B-Instruct-MNN",
+      "description": "Qwen2 文本指令系列的小型版本，支持多语言基础问答与简短文本生成。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen2-0.5B-Instruct"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen3-4B-MNN",
+      "description": "Qwen3 通用文本系列，支持思考与直接作答，覆盖问答、写作、代码和数学任务。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen3-4B"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen1.5-0.5B-Chat-MNN",
+      "description": "Qwen1.5 文本对话系列的小型版本，面向中英文基础问答与轻量文本生成。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen1.5-0.5B-Chat"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen-1_8B-Chat-MNN",
+      "description": "Qwen 第一代轻量文本对话系列，支持中英双语，面向基础问答和内容生成。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen-1_8B-Chat"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen1.5-4B-Chat-MNN",
+      "description": "Qwen1.5 多语言文本对话系列，面向日常问答、写作与内容整理。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen1.5-4B-Chat"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen3-VL-8B-Instruct-MNN",
+      "description": "Qwen3 图文指令系列，面向图片、文档和图表理解，兼顾多语言文本问答。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen2.5-7B-Instruct-MNN",
+      "description": "Qwen2.5 文本指令系列，面向多语言问答、代码、数学与结构化信息处理。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen2-7B-Instruct-MNN",
+      "description": "Qwen2 多语言文本指令系列，面向通用问答、代码编写与数学推理。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen2-7B-Instruct"
+      ]
+    },
+    {
+      "repo": "MNN/MiniCPM4-8B-MNN",
+      "description": "MiniCPM 端侧文本系列，面向长文本理解、代码与问答，采用面向端侧的效率优化。",
+      "sources": [
+        "https://huggingface.co/openbmb/MiniCPM4-8B"
+      ]
+    },
+    {
+      "repo": "MNN/MiniCPM5-2B-MNN",
+      "description": "MiniCPM 端侧文本系列，侧重代码、数学与工具调用，面向本地助手和多步任务。",
+      "sources": [
+        "https://huggingface.co/openbmb/MiniCPM5-2B"
+      ]
+    },
+    {
+      "repo": "TorryJi/Laya-Multilingual-MNN-FP16",
+      "description": "Laya 多语言决策模型，对给定文本进行候选选择、评分和是非判断，输出概率。",
+      "sources": [
+        "https://huggingface.co/convaiinnovations/laya/tree/1c5edc17a7acd8701df6fc341c0d179f1c62c982/multilingual"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen3-Reranker-8B-MNN",
+      "description": "Qwen3 多语言重排系列的较大版本，面向文本与代码检索中的候选结果相关性排序。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen3-Reranker-8B"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen3-Reranker-4B-MNN",
+      "description": "Qwen3 多语言重排系列，结合查询与候选文本判断相关性，支持按任务指令排序。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen3-Reranker-4B"
+      ]
+    },
+    {
+      "repo": "MNN/Qwen3-Reranker-0.6B-MNN",
+      "description": "Qwen3 多语言重排系列的小型版本，为查询与候选文本评分，用于检索结果排序。",
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen3-Reranker-0.6B"
+      ]
+    }
+  ]
+}

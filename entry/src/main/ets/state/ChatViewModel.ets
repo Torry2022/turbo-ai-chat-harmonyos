@@ -1,4 +1,5 @@
 import fs from '@ohos.file.fs'
+import util from '@ohos.util'
 import { modelThinkingSupport } from '../utils/modelThinking'
 import { RerankerService } from '../services/RerankerService'
 import { ConversationTitleService, ConversationTitleRequest, conversationTitleSignature } from '../services/ConversationTitleService'
@@ -336,7 +337,7 @@ export class ChatViewModel {
     this.refreshStorageStats()
     this.preloadModelStorageStats()
     this.notify()
-    this.modelCatalogService.load(this.filesDir).then(async (result: ModelCatalogLoadResult) => {
+    this.loadModelCatalog(context).then(async (result: ModelCatalogLoadResult) => {
       this.applyCatalogResult(result)
       await this.migrateBundledCatalogInstalls()
       this.refreshModelMarketInstallStates()
@@ -355,6 +356,17 @@ export class ChatViewModel {
       this.modelImportMessage = `读取导入模型失败：${formatError(err as Object)}`
       this.notify()
     })
+  }
+
+  private async loadModelCatalog(context: common.UIAbilityContext): Promise<ModelCatalogLoadResult> {
+    let descriptions = ''
+    try {
+      const bytes = await context.resourceManager.getRawFileContent('model_descriptions_zh.json')
+      descriptions = util.TextDecoder.create('utf-8').decodeToString(bytes)
+    } catch (_) {
+      console.warn('Unable to read bundled model descriptions; cached or default descriptions will be used')
+    }
+    return this.modelCatalogService.load(this.filesDir, descriptions)
   }
 
   dispose(): void {

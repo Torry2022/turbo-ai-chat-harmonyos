@@ -13,6 +13,7 @@ import {
 } from '../models/ModelCatalogTypes'
 import { LAYA_DOWNLOAD_SPEC } from '../models/LayaModelConfig'
 import { ModelProfile } from '../models/ModelProfile'
+import { ModelDescriptionManifest, descriptionRepo, parseModelDescriptions } from '../utils/modelDescriptions'
 import { OfficialCatalog, officialModelRepo, parseOfficialModelCatalog, parseOfficialRerankerCatalog, parseOfficialRepoFiles, resolveOfficialCatalogItem } from '../utils/officialModelCatalog'
 import {
   catalogItemToProfile,
@@ -34,12 +35,19 @@ const OFFICIAL_CATALOG_CACHE_FILE: string = 'model-catalog-official.json'
 const RERANKER_CATALOG_CACHE_FILE: string = 'model-catalog-rerank.json'
 
 const OFFICIAL_RESOLVED_CACHE_FILE: string = 'model-catalog-official-files.json'
+const DESCRIPTION_CACHE_FILE: string = 'model-descriptions-zh-v1.json'
+const DESCRIPTION_URL: string =
+  'https://raw.githubusercontent.com/Torry2022/turbo-ai-chat-harmonyos/main/entry/src/main/resources/rawfile/model_descriptions_zh.json'
+const DESCRIPTION_API_URL: string =
+  'https://api.github.com/repos/Torry2022/turbo-ai-chat-harmonyos/contents/entry/src/main/resources/rawfile/model_descriptions_zh.json?ref=main'
 
 const CATALOG_CACHE_FILE: string = 'model-catalog-cache-v2.json'
 const INSTALLED_CATALOG_FILE: string = 'model-catalog-installs-v2.json'
 const LEGACY_INSTALLED_CATALOG_FILE: string = 'model-catalog-installs.json'
 
 export class ModelCatalogService {
+  private descriptionVersion: number = 0
+  private descriptions: Record<string, string> = {}
   private rerankerItems: ModelCatalogItem[] = []
   private rerankerCatalogStatus: string = '正在读取重排模型目录...'
   private officialItems: ModelCatalogItem[] = []
@@ -55,6 +63,16 @@ export class ModelCatalogService {
     const official = this.officialItems.concat(this.rerankerItems).map((item: ModelCatalogItem) =>
       this.findItem(this.resolvedItems, item.id) ?? item)
     return mergeCatalogItems(mergeCatalogItems(official, this.marketItems), [LAYA_DOWNLOAD_SPEC])
+      .map((item: ModelCatalogItem): ModelCatalogItem => {
+        const description = this.descriptions[descriptionRepo(item.sourceUrl)]
+        if (description === undefined) return item
+        return { id: item.id, modelId: item.modelId, modelType: item.modelType,
+          minAppVersionCode: item.minAppVersionCode, directoryName: item.directoryName,
+          displayName: item.displayName, shortName: item.shortName, description,
+          provider: item.provider, sourceName: item.sourceName, sourceUrl: item.sourceUrl,
+          files: item.files, totalBytes: item.totalBytes, supportsImage: item.supportsImage,
+          capabilities: item.capabilities, recommended: item.recommended, runtime: item.runtime }
+      })
   }
 
   knownItems(): ModelCatalogItem[] {
@@ -97,7 +115,21 @@ export class ModelCatalogService {
     return this.findItem(this.installedItems, id) !== undefined
   }
 
-  async load(filesDir: string): Promise<ModelCatalogLoadResult> {
+  async load(filesDir: string, bundledDescriptions: string = ''): Promise<ModelCatalogLoadResult> {
+    if (bundledDescriptions.length > 0) {
+      try { this.applyDescriptions(parseModelDescriptions(bundledDescriptions)) } catch (_) {
+        hilog.warn(0, 'TurboAIChat', 'Ignoring invalid bundled model descriptions')
+      }
+    }
+    const descriptionPath = `${filesDir}/${DESCRIPTION_CACHE_FILE}`
+    try {
+      await this.recoverAtomicFile(descriptionPath)
+      if (await this.exists(descriptionPath)) {
+        this.applyDescriptions(parseModelDescriptions(await fs.readText(descriptionPath)))
+      }
+    } catch (_) {
+      hilog.warn(0, 'TurboAIChat', 'Ignoring unreadable or invalid model description cache')
+    }
     await this.loadInstalledItems(filesDir)
     const cachePath = `${filesDir}/${CATALOG_CACHE_FILE}`
     await this.recoverAtomicFile(cachePath)
@@ -155,6 +187,10 @@ export class ModelCatalogService {
           rerankerError = err
           this.rerankerCatalogStatus = this.rerankerItems.length > 0 ? '重排目录更新失败，已保留缓存' : '重排目录更新失败，请重试'
           hilog.warn(0, 'TurboAIChat', 'Reranker catalog refresh failed: %{public}s', formatError(err))
+        }),
+      this.refreshDescriptions(filesDir).then((changed: boolean) => { updated = updated || changed })
+        .catch((err: Error) => {
+          hilog.warn(0, 'TurboAIChat', 'Model description refresh failed: %{public}s', formatError(err))
         })
     ])
     if (officialError !== undefined && supplementalError !== undefined && rerankerError !== undefined) throw officialError as Error
@@ -166,6 +202,28 @@ export class ModelCatalogService {
   }
 
   rerankerStatus(): string { return this.rerankerCatalogStatus }
+
+  private applyDescriptions(manifest: ModelDescriptionManifest): void {
+    if (manifest.descriptionVersion < this.descriptionVersion) return
+    const descriptions: Record<string, string> = {}
+    for (const entry of manifest.entries) descriptions[entry.repo.toLowerCase()] = entry.description.trim()
+    this.descriptions = descriptions
+    this.descriptionVersion = manifest.descriptionVersion
+  }
+
+  private async refreshDescriptions(filesDir: string): Promise<boolean> {
+    let text: string
+    try {
+      text = await this.requestCatalog(DESCRIPTION_URL, 'application/json', 5000)
+    } catch (_) {
+      text = await this.requestCatalog(DESCRIPTION_API_URL, 'application/vnd.github.raw+json', 5000)
+    }
+    const manifest = parseModelDescriptions(text)
+    if (manifest.descriptionVersion <= this.descriptionVersion) return false
+    await this.writeTextAtomically(`${filesDir}/${DESCRIPTION_CACHE_FILE}`, text)
+    this.applyDescriptions(manifest)
+    return true
+  }
 
   private async refreshRerankers(filesDir: string): Promise<boolean> {
     const text = await this.requestCatalog('https://modelscope.cn/api/v1/models', 'application/json', 15000,
