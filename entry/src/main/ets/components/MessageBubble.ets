@@ -1,3 +1,4 @@
+import fileUri from '@ohos.file.fileuri'
 import { EditQuestionConfirmDialog } from './EditQuestionConfirmDialog'
 import { ActionButtonStyle, CompactActionStyle } from './ButtonStyles'
 import { ChatMessage } from '../models/ChatTypes'
@@ -19,12 +20,14 @@ export struct MessageBubble {
     includeInContext: false,
     thinkingExpanded: false
   }
+  onPreviewImage: (uri: string) => void = (_uri: string) => {}
   onToggleThinking: (messageId: number) => void = (_messageId: number) => {}
   onAnswerSelection: () => void = () => {}
   @Prop canSelectVersion: boolean = false
   onSelectVersion: (index: number) => void = (_index: number) => {}
   @Prop canRegenerate: boolean = false
   @Prop canEdit: boolean = false
+  @State private failedImageUri: string = ''
   @State private editing: boolean = false
   @State private editText: string = ''
   private editController: TextAreaController = new TextAreaController()
@@ -589,15 +592,18 @@ export struct MessageBubble {
                 .margin({ left: 16 }).flexShrink(0)
             }.width('100%').height(20)
           }
-          if (this.message.imageUnavailable) {
-            Text('此图片未能保存').fontSize(11).fontColor($r('app.color.text_muted'))
+          if (this.message.imageUnavailable || (this.message.imageUri.length > 0 && this.failedImageUri === this.message.imageUri)) {
+            Text(this.message.imageUnavailable ? '此图片未能保存' : '图片暂时无法打开').fontSize(11).fontColor($r('app.color.text_muted'))
           }
-          if (this.message.imageUri.length > 0) {
-            Image(this.message.imageUri)
+          if (this.message.imageUri.length > 0 && !this.message.imageUnavailable && this.failedImageUri !== this.message.imageUri) {
+            Image(this.message.imageUri.startsWith('/') ? fileUri.getUriFromPath(this.message.imageUri) : this.message.imageUri)
               .width(132)
               .height(88)
               .objectFit(ImageFit.Cover)
               .borderRadius(8)
+              .accessibilityText('预览消息图片').id(`message-${this.message.id}-image`)
+              .onError(() => { this.failedImageUri = this.message.imageUri })
+              .onClick(() => this.onPreviewImage(this.message.imageUri.startsWith('/') ? fileUri.getUriFromPath(this.message.imageUri) : this.message.imageUri))
           }
           if (this.message.role === 'assistant' && this.hasThinking()) {
             this.ThinkingBlock()

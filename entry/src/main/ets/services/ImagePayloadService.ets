@@ -1,3 +1,4 @@
+import { hilog } from '@kit.PerformanceAnalysisKit'
 import photoAccessHelper from '@ohos.file.photoAccessHelper'
 import fs from '@ohos.file.fs'
 import image from '@ohos.multimedia.image'
@@ -54,7 +55,8 @@ export class ImagePayloadService {
       await pixelMap.readPixelsToBuffer(pixels)
       return { pixels, width, height }
     } catch (err) {
-      throw new Error(`图片读取失败：${err}`)
+      hilog.error(0x0000, 'TurboAIChat', 'Image decoding failed: %{public}s', JSON.stringify(err))
+      throw new Error('图片读取失败，请重新选择图片后重试。')
     } finally {
       if (pixelMap) {
         await pixelMap.release()

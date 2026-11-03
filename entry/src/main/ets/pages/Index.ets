@@ -361,6 +361,8 @@ struct Index {
         })
       }
       ChatTab({
+        previewTopInset: this.topInset,
+        previewBottomInset: this.bottomInset,
         compactTicker: this.usePhoneTabs(),
         compactPage: this.windowWidth < 600,
         inputExpanded: this.chatInputExpanded,

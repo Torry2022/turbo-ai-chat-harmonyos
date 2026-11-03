@@ -1,4 +1,6 @@
+import fileUri from '@ohos.file.fileuri'
 import { ChatRunTicker } from './ChatRunTicker'
+import { ChatImagePreview } from './ChatImagePreview'
 import { ChatHistoryPanel } from './ChatHistoryPanel'
 import { messageDate } from '../models/ChatHistoryTypes'
 import { ActionButtonStyle, CompactActionStyle } from './ButtonStyles'
@@ -14,6 +16,8 @@ export struct ChatTab {
   @Prop renderVersion: number
   @Prop @Watch('onActiveChange') active: boolean = false
   @Prop dialogVisible: boolean = false
+  @Prop previewTopInset: number = 0
+  @Prop previewBottomInset: number = 0
   @Prop contentInset: number = 0
   @Prop contentBottomInset: number = 0
   @Prop compactTicker: boolean = false
@@ -78,6 +82,8 @@ export struct ChatTab {
     return day
   }
 
+  @State private imagePreviewOpen: boolean = false
+  @State private previewImageUri: string = ''
   @State private inputFocused: boolean = false
   @State private voiceWaveRaised: boolean = false
   private inputController: TextAreaController = new TextAreaController()
@@ -117,6 +123,17 @@ export struct ChatTab {
     })
   }
 
+  private openImagePreview(uri: string): void {
+    this.inputController.stopEditing()
+    this.previewImageUri = uri
+    this.imagePreviewOpen = true
+  }
+
+  @Builder
+  private PreviewImage() {
+    ChatImagePreview({ uri: this.previewImageUri, topInset: this.previewTopInset, bottomInset: this.previewBottomInset, onClose: () => { this.imagePreviewOpen = false } })
+  }
+
   aboutToAppear(): void {
     this.viewModel.bindHistoryClose((): boolean => {
       if (!this.isHistoryOpen() || this.wideHistory()) return false
@@ -127,6 +144,7 @@ export struct ChatTab {
 
   private onActiveChange(): void {
     if (!this.active) {
+      this.imagePreviewOpen = false
       this.renamingId = ''
       if (!this.wideHistory()) this.setHistoryOpen(false)
       this.inputController.stopEditing()
@@ -451,6 +469,7 @@ export struct ChatTab {
               } else {
             MessageBubble({
               message: this.messageForRender(message, this.renderVersion),
+              onPreviewImage: (uri: string) => this.openImagePreview(uri),
               canRegenerate: this.viewModel.canRegenerateAnswer(message.id),
               canSelectVersion: this.viewModel.canManageConversations(),
               onSelectVersion: (index: number) => this.viewModel.selectAnswerVersion(message.id, index),
@@ -494,33 +513,26 @@ export struct ChatTab {
 
       Column({ space: 6 }) {
       if (this.viewModel.selectedImageUri.length > 0) {
-        Row({ space: 8 }) {
-          Image(this.viewModel.selectedImageUri)
-            .width(72)
-            .height(48)
-            .objectFit(ImageFit.Cover)
-            .borderRadius(8)
-          Text(this.viewModel.selectedImageUri)
-            .fontSize(12)
-            .fontColor($r('app.color.text_muted'))
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-            .layoutWeight(1)
-          Button('清除')
-            .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
-            .onClick(() => {
-              this.inputController.stopEditing()
-              this.viewModel.clearSelectedImage()
-            })
-        }
-        .width('100%')
-        .padding(8)
-        .backgroundColor($r('app.color.composer_background'))
-        .borderRadius(8)
-        .onAreaChange((_oldArea: Area, newArea: Area) => { this.attachmentHeight = Number(newArea.height) })
-        .onClick(() => {
-          this.inputController.stopEditing()
-        })
+        Row() {
+          Stack({ alignContent: Alignment.TopEnd }) {
+            Button({ type: ButtonType.Normal }) {
+              Image(this.viewModel.selectedImageUri.startsWith('/') ? fileUri.getUriFromPath(this.viewModel.selectedImageUri) : this.viewModel.selectedImageUri)
+                .width(80).height(64).objectFit(ImageFit.Cover).borderRadius(8)
+            }.width(80).height(64).padding(0).backgroundColor(Color.Transparent).align(Alignment.BottomStart)
+              .accessibilityText('预览待发送图片').id('composer-image-preview')
+              .onClick(() => this.openImagePreview(this.viewModel.selectedImageUri))
+            Button({ type: ButtonType.Circle }) {
+              Image($r('app.media.model_market_close_icon')).width(16).height(16)
+            }.width(24).height(24)
+              .backgroundColor($r('app.color.button_secondary_background'))
+              .accessibilityText('移除待发送图片').id('composer-image-remove')
+              .onClick(() => {
+                this.inputController.stopEditing()
+                this.viewModel.clearSelectedImage()
+              })
+          }.width(88).height(72)
+        }.width('100%')
+          .onAreaChange((_oldArea: Area, newArea: Area) => { this.attachmentHeight = Number(newArea.height) })
       }
 
       Column({ space: 6 }) {
@@ -587,6 +599,8 @@ export struct ChatTab {
                   .width(40)
                   .height(40)
                   .opacity(this.viewModel.speechRecognitionStarting ? 0.45 : 1)
+                  .accessibilityText(this.viewModel.selectedImageUri.length > 0 ? '更换图片' : '添加图片')
+                  .id('composer-image-add')
                   .onClick(() => {
                     if (!this.viewModel.speechRecognitionStarting) {
                       this.inputController.stopEditing()
@@ -693,6 +707,7 @@ export struct ChatTab {
             .animation({ duration: 220, curve: Curve.EaseInOut }))
       }
     }.width('100%').layoutWeight(1)
+      .bindContentCover($$this.imagePreviewOpen, this.PreviewImage, { modalTransition: ModalTransition.ALPHA })
       .onTouch((event: TouchEvent) => {
         if (event.source === SourceType.TouchScreen) this.mouseInput = false
       })
