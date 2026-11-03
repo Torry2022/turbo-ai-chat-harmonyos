@@ -436,6 +436,8 @@ entry.layaReleaseAsync(): Promise<void>
 
 [主机回归 CI](.github/workflows/host-regression.yml) 在推送到 `main` 或向 `main` 提交 PR 时运行，覆盖聊天历史、自动命名、消息复制、模型导入和 API 状态等逻辑，以及模型目录工具。也可在 Actions 页面手动运行。
 
+完整的模块验收、真机组合和记录方式见[测试与验收清单](docs/testing.md)。
+
 这些测试在电脑上执行，使用模拟的系统接口，无需模型权重或真机。ArkTS 编译、HAP 构建、签名和真机验收仍通过 DevEco Studio 完成。
 
 ## 许可证

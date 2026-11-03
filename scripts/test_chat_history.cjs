@@ -682,6 +682,7 @@ add('missing attachments, unavailable model and stale action IDs cannot replace 
 add('inline edit replaces the last turn, retains its attachment and leaves composer drafts intact', async () => {
   const view = await actionView('inline-edit');
   const question = view.session.lastQuestion();
+  const originalImage = question.imageUri;
   const oldAnswer = view.session.lastAnswer();
   let request;
   view.generationWorkflow = { run: value => { request = value; return Promise.resolve(finished()); } };
@@ -690,7 +691,7 @@ add('inline edit replaces the last turn, retains its attachment and leaves compo
   assert.equal(await view.resendEditedQuestion(question.id, ' 修改后的问题 '), true);
   await new Promise(done => setTimeout(done, 0));
   assert.deepEqual(Array.from(request.turns, item => item.content), ['system', '更早的问题', '更早的回答。', '修改后的问题']);
-  assert.equal(request.imageUri, question.imageUri);
+  assert.equal(request.imageUri, originalImage);
   assert.equal(view.session.lastQuestion().id, question.id);
   assert.equal(view.session.lastQuestion().content, '修改后的问题');
   assert.equal(view.messages.some(item => item.id === oldAnswer.id), false);
@@ -1045,6 +1046,73 @@ add('unreadable indexes rebuild records while valid primary selection takes prec
   const normal = new ChatHistoryService(); assert.equal((await normal.initialize(dir)).activeId, 'c-second');
   const filename = path.join(dir, 'chat-history', 'index.json'); fs.writeFileSync(filename, '{bad'); fs.writeFileSync(filename + '.bak', '{bad');
   const rebuilt = new ChatHistoryService(); assert.equal((await rebuilt.initialize(dir)).activeId, ''); assert.equal(rebuilt.list().length, 2);
+});
+
+
+add('failed attachment copies never publish a partial image and retry copies complete bytes', async () => {
+  const dir = path.join(temporary, 'image-partial-copy');
+  const service = new ChatHistoryService(); await service.initialize(dir);
+  const record = conversation('c-image-partial'); const source = path.join(temporary, 'source-partial.png');
+  fs.writeFileSync(source, 'complete image bytes'); record.messages[0].imageUri = source;
+  const copy = fileIo.copyFile;
+  fileIo.copyFile = async (_fd, name) => { fs.writeFileSync(name, 'co'); throw new Error('injected image copy failure'); };
+  try { await assert.rejects(service.save(record), /图片未能保存/); } finally { fileIo.copyFile = copy; }
+  const destination = path.join(dir, 'chat-history', record.id, 'image-1');
+  assert.equal(fs.existsSync(destination), false);
+  await service.save(record); assert.equal(fs.readFileSync(destination, 'utf8'), 'complete image bytes');
+});
+add('saved attachment replaces the live picker URI without replacing newer message text', async () => {
+  const view = await actionView('live-image-copy');
+  const question = view.session.lastQuestion(); const source = question.imageUri;
+  const copy = fileIo.copyFile;
+  fileIo.copyFile = async (fd, name) => { await copy(fd, name); question.content = '保存期间更新的文字'; };
+  try { await view.saveCurrentConversation(); } finally { fileIo.copyFile = copy; }
+  const stored = await view.historyService.load(view.activeConversationId);
+  assert.equal(question.imageUri, stored.messages.find(m => m.id === question.id).imageUri);
+  assert.notEqual(question.imageUri, source); assert.equal(question.content, '保存期间更新的文字');
+  fs.unlinkSync(source); assert.equal(fs.readFileSync(question.imageUri, 'utf8'), 'original image');
+});
+add('image cleanup retains current and backup references and leaves other conversations intact', async () => {
+  const dir = path.join(temporary, 'image-pruning'); const service = new ChatHistoryService(); await service.initialize(dir);
+  const source = path.join(temporary, 'pruning-source.png'); fs.writeFileSync(source, 'fixture');
+  const record = conversation('c-images-prune'); record.messages[0].imageUri = source;
+  const session = new ChatSession(); session.restore(record.messages); session.appendMessage('user', 'later image', source); session.appendMessage('assistant', 'later answer'); record.messages = session.messages;
+  await service.save(record);
+  const neighbor = conversation('c-images-neighbor'); neighbor.messages[0].imageUri = source; await service.save(neighbor);
+  const folder = path.join(dir, 'chat-history', record.id); const later = path.join(folder, 'image-3');
+  record.messages = record.messages.slice(0, 2); await service.save(record);
+  assert.equal(fs.existsSync(later), true, 'previous committed backup still references this image');
+  await service.save(record); assert.equal(fs.existsSync(later), false, 'unreferenced image must be removed after backup rotation');
+  assert.equal(fs.existsSync(path.join(folder, 'image-1')), true);
+  assert.equal(fs.existsSync(path.join(dir, 'chat-history', neighbor.id, 'image-1')), true);
+  await service.remove(record.id); assert.equal(fs.existsSync(folder), false);
+  assert.equal(fs.existsSync(path.join(dir, 'chat-history', neighbor.id, 'image-1')), true);
+});
+
+
+add('an attachment failure keeps question text and retries from the live source when it returns', async () => {
+  const view = await actionView('image-copy-retry'); const question = view.session.lastQuestion(); const source = question.imageUri;
+  fs.unlinkSync(source); await assert.rejects(view.saveCurrentConversation(), /图片未能保存/);
+  const failed = await view.historyService.load(view.activeConversationId);
+  assert.equal(failed.messages.find(m => m.id === question.id).imageUnavailable, true);
+  assert.equal(question.content, '最后的问题');
+  fs.writeFileSync(source, 'restored source'); await view.saveCurrentConversation(); fs.unlinkSync(source);
+  assert.equal(fs.readFileSync(question.imageUri, 'utf8'), 'restored source'); assert.equal(question.imageUnavailable, false);
+});
+add('a late attachment save cannot overwrite a new attachment selection or newer streamed text', async () => {
+  const view = await actionView('image-copy-race'); const question = view.session.lastQuestion(); const copy = fileIo.copyFile;
+  fileIo.copyFile = async (fd, name) => { await copy(fd, name); question.imageUri = 'new-picker-uri'; question.content = 'new text'; };
+  try { await view.saveCurrentConversation(); } finally { fileIo.copyFile = copy; }
+  assert.equal(question.imageUri, 'new-picker-uri'); assert.equal(question.content, 'new text');
+});
+add('an unreadable backup defers attachment cleanup and preserves unrelated files', async () => {
+  const dir = path.join(temporary, 'image-backup-guard'); const service = new ChatHistoryService(); await service.initialize(dir);
+  const record = conversation('c-image-backup'); await service.save(record);
+  const folder = path.join(dir, 'chat-history', record.id); fs.writeFileSync(path.join(folder, 'image-99'), 'backup image'); fs.writeFileSync(path.join(folder, 'user-notes'), 'leave alone');
+  fs.writeFileSync(path.join(folder, 'conversation.json'), '{damaged');
+  await service.save(record); assert.equal(fs.existsSync(path.join(folder, 'image-99')), true);
+  await service.save(record); assert.equal(fs.existsSync(path.join(folder, 'image-99')), false);
+  assert.equal(fs.readFileSync(path.join(folder, 'user-notes'), 'utf8'), 'leave alone');
 });
 
 for (const name of ['ChatSession', 'Thinking', 'Markdown', 'GenerationWorkflow', 'GenerationMetrics', 'OpenAiApiServer', 'Knowledge', 'KnowledgeRelations']) {

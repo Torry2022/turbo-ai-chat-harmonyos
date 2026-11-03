@@ -1776,8 +1776,19 @@ export class ChatViewModel {
     conversation.messages = this.session.messages
     conversation.updatedAt = this.session.messages.reduce((latest: number, message: ChatMessage) =>
       Math.max(latest, message.completedAt ?? message.createdAt ?? 0), conversation.updatedAt)
+    const imageUris: Map<number, string> = new Map()
+    conversation.messages.forEach((message: ChatMessage) => { imageUris.set(message.id, message.imageUri) })
     try {
-      await this.historyService.save(conversation)
+      const saved = await this.historyService.save(conversation)
+      if (this.activeConversationId === saved.id) {
+        saved.messages.forEach((message: ChatMessage) => {
+          const current = this.session.messages.find((item: ChatMessage) => item.id === message.id)
+          if (current && current.imageUri === imageUris.get(message.id)) {
+            current.imageUri = message.imageUri
+            current.imageUnavailable = message.imageUnavailable
+          }
+        })
+      }
       this.titleService.enqueue(conversation)
     } finally {
       this.conversations = this.historyService.list()

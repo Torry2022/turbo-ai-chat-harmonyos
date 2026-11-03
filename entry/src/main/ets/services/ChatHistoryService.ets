@@ -132,10 +132,10 @@ export class ChatHistoryService {
     }).join(' ').replace(/\s+/g, ' ').trim()
   }
 
-  save(conversation: ChatConversation): Promise<void> {
+  save(conversation: ChatConversation): Promise<ChatConversation> {
     // Capture now, before a queued write can observe another UI state.
     const snapshot = JSON.parse(JSON.stringify(conversation)) as ChatConversation
-    return this.enqueue(async (): Promise<void> => {
+    return this.enqueue(async (): Promise<ChatConversation> => {
       if (this.retiredIds.has(snapshot.id)) throw new Error('该对话已删除')
       const savedTitle = this.summaries.find((item: ChatConversationSummary) => item.id === snapshot.id)
       if (savedTitle?.titleSource === 'manual' ||
@@ -154,11 +154,13 @@ export class ChatHistoryService {
         if (!message.imageUri) continue
         const destination = `${directory}/image-${message.id}`
         if (message.imageUri === destination) continue
+        const temporaryImage = `${destination}.tmp`
         let source: fs.File | undefined = undefined
         try {
           if (!await this.exists(destination)) {
             source = fs.openSync(message.imageUri, fs.OpenMode.READ_ONLY)
-            await fs.copyFile(source.fd, destination)
+            await fs.copyFile(source.fd, temporaryImage)
+            await fs.rename(temporaryImage, destination)
           }
           message.imageUri = destination
           message.imageUnavailable = false
@@ -167,6 +169,7 @@ export class ChatHistoryService {
           message.imageUnavailable = true
           attachmentFailed = true
           this.onAttachmentError()
+          try { if (await this.exists(temporaryImage)) await fs.unlink(temporaryImage) } catch (_) {}
         } finally {
           if (source) fs.closeSync(source)
         }
@@ -175,7 +178,11 @@ export class ChatHistoryService {
       this.upsertSummary(snapshot)
       this.activeId = snapshot.id
       await this.writeIndex()
+      try { await this.pruneAttachments(snapshot) } catch (_) {
+        // A cleanup failure must not turn a committed conversation into a failed save.
+      }
       if (attachmentFailed) throw new Error('对话文字已保存，但有图片未能保存。请重试。')
+      return snapshot
     })
   }
 
@@ -333,6 +340,21 @@ export class ChatHistoryService {
     } catch (error) {
       if (!await this.exists(path) && await this.exists(backup)) await fs.rename(backup, path)
       throw new Error(`${error}`)
+    }
+  }
+
+  private async pruneAttachments(record: ChatConversation): Promise<void> {
+    const directory = this.directory(record.id)
+    const keep: Set<string> = new Set(record.messages.map((message: ChatMessage) => message.imageUri))
+    const backupPath = `${directory}/conversation.json.bak`
+    if (await this.exists(backupPath)) {
+      let backup: ChatConversation
+      try { backup = this.parseRecord(await fs.readText(backupPath), record.id) } catch (_) { return }
+      backup.messages.forEach((message: ChatMessage) => { keep.add(message.imageUri) })
+    }
+    for (const name of await fs.listFile(directory)) {
+      const path = `${directory}/${name}`
+      if (/^image-[1-9][0-9]*$/.test(name) && !keep.has(path)) await fs.unlink(path)
     }
   }
 
