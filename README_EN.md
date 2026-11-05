@@ -57,6 +57,33 @@ The project can serve as a development and integration reference for local AI ap
 
 ## Recent Highlights
 
+**Streaming display and legacy model compatibility (v1.21.0)**
+
+- Reveal generated text progressively with a brief fade-in, steadier Markdown updates and stable code-block alignment.
+- Coordinate phone keyboard transitions with the chat position and resume following when scrolling back to the bottom. Retain normally completed replies in subsequent context and clear the first question's draft after sending.
+- Recognize supported legacy ChatML templates, filter out non-conversation models and explain known package configuration problems before downloading weights.
+
+**Official model catalogs and thinking controls (v1.20.0)**
+
+- Browse the official MNN conversation catalog and ModelScope Qwen3-Reranker listings, with supplemental catalogs and offline caches. Filter by capability and use two-column cards in wide windows.
+- Turn deep thinking on or off for supported models, including imported models with compatible templates. Choices are saved per model and apply to the next request.
+- Read model summaries based on official sources, updated and cached through a separate online file. New entries retain default descriptions until a curated summary is available.
+
+**Image previews and multimodal chat (v1.19.0)**
+
+- Preview images before sending and open message attachments full-screen with pinch zoom, double-tap zoom and panning.
+- Preserve and clean up attachments consistently across saves, edits and interrupted copies. Fix image preprocessing for legacy Gemma 4 packages and apply the configured thread count to multimodal inference.
+- Refine Model Gallery cards, filters and catalog refresh, and keep header status text scrolling during monitoring updates.
+
+**Chat history saving and recovery (v1.18.3)**
+
+- Complete history writes before replacing saved records and preserve existing data on failure. Recover the last selected conversation from a valid backup when the history index is missing or damaged.
+
+**Model settings and service feedback (v1.18.2)**
+
+- Separate reranking model management from runtime settings, with consistent section animations and pending thread-change indicators.
+- Keep interface documentation available during inference, open complete API log entries and distinguish unloaded models, busy requests and service errors.
+
 **Thread configuration and sampling fixes (v1.18.1)**
 
 - Fix earlier model loads limiting later CPU thread counts; chat and reranking models retain their own thread settings.

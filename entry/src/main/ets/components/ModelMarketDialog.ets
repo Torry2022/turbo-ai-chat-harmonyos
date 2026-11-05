@@ -305,7 +305,7 @@ export struct ModelMarketDialog {
       }
       .width(Math.max(1, Math.min(840, this.availableWidth - 32)))
       .height(Math.max(1, Math.min(this.availableWidth < 600 ? 640 : 800,
-        this.availableHeight * (this.availableWidth < 600 ? 0.72 : 0.85))))
+        this.availableHeight * (this.availableWidth < 600 ? 0.78 : 0.85))))
       .padding({ top: 12, bottom: 12, left: 12, right: 12 })
       .id('model-market-panel')
       .backgroundColor($r('app.color.dialog'))

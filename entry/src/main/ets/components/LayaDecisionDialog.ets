@@ -586,7 +586,8 @@ export struct LayaDecisionDialog {
       }
       .padding(18)
       .width(Math.max(1, Math.min(840, this.availableWidth - 32)))
-      .height(Math.max(1, Math.min(800, this.availableHeight * 0.85)))
+      .height(Math.max(1, Math.min(this.availableWidth < 600 ? 640 : 800,
+        this.availableHeight * (this.availableWidth < 600 ? 0.78 : 0.85))))
       .backgroundColor($r('app.color.dialog'))
       .border({ width: 1, color: $r('app.color.border') })
       .borderRadius($r('app.float.dialog_radius'))

@@ -353,7 +353,11 @@ export struct ModelTab {
         }
       })
       .width('100%')
-      Text('各类模型独立加载，切换分类不影响已加载模型。')
+      Text(this.viewModel.modelPageCategory === 'decision' ?
+        '加载后可点“进入决策”试用；在“API 服务”页开启服务后，可按调用说明从其他应用发起决策请求。' :
+        this.viewModel.modelPageCategory === 'rerank' ?
+          '加载模型后，在“API 服务”页开启服务，并按调用说明提交查询和待排序文本。' :
+          '各类模型独立加载，切换分类不影响已加载模型。')
         .fontSize(11).lineHeight(17).fontColor($r('app.color.text_muted')).width('100%')
       if (this.viewModel.modelPageCategory === 'decision') {
         this.DecisionModelCard()
@@ -384,33 +388,34 @@ export struct ModelTab {
               .id('model-thinking-switch')
           }.width('100%')
         }
-        Column() {
-          Row({ space: 12 }) {
+        Row({ space: 12 }) {
+          Column({ space: 3 }) {
             Text('启动应用时加载当前模型')
               .fontSize(13)
               .fontColor($r('app.color.text_secondary'))
-              .layoutWeight(1)
-            Toggle({
-              type: ToggleType.Switch,
-              isOn: this.viewModel.startupAutoLoadEnabled &&
-                this.viewModel.startupModelId === this.viewModel.selectedModelId
-            })
-              .height(22)
-              .margin(0)
-              .selectedColor($r('app.color.status_good'))
-              .enabled(this.controlsEnabled())
-              .onChange((enabled: boolean) => {
-                this.viewModel.setStartupAutoLoad(enabled)
-              })
+              .width('100%')
+            Text(this.viewModel.startupAutoLoadEnabled ?
+              `当前自动加载：${this.viewModel.startupModelName()}` : '当前未选择自动加载的模型')
+              .fontSize(12)
+              .lineHeight(18)
+              .fontColor($r('app.color.text_muted'))
+              .width('100%')
           }
-          .width('100%')
-          Text(this.viewModel.startupAutoLoadEnabled ?
-            `当前自动加载：${this.viewModel.startupModelName()}` : '当前未选择自动加载的模型')
-            .fontSize(12)
-            .lineHeight(18)
-            .fontColor($r('app.color.text_muted'))
-            .width('100%')
+          .layoutWeight(1)
+          Toggle({
+            type: ToggleType.Switch,
+            isOn: this.viewModel.startupAutoLoadEnabled &&
+              this.viewModel.startupModelId === this.viewModel.selectedModelId
+          })
+            .height(22)
+            .margin(0)
+            .selectedColor($r('app.color.status_good'))
+            .enabled(this.controlsEnabled())
+            .onChange((enabled: boolean) => {
+              this.viewModel.setStartupAutoLoad(enabled)
+            })
         }
+        .alignItems(VerticalAlign.Center)
         .width('100%')
         .margin({ bottom: 4 })
         Button(this.viewModel.loaded ? '释放当前模型' : '加载当前模型')
