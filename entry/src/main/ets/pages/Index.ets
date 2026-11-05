@@ -174,6 +174,7 @@ struct Index {
     setTimeout(() => {
       this.showLaunch = false
       themeService.finishLaunch()
+      this.updateModalFocus(true)
     }, 1200)
   }
 
@@ -220,8 +221,12 @@ struct Index {
     clearTimeout(this.focusTimer)
     this.focusTimer = setTimeout(() => {
       this.dialogExitBlocking = false
+      if (this.showLaunch) return
       try {
-        this.getUIContext().getFocusController().requestFocus(this.modalFocusId())
+        const controller = this.getUIContext().getFocusController()
+        const target = this.modalFocusId()
+        if (target === 'app-content') controller.clearFocus()
+        else controller.requestFocus(target)
       } catch (_) {
       }
     }, this.dialogExitBlocking ? DIALOG_MOTION_DURATION + 20 : 0)
@@ -625,7 +630,7 @@ struct Index {
       .padding({ top: this.usePhoneTabs() ? this.topInset : 0,
         bottom: this.windowWidth < 600 && this.keyboardVisible ? 8 : 0 })
       .id('app-content')
-      .focusable(!this.dialogExitBlocking && this.modalFocusId() === 'app-content')
+      .focusable(!this.showLaunch && !this.dialogExitBlocking && this.modalFocusId() === 'app-content')
 
       if (this.usePhoneTabs() && this.phoneHistoryOpen) {
         Column()
