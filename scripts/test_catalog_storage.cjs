@@ -294,14 +294,21 @@ async function main() {
     const entry = official().models[0];
     const models = [entry, entry, { ...entry, min_app_version: '999.0', sources: { ModelScope: 'MNN/Other-MNN' } },
       { ...entry, sources: { ModelScope: 'MNN/../bad' } },
-      ...['ImageGen', 'Audio', 'AudioGen', 'Video', 'NPU'].map(tag =>
+      ...['ImageGen', 'Audio', 'AudioGen', 'Video', 'NPU', 'Embedding', 'Rerank', 'Safety'].map(tag =>
         ({ ...entry, tags: [tag], sources: { ModelScope: `MNN/${tag}-MNN` } })),
+      ...['bge-large-zh-MNN', 'bge-m3-MNN', 'gte-large-MNN', 'MobileLLM-125M-MNN',
+        'MobileLLM-1B-MNN', 'codegeex2-6b-MNN'].map(name =>
+        ({ ...entry, tags: [], sources: { ModelScope: `MNN/${name}` } })),
       { ...entry, sources: { ModelScope: MODEL_CATALOG_ITEMS[0].sourceUrl.split('/models/')[1] } }];
     const items = parseOfficialModelCatalog(raw(official('21', models)), MODEL_CATALOG_ITEMS).items;
     assert.equal(items.length, 2);
     assert.equal(items[1].minAppVersionCode, undefined);
     assert.equal(items[0].files.length, 0);
     assert.equal(items[0].runtime, undefined);
+    const instructionVariants = ['MobileLLM-1B-Instruct-MNN', 'CodeGeeX4-ALL-9B-MNN'].map(name =>
+      ({...entry, sources: {ModelScope: `MNN/${name}`}}));
+    assert.equal(parseOfficialModelCatalog(raw(official('21', instructionVariants)), []).items.length, 2,
+      'completion-family filtering must not hide instruction-tuned variants');
     assert.deepEqual(items[0].capabilities, ['对话', '深度思考', '代码']);
     const { catalogCapabilityLabels } = load(path.join(sourceRoot, 'utils/modelCatalog.ets'));
     assert.deepEqual(catalogCapabilityLabels(['文本', '对话', '通用', '轻量', '超轻量', '低内存', '大内存', '图片', '思考']), ['对话', '图像理解', '深度思考']);
@@ -309,6 +316,21 @@ async function main() {
     assert.deepEqual(parseOfficialModelCatalog(raw(translated), []).items[0].capabilities, ['对话', '深度思考', '代码']);
     for (const value of [null, {}, { version: true, models }, official('21', [null]), official('21', [])]) {
       assert.throws(() => parseOfficialModelCatalog(raw(value), []));
+    }
+  });
+  await check('audited broken package revisions fail before weights and upstream replacements are rechecked', async () => {
+    for (const [repo, revision, reason] of [
+      ['MNN/chatglm2-6b-MNN', 'a0bfce87f7f40a78293410d6baedfb249771dfc0', /分词器前缀超出词表/],
+      ['MNN/chatglm3-6b-MNN', '120597759ccd0b76135b1c14e0cf10ddfcbc0357', /分词器前缀超出词表/],
+      ['MNN/gemma-7b-it-MNN', '05af3cf87a2ca81e6c5d5425a49026b0b90f6a17', /轮次停止配置/]
+    ]) {
+      const item = parseOfficialModelCatalog(raw(official('21', [{...official().models[0], sources: {ModelScope: repo}}])), []).items[0];
+      const manifest = listing(blobs.map(file => ({...file, Revision: revision})));
+      manifest.Data.LatestCommitter.ShortId = revision.slice(0, 8);
+      const pinned = parseOfficialRepoFiles(raw(manifest), repo).files;
+      assert.throws(() => resolveOfficialCatalogItem(item, pinned, raw(config), raw(llm)), reason);
+      const replacement = pinned.map(file => ({...file, url: file.url.replace(revision, 'f'.repeat(40))}));
+      assert.equal(resolveOfficialCatalogItem(item, replacement, raw(config), raw(llm)).files.length, 5);
     }
   });
   await check('official refresh needs no per-model HTTP calls and survives a supplemental outage and restart', async () => {
@@ -325,6 +347,45 @@ async function main() {
     assert.equal((await restored.load('/test')).catalogVersion, 21);
     assert(restored.findMarketItem('official-example-mnn'));
     assert(restored.findMarketItem(MODEL_CATALOG_ITEMS[0].id));
+  });
+  await check('a cached broken package checks for an upstream replacement without deleting its installation record', async () => {
+    const repo = 'MNN/chatglm2-6b-MNN';
+    const oldRevision = 'a0bfce87f7f40a78293410d6baedfb249771dfc0';
+    const newRevision = 'f'.repeat(40);
+    const rawCatalog = raw(official('21', [{...official().models[0], sources: {ModelScope: repo}}]));
+    const item = parseOfficialModelCatalog(rawCatalog, []).items[0];
+    const oldFiles = blobs.map(file => ({relativePath: file.Path, sizeBytes: file.Size,
+      url: `https://modelscope.cn/models/${repo}/resolve/${oldRevision}/${file.Path}`}));
+    const saved = serializeInstalledCatalog([{...item, files: oldFiles}]);
+    files.set('/test/model-catalog-official.json', rawCatalog);
+    files.set('/test/model-catalog-official-files.json', saved);
+    files.set(current, saved);
+    const service = new ModelCatalogService(); await service.load('/test');
+    const manifest = listing(blobs.map(file => ({...file, Revision: newRevision})));
+    manifest.Data.LatestCommitter.ShortId = newRevision.slice(0, 8);
+    urlResponses.set(`https://modelscope.cn/api/v1/models/${repo}/repo/files?Revision=master&Recursive=true`, response(manifest));
+    const root = `https://modelscope.cn/models/${repo}/resolve/${newRevision}`;
+    urlResponses.set(root + '/config.json', response(config));
+    urlResponses.set(root + '/llm_config.json', response(llm));
+    const resolved = await service.resolveInstallItem('/test', item.id);
+    assert(resolved.files.every(file => file.url.startsWith(root)));
+    assert.equal(requests.length, 3);
+    assert.equal(files.get(current), saved);
+  });
+  await check('cached embedding entries stay out of the gallery without deleting existing installation records', async () => {
+    const repo = 'MNN/bge-large-zh-MNN';
+    const entry = {...official().models[0], tags: [], sources: {ModelScope: repo}};
+    const installed = {...MODEL_CATALOG_ITEMS[0], id: 'official-bge-large-zh-mnn', modelId: 'official-bge-large-zh-mnn',
+      directoryName: 'bge-large-zh-MNN', sourceUrl: 'https://modelscope.cn/models/' + repo};
+    const saved = serializeInstalledCatalog([installed]);
+    files.set('/test/model-catalog-official.json', raw(official('21', [entry, official().models[0]])));
+    files.set('/test/model-catalog-official-files.json', saved);
+    files.set(current, saved);
+    const service = new ModelCatalogService(); await service.load('/test');
+    assert.equal(service.findMarketItem(installed.id), undefined);
+    assert.equal(service.findInstallItem(installed.id).directoryName, installed.directoryName);
+    assert.equal(files.get(current), saved, 'catalog filtering must not remove a user installation');
+    assert.equal(requests.length, 0, 'the cached catalog is filtered while offline');
   });
   await check('invalid official refresh retains its cache and reports fallback rather than claiming it is current', async () => {
     officialResponse = response(official());
@@ -353,6 +414,24 @@ async function main() {
     assert.equal(resolved.runtime.generationDefaults.repetitionPenalty, 1.1);
     assert.throws(() => resolveOfficialCatalogItem(item, selected.files, raw({ ...config, llm_model: 'missing.mnn' }), raw(llm)));
     assert.throws(() => resolveOfficialCatalogItem(item, selected.files, raw(config), raw({})));
+    const visualFiles = selected.files.concat([
+      { relativePath: 'visual.mnn', sizeBytes: 10, url: 'unused' },
+      { relativePath: 'visual.mnn.weight', sizeBytes: 20, url: 'unused' }
+    ]);
+    const vision = resolveOfficialCatalogItem(item, visualFiles, raw(config), raw({...llm, is_visual: true}));
+    assert.equal(vision.supportsImage, true, 'the actual model configuration corrects missing Vision tags');
+    assert(vision.capabilities.includes('图像理解'));
+    const textOnly = resolveOfficialCatalogItem({...item, supportsImage: true, capabilities: ['对话', '图像理解']}, selected.files, raw(config), raw(llm));
+    assert.equal(textOnly.supportsImage, false);
+    assert(!textOnly.capabilities.includes('图像理解'), 'stale Vision tags cannot enable image input');
+  });
+  await check('unavailable model metadata has an actionable error and cannot create a resolved manifest', async () => {
+    officialResponse = response(official());
+    const service = new ModelCatalogService(); await service.refresh('/test');
+    urlResponses.set('https://modelscope.cn/api/v1/models/MNN/Example-MNN/repo/files?Revision=master&Recursive=true', {responseCode: 404, result: ''});
+    await assert.rejects(service.resolveInstallItem('/test', 'official-example-mnn'), /不可用.*HTTP 404.*刷新/);
+    assert.equal(service.findMarketItem('official-example-mnn').files.length, 0);
+    assert(!files.has('/test/model-catalog-official-files.json'));
   });
   await check('resolved official downloads keep their pinned manifest across refreshes and restarts', async () => {
     officialResponse = response(official());
@@ -374,6 +453,24 @@ async function main() {
     await reloaded.recordInstalled('/test', resolved);
     assert(reloaded.profiles().some(profile => profile.id === id));
     assert.equal(parseInstalledCatalog(files.get(current)).find(item => item.id === id).files[0].url, resolved.files[0].url);
+  });
+  await check('split ChatML role templates resolve official downloads without fetching weights', async () => {
+    officialResponse = response(official());
+    const service = new ModelCatalogService(); await service.refresh('/test');
+    const repoRoot = `https://modelscope.cn/models/MNN/Example-MNN/resolve/${revision}`;
+    urlResponses.set('https://modelscope.cn/api/v1/models/MNN/Example-MNN/repo/files?Revision=master&Recursive=true', response(listing()));
+    urlResponses.set(repoRoot + '/config.json', response(config));
+    urlResponses.set(repoRoot + '/llm_config.json', response({
+      system_prompt_template: '<|im_start|>system\n%s<|im_end|>\n',
+      user_prompt_template: '<|im_start|>user\n%s<|im_end|>\n',
+      assistant_prompt_template: '<|im_start|>assistant\n%s<|im_end|>\n'
+    }));
+    const before = requests.length;
+    const resolved = await service.resolveInstallItem('/test', 'official-example-mnn');
+    assert.equal(resolved.files.length, 5);
+    assert.equal(requests.length - before, 3, 'resolution requests only the file list and two JSON configs');
+    assert(!requests.some(request => /\.(?:mnn|weight|txt)$/.test(request.url)));
+    assert(resolved.files.every(file => file.url.startsWith(repoRoot)));
   });
   await check('metadata errors and cancellation cannot start downloads or leave the app busy', async () => {
     const source = fs.readFileSync(path.join(sourceRoot, 'state/ChatViewModel.ets'), 'utf8');

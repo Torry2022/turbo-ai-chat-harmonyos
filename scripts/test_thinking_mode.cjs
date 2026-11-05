@@ -22,7 +22,25 @@ assert.equal(modelThinkingSupport('{"jinja":{"context":{"enable_thinking":false}
 assert.equal(modelThinkingSupport('{"use_template":false}',llm).supported,false);
 assert.equal(modelThinkingSupport('{}','{"jinja":{"chat_template":"{% if add_generation_prompt %}answer{% endif %}"}}').supported,false);
 assert.equal(modelThinkingSupport('{}','{"tags":["Think"]}').supported,false);
+assert.equal(modelThinkingSupport(JSON.stringify({jinja: {chat_template: template}}),
+  '{"jinja":{"chat_template":"fixed output"}}').supported, false,
+  'llm_config template overrides config.json as in the native MNN merge');
+assert.equal(modelThinkingSupport('{"jinja":{"context":{"enable_thinking":false}}}',
+  JSON.stringify({jinja: {chat_template: template, context: {enable_thinking: true}}})).defaultEnabled, true);
 assert.equal(modelThinkingSupport('{}','{"jinja":{"chat_template":"enable_thinking in documentation"}}').supported,false);
+// Hunyuan and SmolLM3 use these forms in their published MNN templates.
+const hunyuan = "{% if enable_thinking is defined and not enable_thinking %}</think>{% endif %}";
+assert.equal(modelThinkingSupport('{}', JSON.stringify({jinja: {chat_template: hunyuan}})).supported, true);
+const smol = "{%- if enable_thinking is not defined -%}\n{%- set enable_thinking = true -%}\n{%- endif -%}\n{%- if enable_thinking -%}<think>{%- endif -%}";
+assert.equal(modelThinkingSupport('{}', JSON.stringify({jinja: {chat_template: smol}})).supported, true);
+assert.equal(modelThinkingSupport('{}', JSON.stringify({jinja: {chat_template: smol}})).defaultEnabled, true);
+const defaultOff = smol.replace('= true', '= false');
+assert.equal(modelThinkingSupport('{}', JSON.stringify({jinja: {chat_template: defaultOff}})).defaultEnabled, false);
+assert.equal(modelThinkingSupport('{"jinja":{"context":{"enable_thinking":false}}}', JSON.stringify({jinja: {chat_template: smol}})).defaultEnabled, false);
+assert.equal(modelThinkingSupport('{"use_template":false}', JSON.stringify({jinja: {chat_template: smol}})).supported, false);
+assert.equal(modelThinkingSupport('{}', JSON.stringify({jinja: {chat_template: '{% set enable_thinking = true %}{% if enable_thinking %}text{% endif %}'}})).supported, false);
+assert.equal(modelThinkingSupport('{}', JSON.stringify({jinja: {chat_template: smol.split('{%- if enable_thinking -%}')[0] + 'fixed output'}})).supported, false,
+  'a default assignment without a generation branch must not expose a switch');
 assert.throws(() => modelThinkingSupport('{}','bad json'));
 console.log('PASS thinking controls follow actual template branches and model defaults, not catalog tags');
 const source = fs.readFileSync(path.join(root,'state/ChatViewModel.ets'),'utf8');

@@ -35,7 +35,7 @@ export interface ModelPreflightResult {
   legacyTemplate: boolean
 }
 
-interface MnnConfig {
+interface MnnConfig extends MnnChatTemplateConfig {
   llm_model?: string
   llm_weight?: string
   visual_model?: string
@@ -47,15 +47,23 @@ interface MnnConfig {
   tokenizer_file?: string
 }
 
-interface MnnLlmConfig {
+interface MnnLlmConfig extends MnnChatTemplateConfig {
   is_visual?: boolean
-  prompt_template?: string
-  jinja?: MnnJinjaConfig
   tie_embeddings?: number[]
+}
+
+export interface MnnChatTemplateConfig {
+  bos?: string
+  prompt_template?: string
+  system_prompt_template?: string
+  user_prompt_template?: string
+  assistant_prompt_template?: string
+  jinja?: MnnJinjaConfig
 }
 
 interface MnnJinjaConfig {
   chat_template?: string
+  eos?: string
 }
 
 export function inferSupportsImageFromLlmConfig(llmConfigText: string): boolean {
@@ -88,12 +96,12 @@ export function validateModelDirectorySnapshot(snapshot: ModelDirectorySnapshot)
     return failure(MODEL_PREFLIGHT_LLM_CONFIG_INVALID, 'llm_config.json 不是有效的 JSON。')
   }
 
-  const template = llmConfig.jinja?.chat_template ?? ''
-  const legacyTemplate = isLegacyChatMlPromptTemplate(llmConfig.prompt_template ?? '')
+  const template = resolveMnnChatTemplate(config, llmConfig)
+  const legacyTemplate = template.trim().length <= 0 && isLegacyChatMlConfig(config, llmConfig)
   if (snapshot.requireChatTemplate !== false && template.trim().length <= 0 && !legacyTemplate) {
     return failure(
       MODEL_PREFLIGHT_TEMPLATE_INCOMPATIBLE,
-      'llm_config.json 缺少 jinja.chat_template，且不是可自动兼容的 ChatML 旧模板。'
+      '模型包未提供本应用可用的对话模板，请使用含 jinja.chat_template 的模型包或完整的 ChatML 角色模板。'
     )
   }
 
@@ -149,6 +157,26 @@ export function isLegacyChatMlPromptTemplate(promptTemplate: string): boolean {
     promptTemplate.indexOf('<|im_start|>user') >= 0 &&
     promptTemplate.indexOf('<|im_start|>assistant') >= 0 &&
     promptTemplate.indexOf('<|im_end|>') >= 0
+}
+
+export function resolveMnnChatTemplate(config: MnnChatTemplateConfig, llmConfig: MnnChatTemplateConfig): string {
+  // MNN merges llm_config.json into config.json; fields in llm_config.json take precedence.
+  return llmConfig.jinja?.chat_template ?? config.jinja?.chat_template ?? ''
+}
+
+export function isLegacyChatMlConfig(config: MnnChatTemplateConfig, llmConfig: MnnChatTemplateConfig): boolean {
+  const system = llmConfig.system_prompt_template ?? config.system_prompt_template
+  const user = llmConfig.user_prompt_template ?? config.user_prompt_template
+  const assistant = llmConfig.assistant_prompt_template ?? config.assistant_prompt_template
+  const systemMatches = system === '<|im_start|>system\n%s<|im_end|>\n'
+  const userMatches = user === '<|im_start|>user\n%s<|im_end|>\n'
+  const assistantMatches = assistant === '<|im_start|>assistant\n%s<|im_end|>\n'
+  if ((system !== undefined && !systemMatches) || (user !== undefined && !userMatches) ||
+    (assistant !== undefined && !assistantMatches) || (llmConfig.bos ?? config.bos ?? '').length > 0) {
+    return false
+  }
+  return (systemMatches && userMatches && assistantMatches) ||
+    isLegacyChatMlPromptTemplate(llmConfig.prompt_template ?? config.prompt_template ?? '')
 }
 
 function configFileReferences(config: MnnConfig, tiedEmbeddings: boolean): string[] {

@@ -14,7 +14,7 @@ import {
 import { LAYA_DOWNLOAD_SPEC } from '../models/LayaModelConfig'
 import { ModelProfile } from '../models/ModelProfile'
 import { ModelDescriptionManifest, descriptionRepo, parseModelDescriptions } from '../utils/modelDescriptions'
-import { OfficialCatalog, officialModelRepo, parseOfficialModelCatalog, parseOfficialRerankerCatalog, parseOfficialRepoFiles, resolveOfficialCatalogItem } from '../utils/officialModelCatalog'
+import { OfficialCatalog, officialModelRepo, officialPackageCompatibilityMessage, parseOfficialModelCatalog, parseOfficialRerankerCatalog, parseOfficialRepoFiles, resolveOfficialCatalogItem } from '../utils/officialModelCatalog'
 import {
   catalogItemToProfile,
   mergeCatalogItems,
@@ -280,7 +280,7 @@ export class ModelCatalogService {
   async resolveInstallItem(filesDir: string, id: string): Promise<ModelCatalogItem> {
     const item = this.findMarketItem(id) ?? this.findInstallItem(id)
     if (item === undefined) throw new Error('模型广场条目不存在')
-    if (item.files.length > 0) return item
+    if (item.files.length > 0 && officialPackageCompatibilityMessage(item, item.files).length <= 0) return item
     const repo = officialModelRepo(item)
     const text = await this.requestCatalog(
       `https://modelscope.cn/api/v1/models/${repo}/repo/files?Revision=master&Recursive=true`, 'application/json')
@@ -313,6 +313,9 @@ export class ModelCatalogService {
         }
       })
       if (response.responseCode < 200 || response.responseCode >= 300) {
+        if (response.responseCode === 404) {
+          throw new Error('模型目录或配置已不可用（HTTP 404），请刷新模型广场后重试。')
+        }
         throw new Error(`HTTP ${response.responseCode}`)
       }
       if (typeof response.result !== 'string') {

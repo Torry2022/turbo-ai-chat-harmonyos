@@ -59,6 +59,22 @@ const COMMIT_PATTERN: RegExp = /^[a-f0-9]{8,64}$/
 // These exports previously failed generation in this app; retain other official models.
 const EXCLUDED_REPOS: string[] = ['mnn/qwen1.5-1.8b-chat-mnn', 'mnn/hunyuan-0.5b-instruct-mnn']
 
+interface UnavailableModelPackage {
+  repo: string
+  revision: string
+  reason: string
+}
+
+// Match the audited package revision only, so an upstream replacement can be checked normally.
+const UNAVAILABLE_PACKAGES: UnavailableModelPackage[] = [
+  { repo: 'MNN/chatglm2-6b-MNN', revision: 'a0bfce87f7f40a78293410d6baedfb249771dfc0',
+    reason: '该版本模型包的分词器前缀超出词表范围，暂不下载。请等待模型包更新，或选择其他模型。' },
+  { repo: 'MNN/chatglm3-6b-MNN', revision: '120597759ccd0b76135b1c14e0cf10ddfcbc0357',
+    reason: '该版本模型包的分词器前缀超出词表范围，暂不下载。请等待模型包更新，或选择其他模型。' },
+  { repo: 'MNN/gemma-7b-it-MNN', revision: '05af3cf87a2ca81e6c5d5425a49026b0b90f6a17',
+    reason: '该版本模型包缺少完整对话模板和轮次停止配置，暂不下载。请使用更新的完整模型包。' }
+]
+
 function translatedTag(translations: Record<string, string> | undefined, key: string, fallback: string): string {
   const value = translations?.[key]
   return typeof value === 'string' && value.trim().length > 0 ? value : fallback
@@ -85,7 +101,10 @@ export function parseOfficialModelCatalog(text: string, existing: ModelCatalogIt
     if (knownSources.includes(sourceUrl.toLowerCase()) || directories.includes(directoryName.toLowerCase())) continue
     const tags: string[] = Array.isArray(entry.tags) ? entry.tags.filter((tag: string) => typeof tag === 'string') : []
     if (tags.includes('ImageGen') || tags.includes('AudioGen') || tags.includes('NPU') ||
+      tags.includes('Embedding') || tags.includes('Rerank') || tags.includes('Safety') ||
       (tags.includes('Audio') && !tags.includes('Vision')) || (tags.includes('Video') && !tags.includes('Vision')) ||
+      /^(?:bge|gte)[-_]/i.test(directoryName) ||
+      /^(?:mobilellm-\d+(?:\.\d+)?[mb]|codegeex2-\d+(?:\.\d+)?b)-mnn$/i.test(directoryName) ||
       /(?:embedding|rerank|guard|omni|diffusion|qnn|eagle|dflash|(?:^|-)base(?:-|$))/i.test(directoryName)) continue
     const displayName = directoryName.replace(/-mnn$/i, '')
     const id = `official-${directoryName.toLowerCase()}`
@@ -160,6 +179,8 @@ export function parseOfficialRepoFiles(text: string, repo: string): OfficialRepo
 export function resolveOfficialCatalogItem(
   item: ModelCatalogItem, files: BuiltinModelFileSpec[], configText: string, llmConfigText: string
 ): ModelCatalogItem {
+  const unavailable = officialPackageCompatibilityMessage(item, files)
+  if (unavailable.length > 0) throw new Error(unavailable)
   const supportsImage = inferSupportsImageFromLlmConfig(llmConfigText)
   const snapshots: ModelFileSnapshot[] = files.map((file: BuiltinModelFileSpec): ModelFileSnapshot => {
     return { relativePath: file.relativePath, sizeBytes: file.sizeBytes }
@@ -190,6 +211,13 @@ export function resolveOfficialCatalogItem(
       catalogCapabilityLabels(item.capabilities).filter((value: string) => value !== '图像理解'),
     runtime: item.modelType === 'rerank' ? undefined :
       { systemPrompt: '你是一个有帮助的助手。请使用简体中文回答。', contextMessageLimit: 6, generationDefaults: defaults } }
+}
+
+export function officialPackageCompatibilityMessage(item: ModelCatalogItem, files: BuiltinModelFileSpec[]): string {
+  const unavailable = UNAVAILABLE_PACKAGES.find((pkg: UnavailableModelPackage) =>
+    item.sourceUrl === `${MODEL_SCOPE_ROOT}${pkg.repo}` && files.some((file: BuiltinModelFileSpec) =>
+      file.url.startsWith(`${MODEL_SCOPE_ROOT}${pkg.repo}/resolve/${pkg.revision}/`)))
+  return unavailable?.reason ?? ''
 }
 
 interface OfficialRerankerEntry {

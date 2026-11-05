@@ -174,4 +174,4 @@ GitHub Actions 中的 **Scan MNN catalog candidates** 会在每月 1 日自动�
 
 候选扫描用于维护补充目录和安排兼容性测试，不决定官方广场的在线条目。需要固定运行参数或补充兼容性要求的模型，可在真机验证后通过 `model_catalog.py add` 加入补充目录。
 
-官方条目在开始下载时才解析文件清单，读取同一提交的 `config.json` 和 `llm_config.json` 并执行目录预检。预检通过后固定提交用于下载和续传。重排模型安装在 `rerank-models/` 下，Laya 沿用 `laya-probe/`，不会注册为对话模型。官方目录的 `min_app_version` 是 MNN Chat 的版本要求，不用于比较本 App 的版本。能力标签沿用官方名称，如“对话”“图像理解”“深度思考”；`Think` 仅表示能力标签，不代表已提供统一的思考开关。
+官方条目在开始下载时才解析文件清单，读取同一提交的 `config.json` 和 `llm_config.json` 并执行目录预检。预检通过后固定提交用于下载和续传。重排模型安装在 `rerank-models/` 下，Laya 沿用 `laya-probe/`，不会注册为对话模型。官方目录的 `min_app_version` 是 MNN Chat 的版本要求，不用于比较本 App 的版本。能力标签沿用官方名称，如“对话”“图像理解”“深度思考”；“深度思考”标签表示目录声明的能力；是否显示开关由模型的实际模板决定。
