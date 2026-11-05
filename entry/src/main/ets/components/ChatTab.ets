@@ -183,8 +183,12 @@ export struct ChatTab {
 
   private updateChatAutoScroll(): void {
     if (!this.active || !this.chatUserScrolling) return
-    if (this.viewModel.chatScroller.isAtEnd()) this.viewModel.resumeChatAutoScroll()
-    else this.viewModel.pauseChatAutoScroll()
+    if (this.viewModel.chatScroller.isAtEnd()) {
+      this.chatUserScrolling = false
+      this.viewModel.resumeChatAutoScroll()
+    } else {
+      this.viewModel.pauseChatAutoScroll()
+    }
   }
 
   private sendKeyboardMessage(): void {

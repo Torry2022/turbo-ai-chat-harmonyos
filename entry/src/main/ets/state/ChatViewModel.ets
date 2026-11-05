@@ -1,5 +1,5 @@
 import fs from '@ohos.file.fs'
-import { advanceStreamingDisplay, STREAM_DISPLAY_INTERVAL_MS } from '../utils/streamingDisplay'
+import { StreamingDisplay, STREAM_DISPLAY_INTERVAL_MS } from '../utils/streamingDisplay'
 import util from '@ohos.util'
 import { modelThinkingSupport } from '../utils/modelThinking'
 import { RerankerService } from '../services/RerankerService'
@@ -180,9 +180,13 @@ export class ChatViewModel {
   storageStats: StorageStats = EMPTY_STORAGE_STATS
   streamingChars: number = 0
   private streamDisplayMessageId: number = 0
-  private streamDisplayText: string = ''
-  private streamDisplayTimer: number = -1
+  private streamDisplay: StreamingDisplay = new StreamingDisplay()
+  private streamDisplayFramePending: boolean = false
+  private streamDisplaySerial: number = 0
   private streamDisplayUpdatedAt: number = 0
+  private postStreamFrame: (callback: () => void) => void = (callback: () => void) => {
+    setTimeout(callback, STREAM_DISPLAY_INTERVAL_MS)
+  }
   latestPerfMetrics?: PerfMetrics
   appVersion: string = ''
   appVersionCode: number = 0
@@ -193,6 +197,8 @@ export class ChatViewModel {
   private modelLoadTimer: number = -1
   private modelLoadStartedAt: number = 0
   private autoScrollPending: boolean = false
+  private autoScrollSmooth: boolean = false
+  private streamScrollEnd: number = -1
   private chatScrollTargetId: number = 0
   private chatAutoScrollEnabled: boolean = true
   private notifyCallback: () => void = () => {}
@@ -292,8 +298,9 @@ export class ChatViewModel {
     return this.filesDir
   }
 
-  bindNotify(callback: () => void): void {
+  bindNotify(callback: () => void, postFrame?: (callback: () => void) => void): void {
     this.notifyCallback = callback
+    if (postFrame !== undefined) this.postStreamFrame = postFrame
   }
 
   bindToast(callback: (message: string) => void): void {
@@ -2598,20 +2605,31 @@ export class ChatViewModel {
     this.notify()
   }
 
-  scrollToBottom(): void {
+  scrollToBottom(smooth: boolean = false): void {
+    this.autoScrollSmooth = this.autoScrollPending ? this.autoScrollSmooth && smooth : smooth
     if (this.autoScrollPending) {
       return
     }
     this.autoScrollPending = true
     setTimeout(() => {
       this.autoScrollPending = false
+      const smoothFollow = this.autoScrollSmooth && this.chatScrollTargetId === 0
+      if (smoothFollow && !this.chatAutoScrollEnabled) return
       const lastIndex = this.chatScrollTargetId > 0 ?
         this.messages.findIndex((message: ChatMessage) => message.id === this.chatScrollTargetId) : this.messages.length - 1
       if (lastIndex < 0) {
         return
       }
       try {
-        this.chatScroller.scrollToIndex(lastIndex, false, this.chatScrollTargetId > 0 ? ScrollAlign.START : ScrollAlign.END)
+        if (smoothFollow) {
+          const rect = this.chatScroller.getItemRect(lastIndex)
+          const end = this.chatScroller.currentOffset().yOffset + rect.y + rect.height
+          if (Math.abs(end - this.streamScrollEnd) < 0.5) return
+          this.streamScrollEnd = end
+        } else {
+          this.streamScrollEnd = -1
+        }
+        this.chatScroller.scrollToIndex(lastIndex, smoothFollow, this.chatScrollTargetId > 0 ? ScrollAlign.START : ScrollAlign.END)
       } catch (err) {
         try {
           this.chatScroller.scrollEdge(Edge.Bottom)
@@ -2623,6 +2641,7 @@ export class ChatViewModel {
 
   pauseChatAutoScroll(): void {
     this.chatAutoScrollEnabled = false
+    this.streamScrollEnd = -1
     this.chatScrollTargetId = 0
     if (this.highlightedMessageId > 0) {
       this.highlightedMessageId = 0
@@ -3069,33 +3088,41 @@ export class ChatViewModel {
   private handleStreamUpdate(assistantId: number, update: GenerationStreamUpdate): void {
     this.session.updateMessage(assistantId, update.text)
     this.scheduleHistorySave()
-    if (this.streamDisplayMessageId !== assistantId || this.streamDisplayTimer >= 0) return
+    if (this.streamDisplayMessageId !== assistantId || this.streamDisplayFramePending) return
     this.streamDisplayUpdatedAt = Date.now()
-    this.streamDisplayTimer = setInterval(() => {
+    this.streamDisplayFramePending = true
+    const serial = this.streamDisplaySerial
+    const frame = (): void => {
+      if (serial !== this.streamDisplaySerial || this.streamDisplayMessageId !== assistantId) return
       const received = this.session.messages.find((message: ChatMessage) =>
         message.id === this.streamDisplayMessageId)?.content ?? ''
       const now = Date.now()
-      const next = advanceStreamingDisplay(this.streamDisplayText, received, now - this.streamDisplayUpdatedAt)
+      const previous = this.streamDisplay.text
+      const next = this.streamDisplay.advance(received, now - this.streamDisplayUpdatedAt)
       this.streamDisplayUpdatedAt = now
-      if (next === this.streamDisplayText) return
-      this.streamDisplayText = next
-      this.streamingChars = received.length
-      if (!this.generationStopping) this.setStatus(`正在生成... ${received.length} 字符`, 'neutral')
-      this.messages = this.session.messages
-      this.notifyAndMaybeScroll()
-    }, STREAM_DISPLAY_INTERVAL_MS)
+      if (next !== previous) {
+        this.streamingChars = received.length
+        if (!this.generationStopping) this.setStatus(`正在生成... ${received.length} 字符`, 'neutral')
+        this.messages = this.session.messages
+        this.notify()
+        if (this.chatAutoScrollEnabled) this.scrollToBottom(true)
+      }
+      this.postStreamFrame(frame)
+    }
+    this.postStreamFrame(frame)
   }
 
   messageContentForDisplay(message: ChatMessage): string {
     return message.role === 'assistant' && message.generationState === 'generating' &&
-      message.id === this.streamDisplayMessageId ? this.streamDisplayText : message.content
+      message.id === this.streamDisplayMessageId ? this.streamDisplay.text : message.content
   }
 
   private stopStreamDisplay(): void {
-    if (this.streamDisplayTimer >= 0) clearInterval(this.streamDisplayTimer)
-    this.streamDisplayTimer = -1
+    this.streamDisplaySerial++
+    this.streamDisplayFramePending = false
     this.streamDisplayMessageId = 0
-    this.streamDisplayText = ''
+    this.streamDisplay.reset()
+    this.streamScrollEnd = -1
   }
 
   private startModelLoadTimer(): void {

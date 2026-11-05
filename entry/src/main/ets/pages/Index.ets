@@ -4,7 +4,7 @@
 import { common } from '@kit.AbilityKit'
 import { deviceInfo } from '@kit.BasicServicesKit'
 import { KeyCode } from '@kit.InputKit'
-import { curves, KeyboardAvoidMode, window } from '@kit.ArkUI'
+import { curves, FrameCallback, KeyboardAvoidMode, window } from '@kit.ArkUI'
 import { AppHeader } from '../components/AppHeader'
 import { DesktopTitleBar } from '../components/DesktopTitleBar'
 import { DesktopHelpDialog } from '../components/DesktopHelpDialog'
@@ -148,6 +148,8 @@ struct Index {
     this.viewModel.bindNotify(() => {
       this.stateVersion++
       this.updateModalFocus()
+    }, (callback: () => void) => {
+      this.getUIContext().postFrameCallback(new StreamingDisplayFrame(callback))
     })
     this.viewModel.bindToast((message: string) => {
       this.showToast(message, 1800)
@@ -811,5 +813,18 @@ struct Index {
     .width('100%')
     .height('100%')
     .onKeyEvent((event: KeyEvent): boolean => this.handleKey(event))
+  }
+}
+
+class StreamingDisplayFrame extends FrameCallback {
+  private callback: () => void
+
+  constructor(callback: () => void) {
+    super()
+    this.callback = callback
+  }
+
+  onFrame(_frameTimeInNano: number): void {
+    this.callback()
   }
 }

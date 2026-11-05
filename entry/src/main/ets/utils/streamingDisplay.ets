@@ -1,6 +1,6 @@
 import { graphemeBoundaries } from './graphemeBoundaries'
 
-export const STREAM_DISPLAY_INTERVAL_MS: number = 50
+export const STREAM_DISPLAY_INTERVAL_MS: number = 16
 
 let cachedText: string = ''
 let cachedEnds: number[] = []
@@ -19,20 +19,47 @@ function graphemeEnds(text: string): number[] {
   return cachedEnds
 }
 
-export function advanceStreamingDisplay(shown: string, received: string, elapsedMs: number): string {
-  if (!received.startsWith(shown)) return received
-  const ends = graphemeEnds(received)
-  let left = 0
-  let right = ends.length
-  while (left < right) {
-    const middle = Math.floor((left + right) / 2)
-    if (ends[middle] <= shown.length) left = middle + 1
-    else right = middle
+export class StreamingDisplay {
+  text: string = ''
+  private credit: number = 0
+
+  reset(): void {
+    this.text = ''
+    this.credit = 0
   }
-  // A following chunk can still add a skin tone, combining mark or ZWJ sequence.
-  // Keep the last cluster pending until the next boundary or the final full-text flush.
-  const pending = Math.max(0, ends.length - 1 - left)
-  if (pending <= 0) return shown
-  const step = Math.min(8, Math.max(1, Math.ceil(pending * Math.min(elapsedMs, 250) / 250)))
-  return received.substring(0, ends[left + step - 1])
+
+  advance(received: string, elapsedMs: number): string {
+    if (!received.startsWith(this.text)) {
+      this.credit = 0
+      this.text = received
+      return this.text
+    }
+    const ends = graphemeEnds(received)
+    let left = 0
+    let right = ends.length
+    while (left < right) {
+      const middle = Math.floor((left + right) / 2)
+      if (ends[middle] <= this.text.length) left = middle + 1
+      else right = middle
+    }
+    // Keep the trailing cluster until another boundary arrives or generation finishes.
+    const pending = Math.max(0, ends.length - 1 - left)
+    if (pending === 0) {
+      this.credit = 0
+      return this.text
+    }
+    // Show the first complete cluster promptly, then spread bursts across frames.
+    if (this.text.length === 0) {
+      this.text = received.substring(0, ends[left])
+      return this.text
+    }
+    const rate = Math.max(24, pending * 1000 / 250)
+    this.credit = Math.min(4, this.credit + rate * Math.max(0, Math.min(elapsedMs, 32)) / 1000)
+    const step = Math.min(pending, Math.floor(this.credit))
+    if (step > 0) {
+      this.credit -= step
+      this.text = received.substring(0, ends[left + step - 1])
+    }
+    return this.text
+  }
 }

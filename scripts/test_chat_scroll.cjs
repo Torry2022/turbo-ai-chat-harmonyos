@@ -32,7 +32,10 @@ for (const source of [ScrollSource.DRAG, ScrollSource.FLING, ScrollSource.OTHER_
   instance.updateChatAutoScroll(); assert(!follow, 'Reading history stays paused');
   atEnd = true; instance.updateChatAutoScroll();
   assert(follow, 'Manually returning to the bottom resumes follow mode');
-  atEnd = false; instance.updateChatAutoScroll(); assert(!follow);
+  atEnd = false; instance.updateChatAutoScroll();
+  assert(follow, 'An animated follow update cannot be mistaken for continued manual history reading');
+  instance.onChatWillScroll(-12, source); instance.updateChatAutoScroll();
+  assert(!follow, 'A new manual scroll pauses following again');
   instance.chatUserScrolling = false;
 }
 for (const source of [ScrollSource.SCROLLER, ScrollSource.SCROLLER_ANIMATION, ScrollSource.EDGE_EFFECT]) {
@@ -49,3 +52,50 @@ assert(!follow, 'Inactive chats cannot change follow mode');
 assert(source.includes('.onDidScroll(() => this.updateChatAutoScroll())'));
 assert(source.includes('.onScrollStop(() => {\n        this.updateChatAutoScroll()\n        this.chatUserScrolling = false'));
 console.log('PASS manual bottom return resumes streaming follow, history/search/selection/resize stay paused');
+
+const viewSource = fs.readFileSync(path.join(__dirname, '../entry/src/main/ets/state/ChatViewModel.ets'), 'utf8');
+const viewAst = ts.createSourceFile('ViewModel.ts', viewSource, ts.ScriptTarget.Latest, true);
+const view = viewAst.statements.find(ts.isClassDeclaration);
+const scrollMethod = view.members.find(member => member.name?.text === 'scrollToBottom').getText(viewAst);
+let queued = null, height = 500, offset = 0;
+const calls = [];
+const scrollContext = { exports: {}, Math, ScrollAlign: { START: 'start', END: 'end' }, Edge: { Bottom: 'bottom' },
+  setTimeout: callback => { assert.equal(queued, null); queued = callback; } };
+vm.runInNewContext(ts.transpileModule(`export class StreamScroll { ${scrollMethod} }`, {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2021 }
+}).outputText, scrollContext);
+const follower = new scrollContext.exports.StreamScroll();
+Object.assign(follower, { autoScrollPending: false, autoScrollSmooth: false, streamScrollEnd: -1,
+  chatScrollTargetId: 0, chatAutoScrollEnabled: true, messages: [{ id: 1 }, { id: 2 }] });
+follower.chatScroller = {
+  getItemRect: () => ({ y: -offset, height }), currentOffset: () => ({ yOffset: offset }),
+  scrollToIndex: (index, smooth, align) => calls.push({ index, smooth, align }),
+  scrollEdge: () => calls.push('edge')
+};
+function flushScroll() { const callback = queued; queued = null; assert(callback); callback(); }
+follower.scrollToBottom(true); flushScroll();
+assert.deepEqual(calls.at(-1), { index: 1, smooth: true, align: 'end' });
+offset = 20;
+follower.scrollToBottom(true); flushScroll();
+assert.equal(calls.length, 1, 'An in-flight scroll does not restart for unchanged content height');
+height += 21;
+follower.scrollToBottom(true); flushScroll();
+assert.equal(calls.length, 2, 'A new line updates the animated target');
+follower.scrollToBottom(true);
+follower.chatAutoScrollEnabled = false;
+flushScroll();
+assert.equal(calls.length, 2, 'Touching history cancels a queued streaming scroll');
+follower.chatAutoScrollEnabled = true;
+follower.scrollToBottom(true);
+follower.chatScrollTargetId = 1;
+follower.chatAutoScrollEnabled = false;
+follower.scrollToBottom();
+flushScroll();
+assert.deepEqual(calls.at(-1), { index: 0, smooth: false, align: 'start' }, 'Explicit search navigation overrides pending following');
+follower.chatScrollTargetId = 0;
+follower.chatAutoScrollEnabled = true;
+follower.scrollToBottom();
+follower.scrollToBottom(true);
+flushScroll();
+assert.equal(calls.at(-1).smooth, false, 'Sending and explicit navigation retain immediate positioning');
+console.log('PASS streaming follow retargets on height changes, manual interruption and search retain priority');
