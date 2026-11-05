@@ -4,7 +4,7 @@
 import { common } from '@kit.AbilityKit'
 import { deviceInfo } from '@kit.BasicServicesKit'
 import { KeyCode } from '@kit.InputKit'
-import { KeyboardAvoidMode, window } from '@kit.ArkUI'
+import { curves, KeyboardAvoidMode, window } from '@kit.ArkUI'
 import { AppHeader } from '../components/AppHeader'
 import { DesktopTitleBar } from '../components/DesktopTitleBar'
 import { DesktopHelpDialog } from '../components/DesktopHelpDialog'
@@ -66,8 +66,31 @@ struct Index {
   @State private phoneHistoryOpen: boolean = false
   @State private phoneTabBarHidden: boolean = false
   private phoneTabBarScrollDelta: number = 0
-  private readonly onKeyboardHeightChange = (height: number): void => {
-    this.keyboardVisible = height > 0
+  private readonly onKeyboardWillShow = (info: window.KeyboardInfo): void => {
+    this.updateKeyboardVisibility(true, info)
+  }
+  private readonly onKeyboardWillHide = (info: window.KeyboardInfo): void => {
+    this.updateKeyboardVisibility(false, info)
+  }
+
+  private updateKeyboardVisibility(visible: boolean, info: window.KeyboardInfo): void {
+    if (this.keyboardVisible === visible) return
+    const config = info.config
+    if (!info.animated || config === undefined) {
+      this.keyboardVisible = visible
+      return
+    }
+    const options: AnimateParam = { duration: config.duration ?? 0, curve: Curve.Linear }
+    const parameters = config.param
+    if (parameters !== undefined && parameters.length >= 4) {
+      if (config.curve === window.WindowAnimationCurve.CUBIC_BEZIER) {
+        options.curve = curves.cubicBezierCurve(parameters[0], parameters[1], parameters[2], parameters[3])
+      } else if (config.curve === window.WindowAnimationCurve.INTERPOLATION_SPRING) {
+        options.curve = curves.interpolatingSpring(parameters[0], parameters[1], parameters[2], parameters[3])
+      }
+    }
+    // Restore the tab-bar space in the same animation as the system's RESIZE avoidance.
+    this.getUIContext().animateTo(options, () => { this.keyboardVisible = visible })
   }
   private readonly onAvoidAreaChange = (event: window.AvoidAreaOptions): void => {
     if (event.type === window.AvoidAreaType.TYPE_SYSTEM) {
@@ -144,7 +167,8 @@ struct Index {
       this.bottomInset = this.getUIContext().px2vp(
         mainWindow.getWindowAvoidArea(window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR).bottomRect.height)
       mainWindow.on('avoidAreaChange', this.onAvoidAreaChange)
-      mainWindow.on('keyboardHeightChange', this.onKeyboardHeightChange)
+      mainWindow.on('keyboardWillShow', this.onKeyboardWillShow)
+      mainWindow.on('keyboardWillHide', this.onKeyboardWillHide)
     }).catch(() => {})
     this.viewModel.initialize(context)
     setTimeout(() => {
@@ -166,7 +190,8 @@ struct Index {
       this.mainWindow?.off('windowTitleButtonRectChange', this.onTitleButtonRectChange)
     }
     this.mainWindow?.off('avoidAreaChange', this.onAvoidAreaChange)
-    this.mainWindow?.off('keyboardHeightChange', this.onKeyboardHeightChange)
+    this.mainWindow?.off('keyboardWillShow', this.onKeyboardWillShow)
+    this.mainWindow?.off('keyboardWillHide', this.onKeyboardWillHide)
     clearTimeout(this.focusTimer)
     this.viewModel.dispose()
   }
@@ -365,6 +390,7 @@ struct Index {
         previewBottomInset: this.bottomInset,
         compactTicker: this.usePhoneTabs(),
         compactPage: this.windowWidth < 600,
+        keyboardVisible: this.keyboardVisible,
         inputExpanded: this.chatInputExpanded,
         onInputExpandedChange: (expanded: boolean): void => { this.chatInputExpanded = expanded },
         contentInset: this.usePhoneTabs() ? this.pagePadding() : 0,
@@ -532,7 +558,6 @@ struct Index {
             status: this.viewModel.headerStatus(),
             statusColor: this.viewModel.headerColor(),
             newChatEnabled: this.viewModel.canManageConversations(),
-            renderVersion: this.stateVersion,
             showNewChat: this.activeTab === 0,
             actionEnabled: this.activeTab === 2 || !this.viewModel.busy,
             actionLabel: this.activeTab === 1 ? '模型广场' : this.activeTab === 2 ? '接口文档' : '',

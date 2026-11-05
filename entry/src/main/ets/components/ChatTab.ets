@@ -15,6 +15,7 @@ export struct ChatTab {
   @ObjectLink viewModel: ChatViewModel
   @Prop renderVersion: number
   @Prop @Watch('onActiveChange') active: boolean = false
+  @Prop @Watch('onKeyboardVisibilityChange') keyboardVisible: boolean = false
   @Prop dialogVisible: boolean = false
   @Prop previewTopInset: number = 0
   @Prop previewBottomInset: number = 0
@@ -95,6 +96,8 @@ export struct ChatTab {
   @State private inputFrameHeight: number = 44
   @State private animatedInputHeight: number = -1
   private composerAnimationSerial: number = 0
+  private keepChatBottomOnResize: boolean = false
+  private chatUserScrolling: boolean = false
   private composing: boolean = false
   private enterHeld: boolean = false
   private enterConsumed: boolean = false
@@ -144,6 +147,8 @@ export struct ChatTab {
 
   private onActiveChange(): void {
     if (!this.active) {
+      this.keepChatBottomOnResize = false
+      this.chatUserScrolling = false
       this.imagePreviewOpen = false
       this.renamingId = ''
       if (!this.wideHistory()) this.setHistoryOpen(false)
@@ -152,6 +157,34 @@ export struct ChatTab {
       this.animatedInputHeight = -1
       this.onInputExpandedChange(false)
     }
+  }
+
+  private onKeyboardVisibilityChange(): void {
+    this.keepChatBottomOnResize = this.active && this.viewModel.chatScroller.isAtEnd()
+  }
+
+  private onChatViewportResize(oldSize: SizeOptions, newSize: SizeOptions): void {
+    if (this.active && this.keepChatBottomOnResize && Number(oldSize.height) > 0 &&
+      Number(oldSize.height) !== Number(newSize.height)) {
+      this.viewModel.chatScroller.scrollEdge(Edge.Bottom)
+    }
+  }
+
+  private onChatWillScroll(offset: number, source: ScrollSource): void {
+    if (!this.active || offset === 0) return
+    if (source === ScrollSource.DRAG || source === ScrollSource.FLING ||
+      source === ScrollSource.OTHER_USER_INPUT || source === ScrollSource.SCROLL_BAR ||
+      source === ScrollSource.SCROLL_BAR_FLING) {
+      this.chatUserScrolling = true
+      this.keepChatBottomOnResize = false
+      this.viewModel.pauseChatAutoScroll()
+    }
+  }
+
+  private updateChatAutoScroll(): void {
+    if (!this.active || !this.chatUserScrolling) return
+    if (this.viewModel.chatScroller.isAtEnd()) this.viewModel.resumeChatAutoScroll()
+    else this.viewModel.pauseChatAutoScroll()
   }
 
   private sendKeyboardMessage(): void {
@@ -493,6 +526,7 @@ export struct ChatTab {
       .layoutWeight(1)
       .clip(true)
       .id('chat-messages')
+      .onSizeChange((oldSize: SizeOptions, newSize: SizeOptions) => this.onChatViewportResize(oldSize, newSize))
       .onAppear(() => {
         if (this.active) this.viewModel.scrollToBottom()
       })
@@ -502,8 +536,18 @@ export struct ChatTab {
       .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
       .onTouch((event: TouchEvent) => {
         if (event.type === TouchType.Down) {
+          this.keepChatBottomOnResize = false
+          this.chatUserScrolling = false
           this.viewModel.pauseChatAutoScroll()
         }
+      })
+      .onWillScroll((offset: number, _state: ScrollState, source: ScrollSource) => {
+        this.onChatWillScroll(offset, source)
+      })
+      .onDidScroll(() => this.updateChatAutoScroll())
+      .onScrollStop(() => {
+        this.updateChatAutoScroll()
+        this.chatUserScrolling = false
       })
       .onClick(() => {
         this.inputController.stopEditing()

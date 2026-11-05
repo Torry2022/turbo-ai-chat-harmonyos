@@ -3,7 +3,6 @@ export struct AppHeader {
   @Prop status: string = ''
   @Prop statusColor: ResourceColor = $r('app.color.text_muted')
   @Prop newChatEnabled: boolean = true
-  @Prop renderVersion: number = 0
   @Prop showNewChat: boolean = true
   @Prop actionLabel: string = ''
   @Prop actionEnabled: boolean = true
