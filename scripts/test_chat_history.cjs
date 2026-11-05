@@ -377,6 +377,63 @@ add('regeneration retains answer versions and uses current model without duplica
   assert.equal(record.messages.at(-1).modelName, '新模型');
   assert.equal(record.messages.at(-1).generationState, 'complete');
 });
+add('repeated regeneration rebuilds one model-switch notice for the replaced turn', async () => {
+  const view = await actionView('regenerate-model-notice');
+  const id = view.session.lastAnswer().id;
+  const precedingAnswer = view.messages[1];
+  view.generationWorkflow = { run: () => Promise.resolve(finished()) };
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await view.regenerateAnswer(id);
+    await new Promise(done => setTimeout(done, 0));
+    assert.equal(view.messages.filter(item => item.role === 'notice').length, 1);
+    assert.equal(view.messages.find(item => item.role === 'notice').modelId, 'new-model');
+    assert.deepEqual(view.messages[1], precedingAnswer);
+  }
+  assert.equal(view.session.lastAnswer().answerVersions.length, 4);
+  await view.flushHistory();
+  const record = await view.historyService.load(view.activeConversationId);
+  assert.equal(record.messages.filter(item => item.role === 'notice').length, 1);
+});
+add('editing and regenerating an existing turn replaces stale model-switch notices', async () => {
+  const view = await actionView('edit-model-notice');
+  const question = view.session.lastQuestion();
+  view.generationWorkflow = { run: () => Promise.resolve(finished()) };
+  await view.regenerateAnswer(view.session.lastAnswer().id);
+  await new Promise(done => setTimeout(done, 0));
+  const answer = view.session.lastAnswer();
+  const questionIndex = view.session.messages.findIndex(item => item.id === question.id);
+  const duplicate = { ...view.messages.find(item => item.role === 'notice'), id: 9000 };
+  view.session.messages.splice(questionIndex, 0, duplicate, { ...duplicate, id: 9001 });
+  assert.equal(await view.resendEditedQuestion(question.id, '修改后的问题'), true);
+  await new Promise(done => setTimeout(done, 0));
+  assert.equal(view.messages.filter(item => item.role === 'notice').length, 1);
+  assert.equal(view.messages.some(item => item.id === answer.id), false);
+  view.currentModel = () => ({ id: 'old-model', shortName: '旧模型', supportsImage: true, systemPrompt: 'system' });
+  await view.regenerateAnswer(view.session.lastAnswer().id);
+  await new Promise(done => setTimeout(done, 0));
+  assert.equal(view.messages.filter(item => item.role === 'notice').length, 0);
+  assert.equal(view.session.lastAnswer().modelId, 'old-model');
+});
+add('editing an earlier turn preserves preceding switch notices and rebuilds its own notice', async () => {
+  const view = await actionView('edit-earlier-model-notice');
+  view.generationWorkflow = { run: () => Promise.resolve(finished()) };
+  await view.regenerateAnswer(view.session.lastAnswer().id);
+  await new Promise(done => setTimeout(done, 0));
+  const preceding = view.messages.slice();
+  view.currentModel = () => ({ id: 'third-model', shortName: '第三模型', supportsImage: true, systemPrompt: 'system' });
+  view.updateInputText('后续问题');
+  await view.sendMessage();
+  await new Promise(done => setTimeout(done, 0));
+  const questionId = view.session.lastQuestion().id;
+  view.updateInputText('再问一次');
+  await view.sendMessage();
+  await new Promise(done => setTimeout(done, 0));
+  assert.equal(await view.resendEditedQuestion(questionId, '修改后续问题'), true);
+  await new Promise(done => setTimeout(done, 0));
+  assert.equal(JSON.stringify(view.messages.slice(0, preceding.length)), JSON.stringify(preceding));
+  const notices = view.messages.filter(item => item.role === 'notice');
+  assert.deepEqual(Array.from(notices, item => item.modelId), ['new-model', 'third-model']);
+});
 add('version selection restores metadata, thinking state and metrics across a restart', async () => {
   const view = await actionView('version-roundtrip');
   const first = view.session.lastAnswer();

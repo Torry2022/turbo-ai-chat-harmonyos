@@ -30,7 +30,11 @@ export class ChatSession {
   removeFromQuestion(messageId: number): void {
     const index = this.messages.findIndex((message: ChatMessage) =>
       message.id === messageId && message.role === 'user' && message.kind !== 'notice')
-    if (index >= 0) this.messages = this.messages.slice(0, index)
+    if (index >= 0) {
+      let start = index
+      while (start > 0 && this.messages[start - 1].role === 'notice') start--
+      this.messages = this.messages.slice(0, start)
+    }
   }
 
   private answerSnapshot(message: ChatMessage): ChatAnswerVersion {
