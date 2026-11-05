@@ -328,6 +328,20 @@ function finished(answer = '新的回答。') {
     result: { stopReason: 'eos', text: answer, generatedTokens: 3 },
     perfMetrics: { ttft: 1, tpot: 2, tokensPerSec: 3, tokens: 3 } };
 }
+add('sending the first question consumes the empty-conversation draft before assigning its ID', async () => {
+  const view = await actionView('first-send-draft');
+  await view.beginNewConversation();
+  view.conversationDrafts.set('c-other-draft', '其他对话的草稿');
+  view.generationWorkflow = { run: () => Promise.resolve(finished()) };
+  view.updateInputText('新对话的第一条问题');
+  await view.sendMessage();
+  await new Promise(done => setTimeout(done, 0));
+  assert.ok(view.activeConversationId);
+  await view.beginNewConversation();
+  assert.equal(view.inputText, '');
+  assert.equal(view.conversationDrafts.has(''), false);
+  assert.equal(view.conversationDrafts.get('c-other-draft'), '其他对话的草稿');
+});
 add('regeneration retains answer versions and uses current model without duplicating context', async () => {
   const view = await actionView('regenerate');
   const originalQuestion = view.session.lastQuestion();

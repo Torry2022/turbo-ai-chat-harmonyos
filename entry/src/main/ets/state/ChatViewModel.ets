@@ -2507,10 +2507,11 @@ export class ChatViewModel {
     } else {
       assistantId = this.session.appendMessage('assistant', '', '')
     }
+    const draftConversationId = this.activeConversationId
     this.syncMessages()
     this.resumeChatAutoScroll()
     if (consumeInput) {
-      this.conversationDrafts.delete(this.activeConversationId)
+      this.conversationDrafts.delete(draftConversationId)
       this.inputText = ''
       this.selectedImageUri = ''
     }

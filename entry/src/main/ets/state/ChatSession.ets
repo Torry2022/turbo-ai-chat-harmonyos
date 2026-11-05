@@ -307,7 +307,7 @@ export class ChatSession {
         return
       }
 
-      if (isLikelyIncompleteAssistantText(message.content)) {
+      if (message.stopReason !== 'eos' && isLikelyIncompleteAssistantText(message.content)) {
         pendingUser = undefined
         return
       }
