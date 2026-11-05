@@ -50,7 +50,7 @@ export struct ChatTab {
     return {
       id: message.id,
       role: message.role,
-      content: message.content,
+      content: this.viewModel.messageContentForDisplay(message),
       imageUri: message.imageUri,
       time: message.time,
       includeInContext: message.includeInContext,

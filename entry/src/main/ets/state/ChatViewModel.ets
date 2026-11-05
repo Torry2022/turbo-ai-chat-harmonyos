@@ -1,4 +1,5 @@
 import fs from '@ohos.file.fs'
+import { advanceStreamingDisplay, STREAM_DISPLAY_INTERVAL_MS } from '../utils/streamingDisplay'
 import util from '@ohos.util'
 import { modelThinkingSupport } from '../utils/modelThinking'
 import { RerankerService } from '../services/RerankerService'
@@ -178,6 +179,10 @@ export class ChatViewModel {
   stats: RuntimeStats = EMPTY_RUNTIME_STATS
   storageStats: StorageStats = EMPTY_STORAGE_STATS
   streamingChars: number = 0
+  private streamDisplayMessageId: number = 0
+  private streamDisplayText: string = ''
+  private streamDisplayTimer: number = -1
+  private streamDisplayUpdatedAt: number = 0
   latestPerfMetrics?: PerfMetrics
   appVersion: string = ''
   appVersionCode: number = 0
@@ -370,6 +375,7 @@ export class ChatViewModel {
   }
 
   dispose(): void {
+    this.stopStreamDisplay()
     this.titleService.dispose()
     clearTimeout(this.historySearchTimer)
     this.historySearchSerial++
@@ -2518,6 +2524,8 @@ export class ChatViewModel {
     this.busy = true
     this.generating = true
     this.generationStopping = false
+    this.stopStreamDisplay()
+    this.streamDisplayMessageId = assistantId
     this.streamingChars = 0
     this.latestPerfMetrics = undefined
     this.setStatus('等待首个输出片段...', 'neutral')
@@ -2544,6 +2552,7 @@ export class ChatViewModel {
     })
 
     generation.then((outcome: GenerationWorkflowResult) => {
+      this.stopStreamDisplay()
       this.latestPerfMetrics = outcome.perfMetrics
       this.streamingChars = outcome.answer.length
       this.session.updateMessage(
@@ -2563,6 +2572,7 @@ export class ChatViewModel {
       this.refreshStats()
       this.notifyAndMaybeScroll()
     }).catch((err: Error) => {
+      this.stopStreamDisplay()
       const message = `生成失败：${formatError(err as Object)}`
       const partialAnswer = this.session.messages.find((item: ChatMessage) => item.id === assistantId)?.content ?? ''
       this.session.updateMessage(assistantId, partialAnswer, false)
@@ -3057,14 +3067,35 @@ export class ChatViewModel {
   }
 
   private handleStreamUpdate(assistantId: number, update: GenerationStreamUpdate): void {
-    this.streamingChars = update.characterCount
-    this.setStatus(`正在生成... ${update.characterCount} 字符`, 'neutral')
     this.session.updateMessage(assistantId, update.text)
-    this.syncMessages()
-    this.notify()
-    if (this.chatAutoScrollEnabled) {
-      this.scrollToBottom()
-    }
+    this.scheduleHistorySave()
+    if (this.streamDisplayMessageId !== assistantId || this.streamDisplayTimer >= 0) return
+    this.streamDisplayUpdatedAt = Date.now()
+    this.streamDisplayTimer = setInterval(() => {
+      const received = this.session.messages.find((message: ChatMessage) =>
+        message.id === this.streamDisplayMessageId)?.content ?? ''
+      const now = Date.now()
+      const next = advanceStreamingDisplay(this.streamDisplayText, received, now - this.streamDisplayUpdatedAt)
+      this.streamDisplayUpdatedAt = now
+      if (next === this.streamDisplayText) return
+      this.streamDisplayText = next
+      this.streamingChars = received.length
+      if (!this.generationStopping) this.setStatus(`正在生成... ${received.length} 字符`, 'neutral')
+      this.messages = this.session.messages
+      this.notifyAndMaybeScroll()
+    }, STREAM_DISPLAY_INTERVAL_MS)
+  }
+
+  messageContentForDisplay(message: ChatMessage): string {
+    return message.role === 'assistant' && message.generationState === 'generating' &&
+      message.id === this.streamDisplayMessageId ? this.streamDisplayText : message.content
+  }
+
+  private stopStreamDisplay(): void {
+    if (this.streamDisplayTimer >= 0) clearInterval(this.streamDisplayTimer)
+    this.streamDisplayTimer = -1
+    this.streamDisplayMessageId = 0
+    this.streamDisplayText = ''
   }
 
   private startModelLoadTimer(): void {

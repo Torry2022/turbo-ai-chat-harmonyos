@@ -1,4 +1,5 @@
 import fileUri from '@ohos.file.fileuri'
+import { StreamingText } from './StreamingText'
 import { EditQuestionConfirmDialog } from './EditQuestionConfirmDialog'
 import { ActionButtonStyle, CompactActionStyle } from './ButtonStyles'
 import { ChatMessage } from '../models/ChatTypes'
@@ -304,76 +305,42 @@ export struct MessageBubble {
   }
 
   @Builder
-  private MarkdownLine(text: string, color: ResourceColor = $r('app.color.text_body'),
+  private MarkdownLine(color: ResourceColor = $r('app.color.text_body'),
     blockIndex: number = 0, rowIndex: number = 0, columnIndex: number = 0, kind: string = 'text') {
-    Text() {
-      ForEach(parseInlineMarkdown(text), (span: MarkdownSpan) => {
-        if (span.code) {
-          Span(span.text)
-            .fontColor($r('app.color.code_text'))
-            .fontFamily('monospace')
-            .fontSize(13)
-            .decoration({ type: TextDecorationType.None })
-        } else if (span.link !== undefined && span.link.length > 0) {
-          Span(span.text)
-            .fontColor($r('app.color.link_markdown'))
-            .decoration({ type: TextDecorationType.Underline })
-            .fontWeight(FontWeight.Normal)
-            .onClick(() => this.confirmOpenLink(span.link ?? ''))
-        } else {
-          Span(span.text)
-            .fontWeight(span.bold ? FontWeight.Bold : FontWeight.Normal)
-            .fontColor(color)
-            .fontStyle(span.italic ? FontStyle.Italic : FontStyle.Normal)
-            .decoration({ type: span.strikethrough ? TextDecorationType.LineThrough : TextDecorationType.None })
-        }
-      }, (_span: MarkdownSpan, index: number) => `${index}`)
-    }
-    .onTextSelectionChange((start: number, end: number) => {
-      this.updateAnswerSelection(this.inlinePlainText(text), start, end, blockIndex, rowIndex, columnIndex, kind)
+    StreamingText({
+      text: this.markdownLineText(blockIndex, rowIndex, columnIndex, kind),
+      color,
+      inlineCode: true,
+      streaming: this.message.generationState === 'generating' && this.selectionSnapshot.length === 0 && kind !== 'table',
+      onOpenLink: (url: string) => this.confirmOpenLink(url),
+      onSelectionChange: (start: number, end: number) => {
+        this.updateAnswerSelection(this.inlinePlainText(this.markdownLineText(blockIndex, rowIndex, columnIndex, kind)),
+          start, end, blockIndex, rowIndex, columnIndex, kind)
+      }
     })
-    .copyOption(CopyOptions.LocalDevice)
-    .textSelectable(TextSelectableMode.SELECTABLE_FOCUSABLE)
-    .width('100%')
-    .fontSize(14)
-    .lineHeight(21)
-    .textAlign(TextAlign.Start)
   }
 
   @Builder
-  private MarkdownBlock(block: MarkdownBlock, blockIndex: number) {
-    if (block.type === 'heading') {
-      Text() {
-        ForEach(parseInlineMarkdown(block.text), (span: MarkdownSpan) => {
-          if (span.link !== undefined && span.link.length > 0) {
-            Span(span.text)
-              .fontWeight(FontWeight.Bold)
-              .fontColor($r('app.color.link_markdown'))
-              .fontStyle(FontStyle.Normal)
-              .decoration({ type: TextDecorationType.Underline })
-              .onClick(() => this.confirmOpenLink(span.link ?? ''))
-          } else {
-            Span(span.text)
-              .fontWeight(FontWeight.Bold)
-              .fontColor($r('app.color.text_title'))
-              .fontStyle(FontStyle.Normal)
-          }
-        }, (_span: MarkdownSpan, index: number) => `${blockIndex}-${index}`)
-      }
-      .onTextSelectionChange((start: number, end: number) => {
-        this.updateAnswerSelection(this.inlinePlainText(block.text), start, end, blockIndex)
+  private MarkdownBlock(blockIndex: number) {
+    if (this.markdownBlock(blockIndex).type === 'heading') {
+      StreamingText({
+        text: this.markdownBlock(blockIndex).text,
+        bold: true,
+        color: $r('app.color.text_title'),
+        textSize: 15,
+        textLineHeight: 22,
+        streaming: this.message.generationState === 'generating' && this.selectionSnapshot.length === 0,
+        onOpenLink: (url: string) => this.confirmOpenLink(url),
+        onSelectionChange: (start: number, end: number) => {
+          this.updateAnswerSelection(this.inlinePlainText(this.markdownBlock(blockIndex).text), start, end, blockIndex)
+        }
       })
-      .copyOption(CopyOptions.LocalDevice)
-      .textSelectable(TextSelectableMode.SELECTABLE_FOCUSABLE)
-      .width('100%')
-      .fontSize(15)
-      .lineHeight(22)
-      .textAlign(TextAlign.Start)
-    } else if (block.type === 'code') {
+    } else if (this.markdownBlock(blockIndex).type === 'code') {
       Stack({ alignContent: Alignment.TopEnd }) {
-        Text(block.text)
+        Text(this.codeText(blockIndex))
+          .textContentAlign(TextContentAlign.TOP)
           .onTextSelectionChange((start: number, end: number) => {
-            this.updateAnswerSelection(block.text, start, end, blockIndex)
+            this.updateAnswerSelection(this.codeText(blockIndex), start, end, blockIndex)
           })
           .copyOption(CopyOptions.LocalDevice)
           .textSelectable(TextSelectableMode.SELECTABLE_FOCUSABLE)
@@ -389,25 +356,25 @@ export struct MessageBubble {
           .attributeModifier(new CompactActionStyle())
           .padding({ left: 8, right: 8 })
           .margin({ top: 9, right: 4 })
-          .onClick(() => this.copyText(block.text))
+          .onClick(() => this.copyText(this.codeText(blockIndex)))
       }
       .width('100%')
-    } else if (block.type === 'blockquote') {
+    } else if (this.markdownBlock(blockIndex).type === 'blockquote') {
       Row() {
-        this.MarkdownLine(block.text, $r('app.color.text_secondary'), blockIndex)
+        this.MarkdownLine($r('app.color.text_secondary'), blockIndex)
       }
       .width('100%')
       .padding({ left: 11, top: 4, bottom: 4 })
       .border({ width: { left: 3 }, color: $r('app.color.quote_border') })
       .backgroundColor($r('app.color.quote_background'))
       .borderRadius(4)
-    } else if (block.type === 'table') {
+    } else if (this.markdownBlock(blockIndex).type === 'table') {
       Column({ space: 0 }) {
-        if (block.headers !== undefined) {
+        if (this.markdownBlock(blockIndex).headers !== undefined) {
           Row() {
-            ForEach(block.headers, (h: string, hi: number) => {
+            ForEach(this.markdownBlock(blockIndex).headers, (h: string, hi: number) => {
               Column() {
-                this.MarkdownLine(h, $r('app.color.text_title'), blockIndex, 0, hi, 'table')
+                this.MarkdownLine($r('app.color.text_title'), blockIndex, 0, hi, 'table')
               }
               .padding({ left: 8, right: 8, top: 4, bottom: 4 })
               .layoutWeight(1)
@@ -416,12 +383,12 @@ export struct MessageBubble {
           .width('100%')
           .backgroundColor($r('app.color.table_header'))
         }
-        if (block.rows !== undefined) {
-          ForEach(block.rows, (row: string[], ri: number) => {
+        if (this.markdownBlock(blockIndex).rows !== undefined) {
+          ForEach(this.markdownBlock(blockIndex).rows, (row: string[], ri: number) => {
             Row() {
               ForEach(row, (cell: string, ci: number) => {
                 Column() {
-                  this.MarkdownLine(cell, $r('app.color.code_text'), blockIndex, ri + 1, ci, 'table')
+                  this.MarkdownLine($r('app.color.code_text'), blockIndex, ri + 1, ci, 'table')
                 }
                 .padding({ left: 8, right: 8, top: 3, bottom: 3 })
                 .layoutWeight(1)
@@ -435,17 +402,17 @@ export struct MessageBubble {
       .width('100%')
       .borderRadius(6)
       .clip(true)
-    } else if (block.type === 'horizontal-rule') {
+    } else if (this.markdownBlock(blockIndex).type === 'horizontal-rule') {
       Divider()
         .strokeWidth(1)
         .color($r('app.color.divider'))
-    } else if (block.type === 'ordered-list' || block.type === 'unordered-list') {
+    } else if (this.markdownBlock(blockIndex).type === 'ordered-list' || this.markdownBlock(blockIndex).type === 'unordered-list') {
       Column({ space: 4 }) {
-        ForEach(block.items, (item: string, itemIndex: number) => {
+        ForEach(this.markdownBlock(blockIndex).items, (item: string, itemIndex: number) => {
           Row({ space: 6 }) {
-            Text(block.type === 'ordered-list' ? `${(block.startNumber ?? 1) + itemIndex}.` : '•')
+            Text(this.markdownBlock(blockIndex).type === 'ordered-list' ? `${(this.markdownBlock(blockIndex).startNumber ?? 1) + itemIndex}.` : '•')
               .onTextSelectionChange((start: number, end: number) => {
-                this.updateAnswerSelection(block.type === 'ordered-list' ? `${(block.startNumber ?? 1) + itemIndex}.` : '•',
+                this.updateAnswerSelection(this.markdownBlock(blockIndex).type === 'ordered-list' ? `${(this.markdownBlock(blockIndex).startNumber ?? 1) + itemIndex}.` : '•',
                   start, end, blockIndex, itemIndex, 0, 'list')
               })
               .width(20)
@@ -453,32 +420,17 @@ export struct MessageBubble {
               .lineHeight(22)
               .fontColor($r('app.color.text_note'))
               .textAlign(TextAlign.End)
-            Text() {
-              ForEach(parseInlineMarkdown(item), (span: MarkdownSpan) => {
-                if (span.link !== undefined && span.link.length > 0) {
-                  Span(span.text)
-                    .fontWeight(span.bold ? FontWeight.Bold : FontWeight.Normal)
-                    .fontColor($r('app.color.link_markdown'))
-                    .fontStyle(span.italic ? FontStyle.Italic : FontStyle.Normal)
-                    .decoration({ type: TextDecorationType.Underline })
-                    .onClick(() => this.confirmOpenLink(span.link ?? ''))
-                } else {
-                  Span(span.text)
-                    .fontWeight(span.bold ? FontWeight.Bold : FontWeight.Normal)
-                    .fontColor($r('app.color.text_body'))
-                    .fontStyle(span.italic ? FontStyle.Italic : FontStyle.Normal)
-                }
-              }, (_span: MarkdownSpan, spanIndex: number) => `${blockIndex}-${itemIndex}-${spanIndex}`)
-            }
-            .onTextSelectionChange((start: number, end: number) => {
-              this.updateAnswerSelection(this.inlinePlainText(item), start, end, blockIndex, itemIndex, 1, 'list')
-            })
-            .copyOption(CopyOptions.LocalDevice)
-            .textSelectable(TextSelectableMode.SELECTABLE_FOCUSABLE)
-            .fontSize(15)
-            .lineHeight(22)
-            .layoutWeight(1)
-            .textAlign(TextAlign.Start)
+            StreamingText({
+              text: this.markdownBlock(blockIndex).items[itemIndex],
+              textSize: 15,
+              textLineHeight: 22,
+              streaming: this.message.generationState === 'generating' && this.selectionSnapshot.length === 0,
+              onOpenLink: (url: string) => this.confirmOpenLink(url),
+              onSelectionChange: (start: number, end: number) => {
+                this.updateAnswerSelection(this.inlinePlainText(this.markdownBlock(blockIndex).items[itemIndex]),
+                  start, end, blockIndex, itemIndex, 1, 'list')
+              }
+            }).layoutWeight(1)
           }
           .width('100%')
           .alignItems(VerticalAlign.Top)
@@ -486,7 +438,7 @@ export struct MessageBubble {
       }
       .width('100%')
     } else {
-      this.MarkdownLine(block.text, $r('app.color.text_body'), blockIndex)
+      this.MarkdownLine($r('app.color.text_body'), blockIndex)
     }
   }
 
@@ -494,10 +446,27 @@ export struct MessageBubble {
   private MarkdownContent() {
     Column({ space: 8 }) {
       ForEach(parseLightMarkdown(this.selectionSnapshot || this.answerText() || '...'), (block: MarkdownBlock, blockIndex: number) => {
-        this.MarkdownBlock(block, blockIndex)
-      }, (block: MarkdownBlock, blockIndex: number) => `${blockIndex}:${JSON.stringify(block)}`)
+        this.MarkdownBlock(blockIndex)
+      }, (block: MarkdownBlock, blockIndex: number) => `${blockIndex}:${block.type}`)
     }
     .width('100%')
+  }
+
+  private markdownBlock(blockIndex: number): MarkdownBlock {
+    return parseLightMarkdown(this.selectionSnapshot || this.answerText() || '...')[blockIndex] ??
+      { type: 'paragraph', text: '', items: [], language: '' }
+  }
+
+  private markdownLineText(blockIndex: number, rowIndex: number, columnIndex: number, kind: string): string {
+    const block = this.markdownBlock(blockIndex)
+    if (kind === 'table') {
+      return rowIndex === 0 ? block.headers?.[columnIndex] ?? '' : block.rows?.[rowIndex - 1]?.[columnIndex] ?? ''
+    }
+    return block.text
+  }
+
+  private codeText(blockIndex: number): string {
+    return this.markdownBlock(blockIndex)?.text ?? ''
   }
 
   @Builder
@@ -547,13 +516,14 @@ export struct MessageBubble {
       })
 
       if (this.message.thinkingExpanded || this.answerText().length === 0) {
-        Text(this.thinkingText().length > 0 ? this.thinkingText() : '...')
-          .copyOption(CopyOptions.LocalDevice)
-          .textSelectable(TextSelectableMode.SELECTABLE_FOCUSABLE)
-          .fontSize(13)
-          .lineHeight(20)
-          .fontColor($r('app.color.text_thinking_body'))
-          .width('100%')
+        StreamingText({
+          text: this.thinkingText().length > 0 ? this.thinkingText() : '...',
+          inlineMarkdown: false,
+          textSize: 13,
+          textLineHeight: 20,
+          color: $r('app.color.text_thinking_body'),
+          streaming: this.message.generationState === 'generating' && this.selectionSnapshot.length === 0
+        })
       }
     }
     .width('100%')

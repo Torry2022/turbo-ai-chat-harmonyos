@@ -63,7 +63,10 @@ function load(filename) {
     experimentalDecorators: true, esModuleInterop: true
   }});
   const requireSource = name => {
-    if (name.startsWith('.')) return load(path.resolve(path.dirname(filename), name + '.ets'));
+    if (name.startsWith('.')) {
+      const relative = path.resolve(path.dirname(filename), name);
+      return load(fs.existsSync(relative + '.ets') ? relative + '.ets' : relative + '.js');
+    }
     if (name === '@ohos.file.fs') return fileIo;
     if (name === '@ohos.data.preferences') return { getPreferences: async (_context, name) => {
       if (!preferenceStores.has(name)) preferenceStores.set(name, new Map());

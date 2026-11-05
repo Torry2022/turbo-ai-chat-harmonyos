@@ -197,15 +197,16 @@ function mergeAdjacentSpans(spans: MarkdownSpan[]): MarkdownSpan[] {
   return result
 }
 
-export function parseInlineMarkdown(text: string): MarkdownSpan[] {
-  const cached = inlineMarkdownCache.get(text)
+export function parseInlineMarkdown(text: string, streaming: boolean = false): MarkdownSpan[] {
+  const cacheKey = streaming ? `\u0000${text}` : text
+  const cached = inlineMarkdownCache.get(cacheKey)
   if (cached !== undefined) {
     return cached
   }
-  return rememberInlineMarkdown(text, parseInlineMarkdownUncached(text))
+  return rememberInlineMarkdown(cacheKey, parseInlineMarkdownUncached(text, streaming))
 }
 
-function parseInlineMarkdownUncached(text: string): MarkdownSpan[] {
+function parseInlineMarkdownUncached(text: string, streaming: boolean): MarkdownSpan[] {
   text = completeIncompleteInlineCode(text)
   const spans: MarkdownSpan[] = []
   let i: number = 0
@@ -213,6 +214,7 @@ function parseInlineMarkdownUncached(text: string): MarkdownSpan[] {
     let bestKind: string = ''
     let bestStart: number = -1
     let bestEnd: number = -1
+    let bestOpen: boolean = false
 
     const candidates: CandidateMarker[] = [
       { m: '***', weight: 1 } as CandidateMarker,
@@ -232,11 +234,28 @@ function parseInlineMarkdownUncached(text: string): MarkdownSpan[] {
         }
       }
       if (s >= 0 && (bestStart < 0 || s < bestStart || (s === bestStart && c.weight < foundWeight))) {
-        const e: number = text.indexOf(c.m, s + c.m.length)
+        let e: number = text.indexOf(c.m, s + c.m.length)
+        let open: boolean = false
+        // Preview an unfinished emphasis span without exposing its delimiters.
+        // Completed messages still use the ordinary parser, including literal markers.
+        if (e < 0 && streaming && c.m !== '`' &&
+          (s === 0 || text[s - 1] !== '\\') &&
+          (c.m !== '*' || s === 0 || /[\s([{，。！？：；]/.test(text[s - 1])) &&
+          (s + c.m.length === text.length || /\S/.test(text[s + c.m.length]))) {
+          e = text.length
+          open = true
+          for (let partial = c.m.length - 1; partial > 0; partial -= 1) {
+            if (text.length - partial >= s + c.m.length && text.endsWith(c.m.substring(0, partial))) {
+              e -= partial
+              break
+            }
+          }
+        }
         if (e >= 0) {
           bestKind = c.m
           bestStart = s
           bestEnd = e
+          bestOpen = open
         }
       }
     }
@@ -251,6 +270,7 @@ function parseInlineMarkdownUncached(text: string): MarkdownSpan[] {
         bestKind = 'link'
         bestStart = linkStart
         bestEnd = linkUrlEnd
+        bestOpen = false
       }
     }
 
@@ -260,6 +280,7 @@ function parseInlineMarkdownUncached(text: string): MarkdownSpan[] {
       bestKind = 'url'
       bestStart = i + urlMatch.index
       bestEnd = i + urlMatch.index + urlMatch[0].length
+      bestOpen = false
     }
 
     if (bestStart < 0) {
@@ -277,7 +298,9 @@ function parseInlineMarkdownUncached(text: string): MarkdownSpan[] {
 
     let nextIndex: number = bestEnd + bestKind.length
 
-    if (bestKind === '***' && inner.length > 0) {
+    if (bestOpen && inner.length === 0) {
+      // The opening marker alone has no visible text yet.
+    } else if (bestKind === '***' && inner.length > 0) {
       const s: MarkdownSpan = { text: inner, bold: true, italic: true }
       spans.push(s)
     } else if (bestKind === '**' && inner.length > 0) {
