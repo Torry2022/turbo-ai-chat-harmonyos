@@ -1,12 +1,55 @@
+import { curves } from '@kit.ArkUI'
+
 @Component
 export struct LaunchScreen {
+  @Prop canvasWidth: number = 0
+  @Prop canvasHeight: number = 0
+  onReadyToExit: () => void = () => {}
+  @State private artOpacity: number = 0.28
+  private animationStarted: boolean = false
+  private holdTimer: number = -1
+
+  private landscape(): boolean {
+    return this.canvasHeight > 0 && this.canvasWidth > this.canvasHeight
+  }
+
+  private startAnimation(): void {
+    if (this.animationStarted) return
+    this.animationStarted = true
+    this.getUIContext().animateTo({
+      duration: 720,
+      curve: curves.cubicBezierCurve(0.55, 0, 0.3, 1),
+      onFinish: () => {
+        this.holdTimer = setTimeout(() => {
+          this.holdTimer = -1
+          this.onReadyToExit()
+        }, 100)
+      }
+    }, () => {
+      this.artOpacity = 1
+    })
+  }
+
+  aboutToDisappear(): void {
+    if (this.holdTimer !== -1) {
+      clearTimeout(this.holdTimer)
+      this.holdTimer = -1
+    }
+  }
+
   build() {
     Stack() {
-      Image($r('app.media.launch_art'))
+      Image(this.landscape() ? $r('app.media.launch_art_landscape') : $r('app.media.launch_art'))
         .width('100%')
         .height('100%')
         .objectFit(ImageFit.Cover)
-        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+        .scale({ x: this.landscape() ? 1 : 1.04, y: this.landscape() ? 1 : 1.04 })
+        .translate({ y: this.landscape() ? 0 : '-2%' })
+        .opacity(this.artOpacity)
+        .onComplete((event) => {
+          if (event?.loadingStatus === 1) this.startAnimation()
+        })
+        .onError(() => this.onReadyToExit())
       Column({ space: 12 }) {
         Image($r('app.media.app_icon'))
           .width(92)
@@ -20,9 +63,12 @@ export struct LaunchScreen {
       .width('100%')
       .height('100%')
       .justifyContent(FlexAlign.Center)
+      .translate({ y: '-2%' })
     }
     .width('100%')
     .height('100%')
-    .backgroundColor($r('app.color.start_window_background'))
+    .backgroundColor(Color.Black)
+    .clip(true)
+    .blendMode(BlendMode.SRC_OVER, BlendApplyType.OFFSCREEN)
   }
 }

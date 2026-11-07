@@ -33,6 +33,8 @@ import { ChatViewModel } from '../state/ChatViewModel'
 struct Index {
   @State private viewModel: ChatViewModel = new ChatViewModel()
   @State private showLaunch: boolean = true
+  @State private launchOpacity: number = 1
+  private launchExiting: boolean = false
   @State private activeTab: number = 0
   @State private transitionTab: number = 0
   @State private visibleTabs: number = 1
@@ -173,11 +175,20 @@ struct Index {
       mainWindow.on('keyboardWillHide', this.onKeyboardWillHide)
     }).catch(() => {})
     this.viewModel.initialize(context)
-    setTimeout(() => {
-      this.showLaunch = false
-      themeService.finishLaunch()
-      this.updateModalFocus(true)
-    }, 1200)
+  }
+
+  private finishLaunch(): void {
+    if (this.launchExiting) return
+    this.launchExiting = true
+    this.getUIContext().animateTo({ duration: 150, curve: Curve.EaseOut,
+      onFinish: () => {
+        this.showLaunch = false
+        themeService.finishLaunch()
+        this.updateModalFocus(true)
+      }
+    }, () => {
+      this.launchOpacity = 0
+    })
   }
 
   onPageShow(): void {
@@ -802,11 +813,16 @@ struct Index {
       .width('100%')
       .height('100%')
       if (this.showLaunch) {
-        LaunchScreen()
+        LaunchScreen({
+          canvasWidth: this.windowWidth,
+          canvasHeight: this.windowHeight,
+          onReadyToExit: () => this.finishLaunch()
+        })
           .width('100%')
           .height('100%')
           .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
           .hitTestBehavior(HitTestMode.Block)
+          .opacity(this.launchOpacity)
           .zIndex(100)
       }
     }

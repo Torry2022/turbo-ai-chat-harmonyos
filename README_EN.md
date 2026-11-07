@@ -57,6 +57,11 @@ The project can serve as a development and integration reference for local AI ap
 
 ## Recent Highlights
 
+**Startup presentation (v1.21.1)**
+
+- Brighten the background continuously and fade smoothly into the main interface.
+- Use dedicated artwork in landscape windows, keeping the light ring intact and extending the light trails to both sides.
+
 **Streaming display and legacy model compatibility (v1.21.0)**
 
 - Reveal generated text progressively with a brief fade-in, steadier Markdown updates and stable code-block alignment.
