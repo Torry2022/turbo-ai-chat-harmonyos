@@ -59,7 +59,7 @@ The project can serve as a development and integration reference for local AI ap
 
 **Startup presentation (v1.21.1)**
 
-- Brighten the background continuously and fade smoothly into the main interface.
+- Brighten the background linearly and fade smoothly into the main interface.
 - Use dedicated artwork in landscape windows, keeping the light ring intact and extending the light trails to both sides.
 
 **Streaming display and legacy model compatibility (v1.21.0)**

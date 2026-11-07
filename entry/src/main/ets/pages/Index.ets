@@ -180,7 +180,7 @@ struct Index {
   private finishLaunch(): void {
     if (this.launchExiting) return
     this.launchExiting = true
-    this.getUIContext().animateTo({ duration: 150, curve: Curve.EaseOut,
+    this.getUIContext().animateTo({ duration: 200, curve: Curve.EaseOut,
       onFinish: () => {
         this.showLaunch = false
         themeService.finishLaunch()
@@ -814,8 +814,6 @@ struct Index {
       .height('100%')
       if (this.showLaunch) {
         LaunchScreen({
-          canvasWidth: this.windowWidth,
-          canvasHeight: this.windowHeight,
           onReadyToExit: () => this.finishLaunch()
         })
           .width('100%')
