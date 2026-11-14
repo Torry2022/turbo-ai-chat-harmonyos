@@ -31,7 +31,7 @@ export struct BottomTabs {
           .width(24)
           .height(24)
           .fontColor([this.activeTab === index ?
-            (this.windowWidth < 600 ? $r('app.color.nav_mobile_selected') : $r('app.color.nav_selected_text')) : $r('app.color.text_muted')])
+            (this.windowWidth < 600 ? $r('app.color.nav_tab_selected') : $r('app.color.nav_selected_text')) : $r('app.color.text_muted')])
           .accessibilityLevel('no')
       Column({ space: 2 }) {
       Text(this.windowWidth >= 840 && title === 'API 服务' ? '服务' : title)
@@ -40,7 +40,7 @@ export struct BottomTabs {
         .maxLines(1)
         .fontWeight(FontWeight.Medium)
         .fontColor(this.activeTab === index ?
-          (this.windowWidth < 600 ? $r('app.color.nav_mobile_selected') : $r('app.color.nav_selected_text')) : $r('app.color.text_muted'))
+          (this.windowWidth < 600 ? $r('app.color.nav_tab_selected') : $r('app.color.nav_selected_text')) : $r('app.color.text_muted'))
       if (this.windowWidth >= 840) {
         Text(desc)
         .fontSize(10)

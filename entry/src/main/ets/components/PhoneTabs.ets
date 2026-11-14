@@ -46,10 +46,10 @@ export struct PhoneTabs {
         }
         .tabBar(new BottomTabBarStyle({
           normal: new SymbolGlyphModifier(entry.icon).fontColor([$r('app.color.text_muted')]),
-          selected: new SymbolGlyphModifier(entry.icon).fontColor([$r('app.color.nav_mobile_selected')])
+          selected: new SymbolGlyphModifier(entry.icon).fontColor([$r('app.color.nav_tab_selected')])
         }, entry.title).labelStyle({
           font: { size: 11, weight: FontWeight.Medium },
-          selectedColor: $r('app.color.nav_mobile_selected'),
+          selectedColor: $r('app.color.nav_tab_selected'),
           unselectedColor: $r('app.color.text_muted'), maxLines: 1
         }).layoutMode(LayoutMode.VERTICAL))
       }, (entry: AppTabEntry) => entry.title)
