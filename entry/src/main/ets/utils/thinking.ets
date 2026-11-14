@@ -10,7 +10,8 @@ const assistantTextCache: Map<string, AssistantTextParts> = new Map()
 
 function rememberAssistantText(content: string, parts: AssistantTextParts): AssistantTextParts {
   if (assistantTextCache.size >= ASSISTANT_TEXT_CACHE_LIMIT) {
-    assistantTextCache.clear()
+    const oldest = assistantTextCache.keys().next()
+    if (!oldest.done) assistantTextCache.delete(oldest.value)
   }
   assistantTextCache.set(content, parts)
   return parts

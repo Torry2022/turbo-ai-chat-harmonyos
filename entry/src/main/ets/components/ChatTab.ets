@@ -45,10 +45,21 @@ export struct ChatTab {
   }
   @StorageLink('chatMouseInput') private mouseInput: boolean = false
 
-  // Refresh plain message snapshots without remounting the native text selection.
-  private messageForRender(previous: ChatMessage, _renderVersion: number): ChatMessage {
+  private messageSnapshots: Map<number, ChatMessage> = new Map()
+  private snapshotVersion: number = -1
+  private snapshotConversationId: string = ''
+
+  // Reuse snapshots during layout-only updates, preserving native text selection.
+  private messageForRender(previous: ChatMessage, renderVersion: number): ChatMessage {
+    if (this.snapshotVersion !== renderVersion || this.snapshotConversationId !== this.viewModel.activeConversationId) {
+      this.messageSnapshots.clear()
+      this.snapshotVersion = renderVersion
+      this.snapshotConversationId = this.viewModel.activeConversationId
+    }
+    const cached = this.messageSnapshots.get(previous.id)
+    if (cached !== undefined) return cached
     const message = this.viewModel.messages.find((item: ChatMessage) => item.id === previous.id) ?? previous
-    return {
+    const snapshot: ChatMessage = {
       id: message.id,
       role: message.role,
       content: this.viewModel.messageContentForDisplay(message),
@@ -68,6 +79,8 @@ export struct ChatTab {
       answerVersions: message.answerVersions,
       answerVersionIndex: message.answerVersionIndex
     }
+    this.messageSnapshots.set(message.id, snapshot)
+    return snapshot
   }
 
   private dateBefore(index: number): string {

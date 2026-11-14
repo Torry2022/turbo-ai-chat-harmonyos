@@ -24,7 +24,8 @@ const blockMarkdownCache: Map<string, MarkdownBlock[]> = new Map()
 
 function rememberInlineMarkdown(text: string, spans: MarkdownSpan[]): MarkdownSpan[] {
   if (inlineMarkdownCache.size >= INLINE_MARKDOWN_CACHE_LIMIT) {
-    inlineMarkdownCache.clear()
+    const oldest = inlineMarkdownCache.keys().next()
+    if (!oldest.done) inlineMarkdownCache.delete(oldest.value)
   }
   inlineMarkdownCache.set(text, spans)
   return spans
@@ -32,7 +33,8 @@ function rememberInlineMarkdown(text: string, spans: MarkdownSpan[]): MarkdownSp
 
 function rememberBlockMarkdown(content: string, blocks: MarkdownBlock[]): MarkdownBlock[] {
   if (blockMarkdownCache.size >= BLOCK_MARKDOWN_CACHE_LIMIT) {
-    blockMarkdownCache.clear()
+    const oldest = blockMarkdownCache.keys().next()
+    if (!oldest.done) blockMarkdownCache.delete(oldest.value)
   }
   blockMarkdownCache.set(content, blocks)
   return blocks

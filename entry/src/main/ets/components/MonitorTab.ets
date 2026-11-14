@@ -49,6 +49,8 @@ export struct MonitorTab {
   @State viewportHeight: number = 0
   @Prop contentWidth: number = 0
   private statsTimer: number = -1
+  private runtimeStatsReading: boolean = false
+  private statsGeneration: number = 0
   private storageStatsReading: boolean = false
   private statsService: RuntimeStatsService = new RuntimeStatsService()
 
@@ -71,7 +73,13 @@ export struct MonitorTab {
   }
 
   private refreshStats(): void {
-    this.stats = this.statsService.readStats()
+    if (!this.runtimeStatsReading) {
+      this.runtimeStatsReading = true
+      const generation = this.statsGeneration
+      this.statsService.readStatsAsync().then((stats: RuntimeStats) => {
+        if (this.active && generation === this.statsGeneration) this.stats = stats
+      }).finally(() => { this.runtimeStatsReading = false })
+    }
     if (this.storageStatsReading) {
       return
     }
@@ -99,6 +107,7 @@ export struct MonitorTab {
   }
 
   private stopTimer(): void {
+    this.statsGeneration++
     if (this.statsTimer < 0) {
       return
     }

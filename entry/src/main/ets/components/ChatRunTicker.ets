@@ -11,6 +11,8 @@ export struct ChatRunTicker {
   @Prop @Watch('onActiveChanged') active: boolean = true
   @State private stats: RuntimeStats = EMPTY_RUNTIME_STATS
   private statsTimer: number = -1
+  private statsReading: boolean = false
+  private statsGeneration: number = 0
   private statsService: RuntimeStatsService = new RuntimeStatsService()
 
   aboutToAppear(): void {
@@ -31,7 +33,12 @@ export struct ChatRunTicker {
   }
 
   private refreshStats(): void {
-    this.stats = this.statsService.readStats()
+    if (this.statsReading) return
+    this.statsReading = true
+    const generation = this.statsGeneration
+    this.statsService.readStatsAsync().then((stats: RuntimeStats) => {
+      if (this.active && generation === this.statsGeneration) this.stats = stats
+    }).finally(() => { this.statsReading = false })
   }
 
   private startTimer(): void {
@@ -44,6 +51,7 @@ export struct ChatRunTicker {
   }
 
   private stopTimer(): void {
+    this.statsGeneration++
     if (this.statsTimer < 0) {
       return
     }

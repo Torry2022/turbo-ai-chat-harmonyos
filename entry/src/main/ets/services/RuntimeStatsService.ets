@@ -1,3 +1,4 @@
+import taskpool from '@ohos.taskpool'
 import hidebug from '@ohos.hidebug'
 import deviceInfo from '@ohos.deviceInfo'
 import batteryInfo from '@ohos.batteryInfo'
@@ -5,6 +6,27 @@ import fs from '@ohos.file.fs'
 import { storageStatistics } from '@kit.CoreFileKit'
 import { EMPTY_RUNTIME_STATS, EMPTY_STORAGE_STATS, RuntimeStats, StorageStats, RuntimeSample, StorageSample } from '../models/RuntimeStats'
 import { bytesToDisplay, formatError } from '../utils/formatters'
+
+@Concurrent
+function collectRuntimeSample(): RuntimeSample {
+  const memory = hidebug.getAppNativeMemInfo()
+  const system = hidebug.getSystemMemInfo()
+  const sample: RuntimeSample = {
+    sampledAt: Date.now(),
+    appCpuPercent: hidebug.getCpuUsage() * 100,
+    systemCpuPercent: hidebug.getSystemCpuUsage() * 100,
+    pssWithSwapBytes: Number(memory.pss) * 1024,
+    rssBytes: Number(memory.rss) * 1024,
+    swapBytes: deviceInfo.sdkApiVersion >= 24 ? Number(hidebug.getRssInfo().swapRss) * 1024 : null,
+    nativeHeapAllocatedBytes: Number(hidebug.getNativeHeapAllocatedSize()),
+    nativeHeapTotalBytes: Number(hidebug.getNativeHeapSize()),
+    systemMemTotalBytes: Number(system.totalMem) * 1024,
+    systemMemAvailableBytes: Number(system.availableMem) * 1024,
+    batteryTemperatureC: batteryInfo.batteryTemperature / 10,
+    threadCount: hidebug.getAppThreadCpuUsage().length
+  }
+  return sample
+}
 
 export class RuntimeStatsService {
   private static cachedSample?: RuntimeSample
@@ -19,32 +41,16 @@ export class RuntimeStatsService {
       Date.now() - cached.sampledAt < 1000 ? cached : undefined
   }
 
-  private collectSample(memory: hidebug.NativeMemInfo): RuntimeSample {
-    const system = hidebug.getSystemMemInfo()
-    const sample: RuntimeSample = {
-      sampledAt: Date.now(),
-      appCpuPercent: hidebug.getCpuUsage() * 100,
-      systemCpuPercent: hidebug.getSystemCpuUsage() * 100,
-      pssWithSwapBytes: Number(memory.pss) * 1024,
-      rssBytes: Number(memory.rss) * 1024,
-      swapBytes: deviceInfo.sdkApiVersion >= 24 ? Number(hidebug.getRssInfo().swapRss) * 1024 : null,
-      nativeHeapAllocatedBytes: Number(hidebug.getNativeHeapAllocatedSize()),
-      nativeHeapTotalBytes: Number(hidebug.getNativeHeapSize()),
-      systemMemTotalBytes: Number(system.totalMem) * 1024,
-      systemMemAvailableBytes: Number(system.availableMem) * 1024,
-      batteryTemperatureC: batteryInfo.batteryTemperature / 10,
-      threadCount: hidebug.getAppThreadCpuUsage().length
-    }
-    RuntimeStatsService.cachedSample = sample
-    return sample
-  }
 
   async readSample(): Promise<RuntimeSample> {
     const cached = this.cachedRuntimeSample()
     if (cached !== undefined) return cached
     if (RuntimeStatsService.pendingSample !== undefined) return RuntimeStatsService.pendingSample
-    const pending = (deviceInfo.sdkApiVersion >= 20 ? hidebug.getAppNativeMemInfoAsync() :
-      Promise.resolve(hidebug.getAppNativeMemInfo())).then((memory: hidebug.NativeMemInfo) => this.collectSample(memory))
+    const pending = taskpool.execute(collectRuntimeSample).then((result: Object) => {
+      const sample = result as RuntimeSample
+      RuntimeStatsService.cachedSample = sample
+      return sample
+    })
     RuntimeStatsService.pendingSample = pending
     try {
       return await pending
@@ -55,30 +61,47 @@ export class RuntimeStatsService {
 
   readStats(): RuntimeStats {
     try {
-      const sample = this.cachedRuntimeSample() ?? this.collectSample(hidebug.getAppNativeMemInfo())
-      return {
-        appCpu: `${sample.appCpuPercent.toFixed(1)}%`,
-        systemCpu: `${sample.systemCpuPercent.toFixed(1)}%`,
-        appRss: `${(sample.rssBytes / 1024 / 1024).toFixed(1)} MB`,
-        nativeHeapAllocated: `${(sample.nativeHeapAllocatedBytes / 1024 / 1024).toFixed(1)} MB`,
-        nativeHeapTotal: `${(sample.nativeHeapTotalBytes / 1024 / 1024).toFixed(1)} MB`,
-        systemMemTotal: `${(sample.systemMemTotalBytes / 1024 / 1024).toFixed(1)} MB`,
-        systemMemAvailable: `${(sample.systemMemAvailableBytes / 1024 / 1024).toFixed(1)} MB 可用`,
-        socTemp: `${sample.batteryTemperatureC.toFixed(1)}°C`,
-        threadCount: `${sample.threadCount}`
-      }
+      const sample = this.cachedRuntimeSample() ?? collectRuntimeSample()
+      RuntimeStatsService.cachedSample = sample
+      return this.formatStats(sample)
     } catch (err) {
-      return {
-        appCpu: EMPTY_RUNTIME_STATS.appCpu,
-        systemCpu: EMPTY_RUNTIME_STATS.systemCpu,
-        appRss: EMPTY_RUNTIME_STATS.appRss,
-        nativeHeapAllocated: EMPTY_RUNTIME_STATS.nativeHeapAllocated,
-        nativeHeapTotal: EMPTY_RUNTIME_STATS.nativeHeapTotal,
-        systemMemTotal: EMPTY_RUNTIME_STATS.systemMemTotal,
-        systemMemAvailable: `不可用：${formatError(err as Object)}`,
-        socTemp: EMPTY_RUNTIME_STATS.socTemp,
-        threadCount: EMPTY_RUNTIME_STATS.threadCount
-      }
+      return this.unavailableStats(err as Object)
+    }
+  }
+
+  async readStatsAsync(): Promise<RuntimeStats> {
+    try {
+      return this.formatStats(await this.readSample())
+    } catch (err) {
+      return this.unavailableStats(err as Object)
+    }
+  }
+
+  private formatStats(sample: RuntimeSample): RuntimeStats {
+    return {
+      appCpu: `${sample.appCpuPercent.toFixed(1)}%`,
+      systemCpu: `${sample.systemCpuPercent.toFixed(1)}%`,
+      appRss: `${(sample.rssBytes / 1024 / 1024).toFixed(1)} MB`,
+      nativeHeapAllocated: `${(sample.nativeHeapAllocatedBytes / 1024 / 1024).toFixed(1)} MB`,
+      nativeHeapTotal: `${(sample.nativeHeapTotalBytes / 1024 / 1024).toFixed(1)} MB`,
+      systemMemTotal: `${(sample.systemMemTotalBytes / 1024 / 1024).toFixed(1)} MB`,
+      systemMemAvailable: `${(sample.systemMemAvailableBytes / 1024 / 1024).toFixed(1)} MB 可用`,
+      socTemp: `${sample.batteryTemperatureC.toFixed(1)}°C`,
+      threadCount: `${sample.threadCount}`
+    }
+  }
+
+  private unavailableStats(err: Object): RuntimeStats {
+    return {
+      appCpu: EMPTY_RUNTIME_STATS.appCpu,
+      systemCpu: EMPTY_RUNTIME_STATS.systemCpu,
+      appRss: EMPTY_RUNTIME_STATS.appRss,
+      nativeHeapAllocated: EMPTY_RUNTIME_STATS.nativeHeapAllocated,
+      nativeHeapTotal: EMPTY_RUNTIME_STATS.nativeHeapTotal,
+      systemMemTotal: EMPTY_RUNTIME_STATS.systemMemTotal,
+      systemMemAvailable: `不可用：${formatError(err as Object)}`,
+      socTemp: EMPTY_RUNTIME_STATS.socTemp,
+      threadCount: EMPTY_RUNTIME_STATS.threadCount
     }
   }
 

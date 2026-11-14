@@ -6,10 +6,15 @@ const vm = require('node:vm');
 const ts = require(process.argv[2] || 'typescript');
 const root = path.resolve(__dirname, '..');
 let now = 10000, reads = 0, storageReads = 0, fail = false;
+let synchronousMemoryReads = 0, taskExecutions = 0;
+const pool = { execute: fn => {
+  taskExecutions++;
+  return Promise.resolve().then(() => { if (fail) throw new Error('unavailable'); return fn(); });
+} };
 const device = { sdkApiVersion: 24 };
 const memory = { pss: 2048n, rss: 1024n };
 const debug = {
-  getAppNativeMemInfo: () => { reads++; return memory; },
+  getAppNativeMemInfo: () => { reads++; synchronousMemoryReads++; return memory; },
   getAppNativeMemInfoAsync: async () => { reads++; if (fail) throw new Error('unavailable'); return memory; },
   getRssInfo: () => ({ swapRss: 512n }),
   getSystemMemInfo: () => ({ totalMem: 32768n, availableMem: 8192n }),
@@ -28,6 +33,7 @@ function compile(relative, requireModule = () => ({}), extras = {}) {
 const models = compile('entry/src/main/ets/models/RuntimeStats.ets');
 const formatters = compile('entry/src/main/ets/utils/formatters.ets');
 const { RuntimeStatsService } = compile('entry/src/main/ets/services/RuntimeStatsService.ets', name => {
+  if (name === '@ohos.taskpool') return { default: pool };
   if (name === '@ohos.hidebug') return { default: debug };
   if (name === '@ohos.deviceInfo') return { default: device };
   if (name === '@ohos.batteryInfo') return { default: { batteryTemperature: 325 } };
@@ -58,6 +64,51 @@ const { RuntimeStatsService } = compile('entry/src/main/ets/services/RuntimeStat
   await assert.rejects(service.readSample(), /unavailable/);
   fail = false;
   assert.equal((await service.readSample()).sampledAt, now);
+  now += 1001;
+  const originalExecute = pool.execute;
+  let resolveMemory;
+  pool.execute = fn => { taskExecutions++; return new Promise(resolve => { resolveMemory = () => resolve(fn()); }); };
+  const previousSyncReads = synchronousMemoryReads;
+  let completed = false;
+  const pendingStats = service.readStatsAsync().then(stats => { completed = true; return stats; });
+  const sharedStats = service.readStatsAsync();
+  await Promise.resolve();
+  assert.equal(completed, false, 'UI sampling yields while native memory collection is pending');
+  assert.equal(synchronousMemoryReads, previousSyncReads);
+  resolveMemory();
+  assert.equal((await pendingStats).appRss, '1.0 MB');
+  assert.equal((await sharedStats).appCpu, '12.5%');
+  pool.execute = originalExecute;
+  now += 1001; fail = true;
+  const failedUiStats = await service.readStatsAsync();
+  assert.match(failedUiStats.systemMemAvailable, /unavailable/);
+  assert.equal(synchronousMemoryReads, previousSyncReads + 1, 'A failed task never retries on the UI thread');
+  assert.ok(taskExecutions > 0, 'UI and API collect the complete snapshot through TaskPool');
+  fail = false;
+  console.log('PASS asynchronous UI sampling, shared pending reads and nonblocking failure fallback');
+
+  const tickerSource = fs.readFileSync(path.join(root, 'entry/src/main/ets/components/ChatRunTicker.ets'), 'utf8');
+  const tickerAst = ts.createSourceFile('ticker.ts', tickerSource.replace('export struct ChatRunTicker', 'class ChatRunTicker'), ts.ScriptTarget.Latest, true);
+  const tickerClass = tickerAst.statements.find(n => ts.isClassDeclaration(n));
+  const tickerMembers = tickerClass.members.filter(n => n.name &&
+    ['refreshStats', 'stopTimer', 'statsTimer', 'statsReading', 'statsGeneration'].includes(n.name.getText(tickerAst)));
+  const Ticker = vm.runInNewContext(ts.transpileModule(`class Ticker {${tickerMembers.map(n => n.getText(tickerAst)).join('\n')}}; Ticker`,
+    {compilerOptions: {target: ts.ScriptTarget.ES2020}}).outputText, {clearInterval});
+  const ticker = new Ticker();
+  let sampleCalls = 0, resolveTicker;
+  ticker.active = true;
+  ticker.stats = 'previous';
+  ticker.statsService = {readStatsAsync: () => { sampleCalls++; return new Promise(resolve => { resolveTicker = resolve; }); }};
+  ticker.refreshStats(); ticker.refreshStats();
+  assert.equal(sampleCalls, 1, 'Slow sampling does not queue overlapping UI requests');
+  ticker.stopTimer();
+  resolveTicker('stale');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(ticker.stats, 'previous', 'Deactivation invalidates an old pending result');
+  ticker.refreshStats(); resolveTicker('current');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(ticker.stats, 'current');
+  console.log('PASS UI poll overlap guard and stale result cancellation');
   service.exists = async () => true;
   service.pathSize = async name => name === '/model-a' ? 100 : 200;
   const a = await service.readStorageSample('/app', '/model-a');
