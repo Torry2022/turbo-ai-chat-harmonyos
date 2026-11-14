@@ -57,6 +57,14 @@ The project can serve as a development and integration reference for local AI ap
 
 ## Recent Highlights
 
+**Decision models and runtime settings (v1.22.0)**
+
+- Download H2O-Lightning INT8 from the Model Gallery for text and image choice, score and boolean tasks through the trial dialog or API.
+- Use consistent CPU thread controls and Reload actions for chat, decision and reranking models. The range follows the device logical CPU count, capped at 16, with clear feedback on when settings take effect.
+- Identify loaded models by full names and status tags, with single-line scrolling for long names and simpler decision and reranking setup.
+- Fix template recognition for thinking controls, reduce state updates and parsing work while scrolling chats, and preserve document order when copying across text blocks.
+- Use blue selection accents in phone navigation.
+
 **Startup presentation (v1.21.1)**
 
 - Brighten the background linearly and fade smoothly into the main interface.
