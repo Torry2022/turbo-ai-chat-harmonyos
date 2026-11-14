@@ -26,6 +26,49 @@ vm.runInNewContext(ts.transpileModule(ast.statements.find(ts.isClassDeclaration)
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, experimentalDecorators: true }
 }).outputText, context);
 const tick = () => new Promise(resolve => setImmediate(resolve));
+const tabSource = fs.readFileSync(path.join(__dirname, '../entry/src/main/ets/components/ApiServerTab.ets'), 'utf8').replace(/\r\n/g, '\n');
+const capabilityMethods = tabSource.slice(tabSource.indexOf('  private capabilityModel('), tabSource.indexOf('  @Builder\n  private CapabilityHeader('));
+const Capability = vm.runInNewContext(ts.transpileModule(`class Capability { ${capabilityMethods} }`, {
+  compilerOptions: { target: ts.ScriptTarget.ES2020 }
+}).outputText + '\nCapability');
+const capability = new Capability();
+let loadedDecisionModel, loadedRerankModel;
+Object.assign(capability, {
+  loaded: false, currentModelName: 'Selected chat', apiRequestKind: '',
+  viewModel: {
+    loadedDecision: () => loadedDecisionModel,
+    loadedReranker: () => loadedRerankModel,
+    decisionRuntimeState: 'idle', modelLoading: false, rerankLoading: false,
+    reranker: { busy: false }
+  }
+});
+for (const mode of ['chat', 'decision', 'rerank']) {
+  assert.equal(capability.capabilityModel(mode), '');
+  assert.equal(capability.capabilityState(mode), '未加载');
+}
+capability.loaded = true;
+capability.currentModelName = 'Loaded chat';
+loadedDecisionModel = { name: 'Loaded decision', shortName: 'Short decision' };
+loadedRerankModel = { name: 'Loaded rerank', shortName: 'Short rerank' };
+capability.viewModel.decisionRuntimeState = 'loaded';
+for (const mode of ['chat', 'decision', 'rerank']) {
+  assert.equal(capability.capabilityModel(mode), `Loaded ${mode}`);
+  assert.equal(capability.capabilityState(mode), '已加载');
+}
+capability.apiRequestKind = 'decision';
+assert.equal(capability.capabilityState('decision'), '处理中');
+capability.apiRequestKind = '';
+capability.viewModel.decisionRuntimeState = 'releasing';
+assert.equal(capability.capabilityState('decision'), '释放中');
+loadedDecisionModel = loadedRerankModel = undefined;
+capability.loaded = false;
+capability.viewModel.decisionRuntimeState = 'loading';
+capability.viewModel.modelLoading = capability.viewModel.rerankLoading = true;
+for (const mode of ['chat', 'decision', 'rerank']) {
+  assert.equal(capability.capabilityModel(mode), '');
+  assert.equal(capability.capabilityState(mode), '加载中');
+}
+console.log('PASS service capabilities use loaded models and runtime states without selected-model fallbacks');
 (async () => {
   const view = new context.exports.ChatViewModel();
   view.notify = view.notifyAndScroll = view.saveApiServerSettings = view.appendApiServerLog = () => {};

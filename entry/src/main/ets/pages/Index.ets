@@ -479,7 +479,6 @@ struct Index {
       onContentScroll: (yOffset: number): void => {
         this.handleLongPageScroll(yOffset)
       },
-      decisionReady: this.viewModel.decisionReady,
       decisionStatus: this.viewModel.decisionStatusText(),
       onApiHelp: (mode: 'log' | 'rerank' | 'chat' | 'decision', example: string) => {
         this.apiUsageMode = mode
@@ -492,7 +491,7 @@ struct Index {
       renderVersion: this.stateVersion,
       loaded: this.viewModel.loaded,
       busy: this.viewModel.busy,
-      currentModelName: this.viewModel.currentModel().shortName,
+      currentModelName: this.viewModel.currentModel().name,
       apiServerRunning: this.viewModel.apiServerRunning,
       apiServerStarting: this.viewModel.apiServerStarting,
       apiServerPortInput: this.viewModel.apiServerPortInput,

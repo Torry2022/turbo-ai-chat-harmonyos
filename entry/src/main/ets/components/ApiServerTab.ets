@@ -12,7 +12,6 @@ export struct ApiServerTab {
   @ObjectLink viewModel: ChatViewModel
   @Prop renderVersion: number = 0
   @Prop loaded: boolean = false
-  @Prop decisionReady: boolean = false
   @Prop decisionStatus: string = '未安装'
   onApiHelp: (mode: 'log' | 'rerank' | 'chat' | 'decision', example: string) => void = () => {}
   @Prop busy: boolean = false
@@ -120,9 +119,9 @@ export struct ApiServerTab {
 
 
   private capabilityModel(mode: string): string {
-    if (mode === 'chat') return this.currentModelName
-    if (mode === 'decision') return this.viewModel.loadedDecision()?.shortName ?? (this.decisionReady ? this.viewModel.selectedDecisionModel().shortName : '尚未安装决策模型')
-    if (mode === 'rerank') return (this.viewModel.loadedReranker() ?? this.viewModel.selectedReranker())?.shortName ?? '尚未导入重排模型'
+    if (mode === 'chat') return this.loaded ? this.currentModelName : ''
+    if (mode === 'decision') return this.viewModel.loadedDecision()?.name ?? ''
+    if (mode === 'rerank') return this.viewModel.loadedReranker()?.name ?? ''
     return '本地资料'
   }
 
@@ -130,7 +129,6 @@ export struct ApiServerTab {
     if (this.apiRequestKind === mode) return '处理中'
     if (mode === 'chat') return this.viewModel.modelLoading ? '加载中' : this.loaded ? '已加载' : '未加载'
     if (mode === 'decision') {
-      if (!this.decisionReady && !this.viewModel.loadedDecision()) return ''
       if (this.viewModel.decisionRuntimeState === 'loading') return '加载中'
       if (this.viewModel.decisionRuntimeState === 'releasing') return '释放中'
       if (this.viewModel.decisionRuntimeState === 'running') return '处理中'
@@ -139,7 +137,7 @@ export struct ApiServerTab {
     if (mode === 'rerank') {
       if (this.viewModel.rerankLoading) return '加载中'
       if (this.viewModel.loadedReranker()) return this.viewModel.reranker.busy ? '处理中' : '已加载'
-      return this.viewModel.selectedReranker() ? '未加载' : ''
+      return '未加载'
     }
     return ''
   }
@@ -147,14 +145,22 @@ export struct ApiServerTab {
   @Builder
   private CapabilityHeader(title: string, mode: 'chat' | 'decision' | 'rerank', example: string = '') {
     Row({ space: 8 }) {
-      Text(title).fontSize(13).fontWeight(FontWeight.Medium).fontColor($r('app.color.text_body')).width(52)
+      Text(title).fontSize(13).fontWeight(FontWeight.Medium).fontColor($r('app.color.text_body')).width(52).flexShrink(0)
       Text(this.capabilityModel(mode)).fontSize(12).fontColor($r('app.color.text_muted')).layoutWeight(1)
-        .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
+        .height(18).maxLines(1).textOverflow({ overflow: TextOverflow.MARQUEE })
+        .marqueeOptions({ start: true, step: 1, loop: -1, delay: 1000, fadeout: true,
+          marqueeUpdatePolicy: MarqueeUpdatePolicy.PRESERVE_POSITION })
       if (this.capabilityState(mode).length > 0) {
-        Text(this.capabilityState(mode)).fontSize(11).fontColor($r('app.color.text_muted'))
+        Text(this.capabilityState(mode)).fontSize(11).lineHeight(16).textAlign(TextAlign.Center)
+          .fontColor(this.capabilityState(mode) === '已加载' ? $r('app.color.tag_green_text') :
+            this.capabilityState(mode) === '未加载' ? $r('app.color.text_muted') : $r('app.color.tag_blue_text'))
+          .backgroundColor(this.capabilityState(mode) === '已加载' ? $r('app.color.tag_green_background') :
+            this.capabilityState(mode) === '未加载' ? $r('app.color.button_secondary_background') : $r('app.color.tag_blue_background'))
+          .width(50).height(22).padding({ left: 7, right: 7, top: 3, bottom: 3 })
+          .borderRadius(4).maxLines(1).flexShrink(0)
       }
       Button('调用说明')
-        .attributeModifier(new CompactActionStyle())
+        .attributeModifier(new CompactActionStyle()).flexShrink(0)
         .onClick(() => this.onApiHelp(mode, example))
     }.width('100%')
   }
@@ -209,7 +215,7 @@ export struct ApiServerTab {
           .lineHeight(19)
           .fontColor(this.serviceStatusColor())
           .width('100%')
-        Text(`已接受 ${this.apiServerRequestCount} 个推理请求`)
+        Text(`推理调用 ${this.apiServerRequestCount} 次`)
           .fontSize(12)
           .lineHeight(18)
           .fontColor($r('app.color.text_hint'))
