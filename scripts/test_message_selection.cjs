@@ -33,3 +33,9 @@ check([part(0, 0, 0, 'text', 'A😀'), part(1, 0, 0, 'text', '中文')], 'A😀\
 check([part(0, 0, 0, 'table', 'A'), part(0, 0, 2, 'table', 'C'),
   part(0, 1, 1, 'table', 'B')], 'A\t\tC\n\tB');
 console.log('message selection: 12 cases passed');
+
+check([part(2, 0, 0, 'text', '后创建的段落'), part(0, 0, 0, 'text', '标题'),
+  part(1, 0, 0, 'text', '代码第一行\n代码第二行')],
+  '标题\n\n代码第一行\n代码第二行\n\n后创建的段落', '后创建的段落\n标题\n代码第一行\n代码第二行');
+check([part(0, 0, 0, 'text', '重复'), part(1, 0, 0, 'text', '重复')], '重复', '重复');
+console.log('PASS native selection creation order, multiline blocks and duplicate-count guard');

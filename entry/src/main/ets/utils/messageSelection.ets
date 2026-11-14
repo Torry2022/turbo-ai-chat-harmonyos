@@ -6,12 +6,15 @@ export interface MessageSelectionPart {
   text: string
 }
 
-// Only reformat a selection whose nodes exactly match the native selection.
+// Reformat only when selected nodes contain exactly the native selection text.
 export function joinMessageSelection(parts: MessageSelectionPart[], nativeText: string): string {
   const ordered = parts.filter((part: MessageSelectionPart) => part.text.length > 0)
     .sort((a: MessageSelectionPart, b: MessageSelectionPart) =>
       a.block - b.block || a.row - b.row || a.column - b.column)
-  if (ordered.map((part: MessageSelectionPart) => part.text).join('\n') !== nativeText) {
+  const selectedLines = ordered.map((part: MessageSelectionPart) => part.text).join('\n').split('\n').sort()
+  const nativeLines = nativeText.split('\n').sort()
+  if (selectedLines.length !== nativeLines.length ||
+    selectedLines.some((line: string, index: number) => line !== nativeLines[index])) {
     return nativeText
   }
   let text = ''
