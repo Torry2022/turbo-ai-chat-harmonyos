@@ -20,6 +20,9 @@ set_target_properties(mnn PROPERTIES
 )
 
 add_library(entry SHARED
+    h2o_napi.cpp
+    "${CMAKE_CURRENT_LIST_DIR}/../../../../scripts/h2o/h2o_decision.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../../scripts/h2o/h2o_protocol.cpp"
     reranker_runner.cpp
     napi_init.cpp
     mnn_llm_runner.cpp
@@ -34,6 +37,7 @@ set_target_properties(entry PROPERTIES
 target_include_directories(entry PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}"
     "${MNN_STAGED_INCLUDE_DIR}"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../../scripts/h2o"
     "${CMAKE_CURRENT_LIST_DIR}/../../../../scripts/laya"
 )
 

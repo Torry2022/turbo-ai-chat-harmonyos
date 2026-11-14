@@ -4,6 +4,7 @@
 
 #include "mnn_llm_runner.h"
 #include "laya_decision.h"
+#include "h2o_napi.h"
 #include "mnn_cpu_capacity.h"
 
 #include <algorithm>
@@ -1123,6 +1124,7 @@ static napi_value Init(napi_env env, napi_value exports) {
         {"isLoaded", nullptr, IsLoaded, nullptr, nullptr, nullptr, napi_default, nullptr},
     };
     napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc);
+    DefineH2oBindings(env, exports);
     return exports;
 }
 
