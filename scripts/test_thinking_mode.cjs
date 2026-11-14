@@ -42,6 +42,24 @@ assert.equal(modelThinkingSupport('{}', JSON.stringify({jinja: {chat_template: '
 assert.equal(modelThinkingSupport('{}', JSON.stringify({jinja: {chat_template: smol.split('{%- if enable_thinking -%}')[0] + 'fixed output'}})).supported, false,
   'a default assignment without a generation branch must not expose a switch');
 assert.throws(() => modelThinkingSupport('{}','bad json'));
+// Ark rejects unescaped literal braces that V8 accepts in legacy RegExp mode.
+const thinkingSource = fs.readFileSync(path.join(root, 'utils/modelThinking.ets'), 'utf8');
+const thinkingAst = ts.createSourceFile('modelThinking.ts', thinkingSource, ts.ScriptTarget.Latest, true);
+function checkRegExpSyntax(node) {
+  if (node.kind === ts.SyntaxKind.RegularExpressionLiteral) {
+    const literal = node.getText(thinkingAst);
+    assert.doesNotThrow(() => new RegExp(literal.slice(1, literal.lastIndexOf('/')), 'u'));
+  }
+  ts.forEachChild(node, checkRegExpSyntax);
+}
+checkRegExpSyntax(thinkingAst);
+const qwen35 = JSON.stringify({jinja: {chat_template:
+  "{%- if enable_thinking is defined and enable_thinking is true %}<think>{%- else %}<think>\\n\\n</think>{%- endif %}"}});
+assert.equal(modelThinkingSupport('{"jinja":{"context":{"enable_thinking":true}}}', qwen35).supported, true);
+assert.equal(modelThinkingSupport('{"jinja":{"context":{"enable_thinking":true}}}', qwen35).defaultEnabled, true);
+assert.equal(modelThinkingSupport('{"jinja":{"context":{"enable_thinking":false}}}', qwen35).supported, true);
+assert.equal(modelThinkingSupport('{"jinja":{"context":{"enable_thinking":false}}}', qwen35).defaultEnabled, false);
+console.log('PASS strict RegExp syntax and Qwen3.5 explicit thinking defaults');
 console.log('PASS thinking controls follow actual template branches and model defaults, not catalog tags');
 const source = fs.readFileSync(path.join(root,'state/ChatViewModel.ets'),'utf8');
 const ast = ts.createSourceFile('view.ts',source,ts.ScriptTarget.Latest,true);
