@@ -1,4 +1,3 @@
-import { LAYA_MODEL_ID, LAYA_SHORT_NAME } from '../models/LayaModelConfig'
 import { InputFieldStyle } from './ControlStyles'
 import { ActionButtonStyle, CompactActionStyle } from './ButtonStyles'
 import { ApiServerLogEntry, ChatViewModel } from '../state/ChatViewModel'
@@ -13,8 +12,8 @@ export struct ApiServerTab {
   @ObjectLink viewModel: ChatViewModel
   @Prop renderVersion: number = 0
   @Prop loaded: boolean = false
-  @Prop layaReady: boolean = false
-  @Prop layaStatus: string = '未安装'
+  @Prop decisionReady: boolean = false
+  @Prop decisionStatus: string = '未安装'
   onApiHelp: (mode: 'log' | 'rerank' | 'chat' | 'decision', example: string) => void = () => {}
   @Prop busy: boolean = false
   @Prop apiRequestKind: string = ''
@@ -109,7 +108,7 @@ export struct ApiServerTab {
 
   private decisionExample(): string {
     return `{
-  "model": "${LAYA_MODEL_ID}",
+  "model": "${this.viewModel.loadedDecision()?.id ?? this.viewModel.selectedDecisionModel().id}",
   "input": "手机键盘弹出后底部标签也跟着上移。",
   "task": {
     "type": "choice",
@@ -122,7 +121,7 @@ export struct ApiServerTab {
 
   private capabilityModel(mode: string): string {
     if (mode === 'chat') return this.currentModelName
-    if (mode === 'decision') return this.layaReady ? LAYA_SHORT_NAME : '尚未安装决策模型'
+    if (mode === 'decision') return this.viewModel.loadedDecision()?.shortName ?? (this.decisionReady ? this.viewModel.selectedDecisionModel().shortName : '尚未安装决策模型')
     if (mode === 'rerank') return (this.viewModel.loadedReranker() ?? this.viewModel.selectedReranker())?.shortName ?? '尚未导入重排模型'
     return '本地资料'
   }
@@ -131,11 +130,11 @@ export struct ApiServerTab {
     if (this.apiRequestKind === mode) return '处理中'
     if (mode === 'chat') return this.viewModel.modelLoading ? '加载中' : this.loaded ? '已加载' : '未加载'
     if (mode === 'decision') {
-      if (!this.layaReady) return ''
-      if (this.viewModel.layaRuntimeState === 'loading') return '加载中'
-      if (this.viewModel.layaRuntimeState === 'releasing') return '释放中'
-      if (this.viewModel.layaRuntimeState === 'running') return '处理中'
-      return this.viewModel.layaRuntimeState === 'loaded' ? '已加载' : '未加载'
+      if (!this.decisionReady && !this.viewModel.loadedDecision()) return ''
+      if (this.viewModel.decisionRuntimeState === 'loading') return '加载中'
+      if (this.viewModel.decisionRuntimeState === 'releasing') return '释放中'
+      if (this.viewModel.decisionRuntimeState === 'running') return '处理中'
+      return this.viewModel.decisionRuntimeState === 'loaded' ? '已加载' : '未加载'
     }
     if (mode === 'rerank') {
       if (this.viewModel.rerankLoading) return '加载中'

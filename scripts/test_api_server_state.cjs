@@ -17,9 +17,10 @@ for (const node of ast.statements.filter(ts.isImportDeclaration)) {
   }
 }
 let layaReady = false;
-context.isLayaReady = () => layaReady;
+context.isDecisionReady = () => layaReady;
 let decisionLoaded = false;
-context.isLayaLoaded = () => decisionLoaded;
+context.isDecisionLoaded = () => decisionLoaded;
+context.loadedDecisionModel = () => decisionLoaded ? {id: 'laya', name: 'Laya', shortName: 'Laya'} : undefined;
 context.formatError = error => error.message;
 vm.runInNewContext(ts.transpileModule(ast.statements.find(ts.isClassDeclaration).getText(ast), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, experimentalDecorators: true }
@@ -89,9 +90,9 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
   view.reranker = { busy: false };
   view.nativeService = { cancelTitleGeneration: async () => {} };
   let resolveLoad, resolveDecision, rejectDecision, releaseCalls = 0;
-  context.loadLaya = () => new Promise(resolve => { resolveLoad = () => { decisionLoaded = true; resolve(); }; });
-  context.decideLaya = () => new Promise((resolve, reject) => { resolveDecision = resolve; rejectDecision = reject; });
-  context.releaseLaya = async () => { releaseCalls++; decisionLoaded = false; };
+  context.loadDecision = () => new Promise(resolve => { resolveLoad = () => { decisionLoaded = true; resolve(); }; });
+  context.decide = () => new Promise((resolve, reject) => { resolveDecision = resolve; rejectDecision = reject; });
+  context.releaseDecision = async () => { releaseCalls++; decisionLoaded = false; };
   await assert.rejects(view.runDecision('x', 'choice', 'q', ['a','b']), /先在模型页加载/);
   const loading = view.loadDecisionModel();
   assert.equal(view.busy, true);

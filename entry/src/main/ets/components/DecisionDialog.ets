@@ -1,71 +1,69 @@
+import { formatError } from '../utils/formatters'
 import { dialogFade, dialogScale } from './DialogMotion'
 import { InputFieldStyle } from './ControlStyles'
-import { common } from '@kit.AbilityKit'
-import fs from '@ohos.file.fs'
-import { BuiltinModelInstallProgress, formatBytes } from '../models/BuiltinModelDownloadTypes'
-import { BuiltinModelInstallService } from '../services/BuiltinModelInstallService'
-import { isLayaLoaded } from '../services/LayaDecisionService'
-import { LAYA_MODEL_ID, LAYA_MODEL_DIRECTORY, LAYA_MODEL_FILE, LAYA_TOKENIZER_FILE,
-  LAYA_MODEL_BYTES, LAYA_TOKENIZER_BYTES, LAYA_DOWNLOAD_SPEC } from '../models/LayaModelConfig'
-import { formatDownloadError } from '../utils/formatters'
+import { decisionProbabilities, DecisionOutput } from '../utils/decisionOutput'
+import { ImagePayloadService } from '../services/ImagePayloadService'
+import { ActionButtonStyle, CompactActionStyle } from './ButtonStyles'
+import { LAYA_MODEL_ID } from '../models/LayaModelConfig'
 
 
-type LayaQuestionType = 'choice' | 'score' | 'noul'
+type DecisionQuestionType = 'choice' | 'score' | 'noul'
 
-interface LayaQuestionInput {
-  t: LayaQuestionType
+interface DecisionQuestionInput {
+  t: DecisionQuestionType
   ins: string
   crit: string[] | Record<string, string>
 }
 
-interface LayaRequestInput {
+interface DecisionRequestInput {
   state: string
-  question: LayaQuestionInput
+  question: DecisionQuestionInput
 }
 
 interface PreparedQuestion {
-  request: LayaRequestInput
+  request: DecisionRequestInput
   labels: string[]
   options: string[]
 }
 
-interface LayaNativeResult {
-  logits: number[]
-  act_probs: number[]
-  elapsed_ms: number
-}
 
-interface LayaDisplayAnswer {
-  type: LayaQuestionType
+interface DecisionDisplayAnswer {
+  type: DecisionQuestionType
   choice?: string
   score?: number
   noul?: number
   probabilities: Record<string, number>
 }
 
-interface LayaDisplayAnswers {
-  question: LayaDisplayAnswer
+interface DecisionDisplayAnswers {
+  question: DecisionDisplayAnswer
 }
 
-interface LayaDisplayMetadata {
+interface DecisionDisplayMetadata {
   task_calibrated: boolean
   elapsed_ms: number
 }
 
-interface LayaDisplayReport {
+interface DecisionDisplayReport {
   model: string
-  answers: LayaDisplayAnswers
-  metadata: LayaDisplayMetadata
+  answers: DecisionDisplayAnswers
+  metadata: DecisionDisplayMetadata
 }
 
 @Component
-export struct LayaDecisionDialog {
+export struct DecisionDialog {
   @Prop availableWidth: number = 360
   @Prop availableHeight: number = 640
-  @Prop filesDir: string = ''
+  @Prop modelId: string = LAYA_MODEL_ID
+  @Prop modelName: string = 'Laya'
+  @Prop installed: boolean = false
+  @Prop loaded: boolean = false
+  @Prop supportsImage: boolean = false
+  @State private imageUri: string = ''
+  private imageService: ImagePayloadService = new ImagePayloadService()
   @State private stateText: string = ''
   @State private questionText: string = ''
-  @State private questionType: LayaQuestionType = 'choice'
+  @State private questionType: DecisionQuestionType = 'choice'
   @State private criteriaText: string = ''
   @State private previewText: string = ''
   @State private validationText: string = ''
@@ -73,78 +71,12 @@ export struct LayaDecisionDialog {
   @State private jsonResultText: string = ''
   @State private showRawResult: boolean = false
   @State private running: boolean = false
-  @State private modelChecking: boolean = true
-  @State private modelReady: boolean = false
-  @State private downloadRunning: boolean = false
-  @State private downloadBytes: number = 0
-  @State private downloadProgress: number = 0
-  @State private downloadError: string = ''
   @State private mobileView: 'input' | 'result' = 'input'
   @State private isClosePressed: boolean = false
-  private closing: boolean = false
   private inputRevision: number = 0
-  private installService: BuiltinModelInstallService = new BuiltinModelInstallService()
   onClose: () => void = () => {}
-  onDecision: (state: string, type: string, instruction: string, options: string[]) => Promise<string> =
+  onDecision: (state: string, type: string, instruction: string, options: string[], labels: string[], imageUri: string) => Promise<string> =
     async () => { throw new Error('请先在模型页加载决策模型') }
-  onModelReady: () => void = () => {}
-
-  aboutToAppear(): void {
-    this.refreshModelState()
-  }
-
-  aboutToDisappear(): void {
-    this.closing = true
-    if (this.downloadRunning) this.installService.cancelInstall()
-  }
-
-  private async hasCompleteFile(name: string, size: number): Promise<boolean> {
-    try {
-      const stat = await fs.stat(`${this.filesDir}/${LAYA_MODEL_DIRECTORY}/${name}`)
-      return stat.isFile() && stat.size === size
-    } catch (_error) {
-      return false
-    }
-  }
-
-  private async refreshModelState(): Promise<void> {
-    const ready = await this.hasCompleteFile(LAYA_MODEL_FILE, LAYA_MODEL_BYTES) &&
-      await this.hasCompleteFile(LAYA_TOKENIZER_FILE, LAYA_TOKENIZER_BYTES)
-    if (this.closing) return
-    this.modelReady = ready
-    this.onModelReady()
-    const downloadedBytes = ready ? LAYA_DOWNLOAD_SPEC.totalBytes :
-      await this.installService.existingPartialDownloadBytes(this.filesDir, LAYA_DOWNLOAD_SPEC)
-    if (this.closing) return
-    this.downloadBytes = downloadedBytes
-    this.downloadProgress = Math.round(this.downloadBytes / LAYA_DOWNLOAD_SPEC.totalBytes * 100)
-    this.modelChecking = false
-  }
-
-  private async downloadModel(): Promise<void> {
-    if (this.downloadRunning || this.modelReady) return
-    this.downloadRunning = true
-    this.downloadError = ''
-    try {
-      await this.installService.installCatalogItem(this.getUIContext().getHostContext() as common.UIAbilityContext,
-        LAYA_DOWNLOAD_SPEC, (progress: BuiltinModelInstallProgress) => {
-          if (this.closing) return
-          if (progress.progress - this.downloadProgress >= 0.5 || progress.progress === 100) {
-            this.downloadProgress = progress.progress
-            this.downloadBytes = progress.downloadedBytes
-          }
-        })
-    } catch (error) {
-      if (!this.closing && `${error}`.indexOf('下载已取消') < 0) {
-        this.downloadError = formatDownloadError(error as Object)
-      }
-    } finally {
-      if (!this.closing) {
-        this.downloadRunning = false
-        await this.refreshModelState()
-      }
-    }
-  }
 
   private invalidateResult(): void {
     this.inputRevision++
@@ -158,8 +90,8 @@ export struct LayaDecisionDialog {
     const state = this.stateText.trim()
     const instruction = this.questionText.trim()
     const lines = this.criteriaText.split('\n').map((line: string) => line.trim()).filter((line: string) => line.length > 0)
-    if (state.length === 0 || instruction.length === 0) {
-      this.validationText = '请填写状态和任务说明'
+    if ((state.length === 0 && this.imageUri.length === 0) || instruction.length === 0) {
+      this.validationText = '请填写输入文本或添加图片，并填写任务说明'
       this.previewText = ''
       return undefined
     }
@@ -168,8 +100,8 @@ export struct LayaDecisionDialog {
       this.previewText = ''
       return undefined
     }
-    if (this.questionType !== 'noul' && lines.length > 20) {
-      this.validationText = this.questionType === 'choice' ? '候选项最多 20 个' : '评分等级最多 20 个'
+    if (this.questionType !== 'noul' && lines.length > (this.modelId === LAYA_MODEL_ID ? 20 : 255)) {
+      this.validationText = `最多支持 ${this.modelId === LAYA_MODEL_ID ? 20 : 255} 个${this.questionType === 'choice' ? '候选项' : '评分等级'}`
       this.previewText = ''
       return undefined
     }
@@ -212,8 +144,8 @@ export struct LayaDecisionDialog {
       options.push(`true: ${lines.length > 1 ? lines[1] : 'yes, the statement holds'}`)
     }
     this.validationText = ''
-    const question: LayaQuestionInput = { t: this.questionType, ins: instruction, crit: criteria }
-    const request: LayaRequestInput = { state: state, question: question }
+    const question: DecisionQuestionInput = { t: this.questionType, ins: instruction, crit: criteria }
+    const request: DecisionRequestInput = { state: state, question: question }
     return { request: request, labels: labels, options: options }
   }
 
@@ -228,14 +160,7 @@ export struct LayaDecisionDialog {
 
   private async runDecision(): Promise<void> {
     if (this.running) return
-    if (!this.modelReady) {
-      await this.refreshModelState()
-      if (!this.modelReady) {
-        this.validationText = '请先下载 Laya 模型和词表'
-        return
-      }
-    }
-    if (!isLayaLoaded()) {
+    if (!this.loaded) {
       this.validationText = '请先关闭此窗口，在模型页加载决策模型。'
       return
     }
@@ -249,15 +174,13 @@ export struct LayaDecisionDialog {
     this.mobileView = 'result'
     try {
       const report: string = await this.onDecision(prepared.request.state, prepared.request.question.t,
-        prepared.request.question.ins, prepared.options)
+        prepared.request.question.ins, prepared.options, prepared.labels, this.imageUri)
       if (revision !== this.inputRevision) {
         this.resultText = '输入已修改，请重新运行决策。'
         return
       }
-      const result = JSON.parse(report) as LayaNativeResult
-      if (result.logits.length !== prepared.labels.length) throw new Error('模型输出数量与候选项不符')
-      const peak = Math.max(...result.logits)
-      const weights: number[] = result.logits.map((value: number) => Math.exp(value - peak))
+      const result = JSON.parse(report) as DecisionOutput
+      const weights = decisionProbabilities(result, prepared.labels.length)
       const total = weights.reduce((sum: number, value: number) => sum + value, 0)
       const probabilities: Record<string, number> = {}
       for (let index = 0; index < weights.length; index++) {
@@ -270,81 +193,50 @@ export struct LayaDecisionDialog {
       const winner = weights.indexOf(Math.max(...weights))
       const expectedLevel = weights.reduce((sum: number, value: number, index: number) => sum + index * value, 0) / total
       const type = prepared.request.question.t
-      const answer: LayaDisplayAnswer = { type: type, probabilities: probabilities }
+      const answer: DecisionDisplayAnswer = { type: type, probabilities: probabilities }
       if (type === 'score') answer.score = Number(expectedLevel.toFixed(4))
       else if (type === 'noul') answer.noul = probabilities['true']
       else answer.choice = prepared.labels[winner]
-      const displayReport: LayaDisplayReport = {
-        model: LAYA_MODEL_ID,
+      const displayReport: DecisionDisplayReport = {
+        model: this.modelId,
         answers: { question: answer },
         metadata: { task_calibrated: false, elapsed_ms: result.elapsed_ms }
       }
       this.jsonResultText = JSON.stringify(displayReport, null, 2)
       const summary = type === 'score' ? `期望等级：${expectedLevel.toFixed(2)}` : `结果：${prepared.labels[winner]}`
-      this.resultText = `${summary}\n${lines.join('\n')}\n耗时：${result.elapsed_ms} ms\n概率未经任务校准。`
-    } catch (_error) {
+      this.resultText = `${summary}\n${lines.join('\n')}\n耗时：${Math.round(result.elapsed_ms)} ms`
+    } catch (error) {
       this.resultText = revision !== this.inputRevision ? '输入已修改，请重新运行决策。' :
-        '决策失败，请检查模型状态与输入内容。'
+        `决策失败：${formatError(error as Object)}`
     } finally {
       this.running = false
     }
   }
 
   @Builder
-  private ModelInstallBar() {
-    Column({ space: 8 }) {
-      Row({ space: 10 }) {
-        Column({ space: 3 }) {
-          Text(this.modelChecking ? '正在检查 Laya 模型' : this.modelReady ? 'Laya 模型已安装' :
-            this.downloadRunning ? '正在下载 Laya 模型' : 'Laya 模型未安装')
-            .fontSize(13)
-            .fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.text_title'))
-          Text(this.downloadError.length > 0 ? this.downloadError :
-            this.modelReady ? (isLayaLoaded() ? '模型已加载，可运行决策' : '已安装，请在模型页加载') :
-            `${formatBytes(this.downloadBytes)} / ${formatBytes(LAYA_DOWNLOAD_SPEC.totalBytes)} · ModelScope`)
-            .fontSize(11)
-            .fontColor(this.downloadError.length > 0 ? $r('app.color.status_error') : $r('app.color.text_secondary'))
-            .maxLines(2)
-        }
-        .alignItems(HorizontalAlign.Start)
-        .layoutWeight(1)
-        if (!this.modelReady && !this.modelChecking) {
-          Button(this.downloadRunning ? '停止下载' : this.downloadBytes > 0 ? '继续下载' : '下载模型')
-            .height(34)
-            .fontSize(12)
-            .fontColor($r('app.color.button_action_text'))
-            .backgroundColor($r('app.color.button_action_background'))
-            .borderRadius($r('app.float.button_radius'))
-            .onClick(() => {
-              if (this.downloadRunning) this.installService.cancelInstall()
-              else this.downloadModel()
-            })
-        }
-      }
-      .width('100%')
-      Progress({ value: this.downloadProgress, total: 100, type: ProgressType.Linear })
-        .width('100%')
-        .height(5)
-        .color($r('app.color.status_good'))
-        .style({ strokeWidth: 5, strokeRadius: 3 })
-    }
-    .padding(10)
-    .width('100%')
-    .backgroundColor($r('app.color.inset'))
-    .borderRadius($r('app.float.card_radius'))
+  private ModelStatus() {
+    Row({ space: 8 }) {
+      Text(this.modelName).fontSize(13).lineHeight(18)
+        .fontColor($r('app.color.text_secondary')).layoutWeight(1).maxLines(2)
+      Text(this.loaded ? '已加载' : this.installed ? '未加载' : '未安装')
+        .fontSize(11).fontColor(this.loaded ? $r('app.color.tag_green_text') : $r('app.color.text_muted'))
+        .padding({ left: 7, right: 7, top: 3, bottom: 3 }).borderRadius(4)
+        .backgroundColor(this.loaded ? $r('app.color.tag_green_background') : $r('app.color.input_background'))
+    }.width('100%').padding({ top: 2, bottom: 2 })
   }
 
   @Builder
-  private TypeButton(label: string, type: LayaQuestionType) {
-    Button(label)
-      .height(38)
+  private TypeButton(label: string, type: DecisionQuestionType) {
+    Button(label, { type: ButtonType.Normal })
+      .height(32)
       .layoutWeight(1)
       .fontSize(13)
-      .fontColor(this.questionType === type ? $r('app.color.nav_active_text') : $r('app.color.text_secondary'))
-      .backgroundColor(this.questionType === type ? $r('app.color.selected_background') : $r('app.color.input_background'))
-      .borderRadius($r('app.float.button_radius'))
-      .border({ width: 1, color: $r('app.color.border') })
+      .fontColor(this.questionType === type ? $r('app.color.nav_mobile_selected') : $r('app.color.text_muted'))
+      .backgroundColor(this.questionType === type ? $r('app.color.gallery_entry_background') : Color.Transparent)
+      .borderRadius(8)
+      .clip(true)
+      .border({ width: 0 })
+      .enabled(!this.running)
       .onClick(() => {
         if (this.questionType === type) return
         this.questionType = type
@@ -357,17 +249,89 @@ export struct LayaDecisionDialog {
   @Builder
   private InputPane() {
     Column({ space: 12 }) {
+      Scroll() {
+        Column({ space: 10 }) {
+          Row({ space: 8 }) {
+            Text('输入文本').fontSize(12).fontColor($r('app.color.text_secondary')).layoutWeight(1)
+            if (this.supportsImage) {
+              Button(this.imageUri.length > 0 ? '更换图片' : '添加图片')
+                .attributeModifier(new CompactActionStyle()).enabled(!this.running)
+                .onClick(async () => {
+                  const uri = await this.imageService.pickImage()
+                  if (uri !== undefined) { this.imageUri = uri; this.invalidateResult() }
+                })
+            }
+          }.width('100%')
+          TextArea({ placeholder: '粘贴要判断的文本', text: this.stateText })
+            .height(76)
+            .backgroundColor($r('app.color.input_background'))
+            .fontColor($r('app.color.input_text')).fontSize(14).padding(10)
+            .placeholderColor($r('app.color.input_placeholder'))
+            .caretColor($r('app.color.control_accent'))
+            .borderRadius($r('app.float.button_radius'))
+            .border({ width: 1, color: $r('app.color.border') })
+            .onChange((value: string) => { this.stateText = value; this.invalidateResult() })
+          if (this.imageUri.length > 0) {
+            Row({ space: 8 }) {
+              Image(this.imageUri).width(56).height(56).objectFit(ImageFit.Cover).borderRadius(8)
+              Blank()
+              Button('移除图片').attributeModifier(new CompactActionStyle()).enabled(!this.running)
+                .onClick(() => { this.imageUri = ''; this.invalidateResult() })
+            }.width('100%')
+          }
+          Text('任务类型')
+            .fontSize(12)
+            .fontColor($r('app.color.text_title'))
+            .width('100%')
+          Row({ space: 2 }) {
+            this.TypeButton('选择', 'choice')
+            this.TypeButton('评分', 'score')
+            this.TypeButton('是非判断', 'noul')
+          }
+          .width('100%').height(36).padding(2).borderRadius(10).clip(true).backgroundColor($r('app.color.input_background'))
+          Text('任务说明')
+            .fontSize(12)
+            .fontColor($r('app.color.text_title'))
+            .width('100%')
+          TextInput({ placeholder: '例如：这条反馈主要描述什么问题？', text: this.questionText })
+            .attributeModifier(new InputFieldStyle())
+            .border({ width: 1, color: $r('app.color.border') })
+            .onChange((value: string) => { this.questionText = value; this.invalidateResult() })
+          Text(this.questionType === 'choice' ? '候选项（每行“标签：含义”）' :
+            this.questionType === 'score' ? '评分等级（由低到高，每行一个）' : '判断标准（可选：第一行“否”，第二行“是”）')
+            .fontSize(12)
+            .fontColor($r('app.color.text_title'))
+            .width('100%')
+          TextArea({ placeholder: this.questionType === 'choice' ? '界面：页面布局或交互\n运行：模型加载或生成' :
+            this.questionType === 'score' ? '不符合\n部分符合\n完全符合' : '不符合条件\n符合条件', text: this.criteriaText })
+            .height(84)
+            .backgroundColor($r('app.color.input_background'))
+            .fontColor($r('app.color.input_text')).fontSize(14).padding(10)
+            .placeholderColor($r('app.color.input_placeholder'))
+            .caretColor($r('app.color.control_accent'))
+            .borderRadius($r('app.float.button_radius'))
+            .border({ width: 1, color: $r('app.color.border') })
+            .onChange((value: string) => { this.criteriaText = value; this.invalidateResult() })
+        }
+        .width('100%')
+      }
+      .scrollBar(BarState.Auto)
+      .align(Alignment.TopStart)
+      .layoutWeight(1)
+      if (this.validationText.length > 0) {
+      Text(this.validationText)
+        .fontSize(12)
+        .fontColor($r('app.color.status_warning'))
+        .lineHeight(18).maxLines(2)
+        .width('100%')
+      }
       Row({ space: 8 }) {
-        Text('决策输入')
-          .fontSize(15)
-          .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.text_title'))
-          .layoutWeight(1)
+        Button('查看 JSON')
+          .attributeModifier(new CompactActionStyle())
+          .enabled(!this.running)
+          .onClick(() => this.preview())
         Button('填入示例')
-          .fontSize(12)
-          .height(32)
-          .fontColor($r('app.color.button_action_text'))
-          .backgroundColor($r('app.color.button_action_background'))
+          .attributeModifier(new CompactActionStyle())
           .onClick(() => {
             this.stateText = '手机键盘弹出后底部标签也跟着上移。'
             if (this.questionType === 'choice') {
@@ -383,78 +347,9 @@ export struct LayaDecisionDialog {
             this.invalidateResult()
             this.showRawResult = false
           })
-      }
-      .width('100%')
-      Scroll() {
-        Column({ space: 14 }) {
-          Text('输入文本')
-            .fontSize(14)
-            .fontColor($r('app.color.text_title'))
-            .width('100%')
-          TextArea({ placeholder: '粘贴要判断的文本', text: this.stateText })
-            .height(88)
-            .backgroundColor($r('app.color.input_background'))
-            .fontColor($r('app.color.input_text'))
-            .placeholderColor($r('app.color.input_placeholder'))
-            .caretColor($r('app.color.control_accent'))
-            .borderRadius($r('app.float.button_radius'))
-            .border({ width: 1, color: $r('app.color.border') })
-            .onChange((value: string) => { this.stateText = value; this.invalidateResult() })
-          Text('任务类型')
-            .fontSize(14)
-            .fontColor($r('app.color.text_title'))
-            .width('100%')
-          Row({ space: 8 }) {
-            this.TypeButton('选择', 'choice')
-            this.TypeButton('评分', 'score')
-            this.TypeButton('是非判断', 'noul')
-          }
-          .width('100%')
-          Text('任务说明')
-            .fontSize(14)
-            .fontColor($r('app.color.text_title'))
-            .width('100%')
-          TextInput({ placeholder: '例如：这条反馈主要描述什么问题？', text: this.questionText })
-            .attributeModifier(new InputFieldStyle())
-            .border({ width: 1, color: $r('app.color.border') })
-            .onChange((value: string) => { this.questionText = value; this.invalidateResult() })
-          Text(this.questionType === 'choice' ? '候选项（每行“标签：含义”）' :
-            this.questionType === 'score' ? '评分等级（由低到高，每行一个）' : '判断标准（可选：第一行“否”，第二行“是”）')
-            .fontSize(14)
-            .fontColor($r('app.color.text_title'))
-            .width('100%')
-          TextArea({ placeholder: this.questionType === 'choice' ? '界面：页面布局或交互\n运行：模型加载或生成' :
-            this.questionType === 'score' ? '不符合\n部分符合\n完全符合' : '不符合条件\n符合条件', text: this.criteriaText })
-            .height(90)
-            .backgroundColor($r('app.color.input_background'))
-            .fontColor($r('app.color.input_text'))
-            .placeholderColor($r('app.color.input_placeholder'))
-            .caretColor($r('app.color.control_accent'))
-            .borderRadius($r('app.float.button_radius'))
-            .border({ width: 1, color: $r('app.color.border') })
-            .onChange((value: string) => { this.criteriaText = value; this.invalidateResult() })
-        }
-        .width('100%')
-      }
-      .scrollBar(BarState.Auto)
-      .layoutWeight(1)
-      if (this.validationText.length > 0) {
-      Text(this.validationText)
-        .fontSize(12)
-        .fontColor($r('app.color.status_warning'))
-        .height(18)
-        .width('100%')
-      }
-      Row({ space: 8 }) {
-        Button('查看输入 JSON')
-          .layoutWeight(1)
-          .height(40)
-          .fontSize(14)
-          .fontColor($r('app.color.button_secondary_text'))
-          .backgroundColor($r('app.color.button_secondary_background'))
-          .borderRadius($r('app.float.button_radius'))
-          .onClick(() => this.preview())
-        Button(this.running ? '决策中…' : '运行决策')
+        Button(this.running ? '决策中…' : '运行决策', { type: ButtonType.Normal })
+          .attributeModifier(new ActionButtonStyle($r('app.color.button_primary_background'), $r('app.color.button_primary_text')))
+          .enabled(this.loaded && !this.running)
           .layoutWeight(1)
           .height(40)
           .fontSize(14)
@@ -474,10 +369,7 @@ export struct LayaDecisionDialog {
       Row({ space: 8 }) {
         if (showBack) {
           Button('返回修改')
-            .height(32)
-            .fontSize(12)
-            .fontColor($r('app.color.button_action_text'))
-            .backgroundColor($r('app.color.button_action_background'))
+            .attributeModifier(new CompactActionStyle())
             .onClick(() => { this.mobileView = 'input' })
         }
         Text(this.previewText.length > 0 && !this.running && this.resultText.length === 0 ? '输入预览' : '决策结果')
@@ -487,10 +379,7 @@ export struct LayaDecisionDialog {
           .layoutWeight(1)
         if (this.jsonResultText.length > 0 && !this.running) {
           Button(this.showRawResult ? '查看解读' : '查看 JSON')
-            .height(32)
-            .fontSize(12)
-            .fontColor($r('app.color.button_action_text'))
-            .backgroundColor($r('app.color.button_action_background'))
+            .attributeModifier(new CompactActionStyle())
             .onClick(() => { this.showRawResult = !this.showRawResult })
         }
       }
@@ -530,9 +419,9 @@ export struct LayaDecisionDialog {
         .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
         .onClick(() => this.onClose())
 
-      Column({ space: 14 }) {
+      Column({ space: 10 }) {
         Row() {
-          Text('Laya 决策')
+          Text('决策试用')
             .fontSize(20)
             .fontWeight(FontWeight.Bold)
             .fontColor($r('app.color.text_title'))
@@ -546,17 +435,16 @@ export struct LayaDecisionDialog {
           .width(40)
           .height(40)
           .backgroundColor(Color.Transparent)
-          .accessibilityText('关闭 Laya 决策')
+          .accessibilityText('关闭决策窗口')
           .onTouch((event: TouchEvent) => {
             this.isClosePressed = event.type === TouchType.Down
           })
           .onClick(() => this.onClose())
         }
-        Text('根据输入完成选择、评分或是非判断。')
-          .fontSize(13)
-          .fontColor($r('app.color.text_secondary'))
-          .width('100%')
-        this.ModelInstallBar()
+        this.ModelStatus()
+        if (!this.loaded) {
+          Text('请先在模型页加载所选模型。').fontSize(12).fontColor($r('app.color.text_muted')).width('100%')
+        }
         if (this.availableWidth >= 820) {
           Row({ space: 16 }) {
             Column() {
@@ -584,7 +472,7 @@ export struct LayaDecisionDialog {
           .layoutWeight(1)
         }
       }
-      .padding(18)
+      .padding(12)
       .width(Math.max(1, Math.min(840, this.availableWidth - 32)))
       .height(Math.max(1, Math.min(this.availableWidth < 600 ? 640 : 800,
         this.availableHeight * (this.availableWidth < 600 ? 0.78 : 0.85))))

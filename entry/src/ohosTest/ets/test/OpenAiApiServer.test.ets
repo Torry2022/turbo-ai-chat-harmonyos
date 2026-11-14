@@ -51,7 +51,7 @@ export default function openAiApiServerTest(): void {
         .assertEqual(1)
       const yesNo = prepareApiDecision('{"input":"界面错位","task":{"type":"boolean","instruction":"是界面问题？"}}')
       expect(formatApiDecision(yesNo, '{"logits":[0,2],"elapsed_ms":160}').result.probabilities['true'])
-        .assertEqual(0.8808)
+        .assertEqual(1 / (1 + Math.exp(-2)))
     })
 
     it('rejectsDecisionWithoutCandidates', 0, () => {

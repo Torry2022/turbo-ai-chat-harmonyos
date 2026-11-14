@@ -1,3 +1,4 @@
+import util from '@ohos.util'
 import { hilog } from '@kit.PerformanceAnalysisKit'
 import photoAccessHelper from '@ohos.file.photoAccessHelper'
 import fs from '@ohos.file.fs'
@@ -23,8 +24,14 @@ export class ImagePayloadService {
     let source: image.ImageSource | undefined = undefined
     let pixelMap: image.PixelMap | undefined = undefined
     try {
-      file = fs.openSync(uri, fs.OpenMode.READ_ONLY)
-      source = image.createImageSource(file.fd)
+      if (uri.startsWith('data:image/')) {
+        const separator = uri.indexOf(',')
+        const bytes = new util.Base64Helper().decodeSync(uri.substring(separator + 1))
+        source = image.createImageSource(bytes.buffer)
+      } else {
+        file = fs.openSync(uri, fs.OpenMode.READ_ONLY)
+        source = image.createImageSource(file.fd)
+      }
       const sourceInfo = await source.getImageInfo()
       const sourceWidth = sourceInfo.size.width
       const sourceHeight = sourceInfo.size.height
@@ -56,7 +63,10 @@ export class ImagePayloadService {
       return { pixels, width, height }
     } catch (err) {
       hilog.error(0x0000, 'TurboAIChat', 'Image decoding failed: %{public}s', JSON.stringify(err))
-      throw new Error('图片读取失败，请重新选择图片后重试。')
+      const error = new Error(uri.startsWith('data:image/') ? 'image 无法解码，请提供有效的图片数据。' :
+        '图片读取失败，请重新选择图片后重试。')
+      if (uri.startsWith('data:image/')) error.name = 'InvalidImageError'
+      throw error
     } finally {
       if (pixelMap) {
         await pixelMap.release()

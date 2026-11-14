@@ -4,7 +4,8 @@ import util from '@ohos.util'
 import { modelThinkingSupport } from '../utils/modelThinking'
 import { RerankerService } from '../services/RerankerService'
 import { ConversationTitleService, ConversationTitleRequest, conversationTitleSignature } from '../services/ConversationTitleService'
-import { decideLaya, loadLaya, isLayaLoaded, isLayaReady, LayaRuntimeState, observeLayaRuntime, releaseLaya } from '../services/LayaDecisionService'
+import { decide, loadDecision, isDecisionLoaded, isDecisionReady, DecisionRuntimeState, observeDecisionRuntime, releaseDecision, loadedDecisionModel } from '../services/DecisionService'
+import { LAYA_MODEL_ID, LAYA_MODEL_DIRECTORY } from '../models/LayaModelConfig'
 import { ChatConversation, ChatConversationSummary, ChatHistorySearchResult, conversationTitle } from '../models/ChatHistoryTypes'
 import { ChatHistoryService } from '../services/ChatHistoryService'
 import { bundleManager, common } from '@kit.AbilityKit'
@@ -164,8 +165,8 @@ export class ChatViewModel {
   importedModelSystemPromptInput: string = ''
   showDeleteModelDialog: boolean = false
   pendingDeleteModelId: string = ''
-  layaReady: boolean = false
-  layaRuntimeState: LayaRuntimeState = 'idle'
+  decisionReady: boolean = false
+  decisionRuntimeState: DecisionRuntimeState = 'idle'
   apiServerRunning: boolean = false
   apiServerStarting: boolean = false
   apiServerPortInput: string = '8080'
@@ -228,7 +229,8 @@ export class ChatViewModel {
     cancelRerank: () => this.reranker.cancel(),
     isRerankBusy: () => this.reranker.busy || this.rerankLoading || this.busy || this.modelLoading,
     isModelLoaded: () => this.loaded,
-    isDecisionLoaded: () => isLayaLoaded(),
+    isDecisionLoaded: () => isDecisionLoaded(),
+    decisionModel: () => { const model = loadedDecisionModel(); return model ? { id: model.id, name: model.name } : undefined },
     isDecisionBusy: () => this.busy || this.modelLoading || this.reranker.busy,
     isGenerationReady: () => this.loaded && !this.modelScanning && !this.busy && !this.modelLoading,
     currentModel: () => this.apiServerModel(),
@@ -239,7 +241,7 @@ export class ChatViewModel {
       return this.runApiGeneration(request, onChunk)
     },
     decide: (request: PreparedApiDecision) => this.runDecision(request.state, request.type,
-      request.instruction, request.options),
+      request.instruction, request.options, request.labels, request.descriptions, request.image),
     stopGeneration: () => this.stopGeneration(),
     onRequestState: (kind: string, active: boolean) => {
       if (active) {
@@ -310,17 +312,22 @@ export class ChatViewModel {
   initialize(context: common.UIAbilityContext): void {
     this.context = context
     this.filesDir = context.filesDir
+    this.decisionImport.loadImportedProfiles(this.filesDir).then((profiles: ModelProfile[]) => {
+      this.decisionProfiles = profiles
+      this.refreshDecisionReady()
+      this.notify()
+    }).catch((error: Error) => { this.decisionMessage = error.message; this.notify() })
     this.rerankImport.loadImportedProfiles(this.filesDir).then((profiles: ModelProfile[]) => {
       this.rerankProfiles = profiles
       this.rerankSelectedId = profiles[0]?.id ?? ''
       this.notify()
     }).catch(() => { this.rerankMessage = '无法读取重排模型清单，请重新扫描'; this.notify() })
-    observeLayaRuntime((state: LayaRuntimeState) => {
-      this.layaRuntimeState = state
-      this.refreshLayaReady()
+    observeDecisionRuntime((state: DecisionRuntimeState) => {
+      this.decisionRuntimeState = state
+      this.refreshDecisionReady()
       this.notify()
     })
-    this.layaReady = isLayaReady(this.filesDir)
+    this.decisionReady = isDecisionReady(this.filesDir, this.selectedDecisionModel())
     try {
       const bundleInfo = bundleManager.getBundleInfoForSelfSync(
         bundleManager.BundleFlag.GET_BUNDLE_INFO_DEFAULT
@@ -403,6 +410,84 @@ export class ChatViewModel {
   rerankLoading: boolean = false
   rerankImporting: boolean = false
   readonly reranker: RerankerService = new RerankerService()
+  decisionProfiles: ModelProfile[] = []
+  decisionSelectedId: string = LAYA_MODEL_ID
+  decisionImporting: boolean = false
+  decisionMessage: string = ''
+  private deletingDecision: boolean = false
+  private decisionImport: ModelImportService = new ModelImportService(false, true)
+
+  decisionModels(): ModelProfile[] {
+    const models: ModelProfile[] = [{ id: LAYA_MODEL_ID, name: LAYA_MODEL_ID, shortName: 'Laya', directoryName: LAYA_MODEL_DIRECTORY,
+      description: '多语言决策模型，支持选择、评分与是非判断。', supportsImage: false, systemPrompt: '', source: 'builtin' }]
+    return models.concat(this.decisionProfiles)
+  }
+
+  selectedDecisionModel(): ModelProfile {
+    return this.decisionModels().find((model: ModelProfile) => model.id === this.decisionSelectedId) ?? this.decisionModels()[0]
+  }
+
+  loadedDecision(): ModelProfile | undefined { return loadedDecisionModel() }
+
+  selectDecisionModel(id: string): void {
+    if (this.busy || this.modelLoading || this.decisionImporting) return
+    this.decisionSelectedId = id
+    this.refreshDecisionReady()
+    this.notify()
+  }
+
+  async importDecisionModel(folder: boolean = false, scan: boolean = false): Promise<void> {
+    if (this.context === undefined || this.busy || this.modelLoading || this.decisionImporting) return
+    this.decisionImporting = true
+    this.decisionMessage = scan ? '正在扫描决策模型目录...' : '请选择 H2O-Lightning 的完整 MNN 模型目录或 ZIP'
+    this.notify()
+    try {
+      if (scan) {
+        const result = await this.decisionImport.scanPushedModelDirectories(this.filesDir, this.decisionProfiles)
+        this.decisionProfiles = result.profiles
+        this.decisionMessage = result.errors[0] ?? ''
+        if (result.addedProfiles.length > 0) this.decisionSelectedId = result.addedProfiles[0].id
+      } else {
+        const result = await this.decisionImport.pickAndImport(this.context, this.decisionProfiles, folder)
+        if (result !== undefined) {
+          this.decisionProfiles = await this.decisionImport.loadImportedProfiles(this.filesDir)
+          this.decisionSelectedId = result.profile.id
+        }
+        this.decisionMessage = ''
+      }
+    } catch (error) { this.decisionMessage = formatError(error as Object) }
+    finally { this.decisionImporting = false; this.refreshDecisionReady(); this.notify() }
+  }
+
+  requestDeleteDecisionModel(): void {
+    if (this.busy || this.modelLoading || this.decisionImporting || this.decisionSelectedId === LAYA_MODEL_ID) return
+    this.deletingDecision = true
+    this.pendingDeleteModelId = this.decisionSelectedId
+    this.showDeleteModelDialog = true
+    this.notify()
+  }
+
+  private async deleteDecisionModel(): Promise<void> {
+    if (this.busy || this.modelLoading || this.decisionImporting) return
+    const id = this.pendingDeleteModelId
+    this.showDeleteModelDialog = false
+    this.decisionImporting = true
+    this.notify()
+    try {
+      if (loadedDecisionModel()?.id === id) await releaseDecision()
+      this.decisionProfiles = await this.decisionImport.deleteImportedProfile(this.filesDir, id)
+      this.decisionSelectedId = LAYA_MODEL_ID
+      this.decisionMessage = ''
+    } catch (error) { this.decisionMessage = `删除失败：${formatError(error as Object)}` }
+    finally {
+      this.deletingDecision = false
+      this.pendingDeleteModelId = ''
+      this.decisionImporting = false
+      this.refreshDecisionReady()
+      this.notify()
+    }
+  }
+
   private rerankImport: ModelImportService = new ModelImportService(true)
   private deletingReranker: boolean = false
 
@@ -445,7 +530,7 @@ export class ChatViewModel {
 
   async loadRerankModel(): Promise<void> {
     const model = this.selectedReranker()
-    if (model === undefined || this.layaRuntimeState === 'loading' || this.layaRuntimeState === 'running' || this.layaRuntimeState === 'releasing' || this.busy || this.modelLoading || this.reranker.busy || this.rerankImporting) return
+    if (model === undefined || this.decisionRuntimeState === 'loading' || this.decisionRuntimeState === 'running' || this.decisionRuntimeState === 'releasing' || this.busy || this.modelLoading || this.reranker.busy || this.rerankImporting) return
     this.busy = true
     this.rerankLoading = true
     this.modelLoadTarget = 'rerank'
@@ -487,8 +572,8 @@ export class ChatViewModel {
   }
 
   private async runApiRerank(query: string, documents: string[]): Promise<number[]> {
-    if (this.busy || this.modelLoading || this.rerankLoading || this.layaRuntimeState === 'running' ||
-      this.layaRuntimeState === 'loading' || this.layaRuntimeState === 'releasing' || this.reranker.busy) throw new Error('当前模型任务尚未结束')
+    if (this.busy || this.modelLoading || this.rerankLoading || this.decisionRuntimeState === 'running' ||
+      this.decisionRuntimeState === 'loading' || this.decisionRuntimeState === 'releasing' || this.reranker.busy) throw new Error('当前模型任务尚未结束')
     this.busy = true
     this.rerankMessage = '正在重排候选文本...'
     this.notify()
@@ -726,7 +811,7 @@ export class ChatViewModel {
       this.notify()
       return
     }
-    this.layaReady = isLayaReady(this.filesDir)
+    this.decisionReady = isDecisionReady(this.filesDir, this.selectedDecisionModel())
     this.apiServerStartAfterModelLoad = false
     if (this.busy || this.modelLoading) {
       this.apiServerStatus = '当前任务结束后才能启动 API 服务。'
@@ -1256,6 +1341,7 @@ export class ChatViewModel {
   }
 
   cancelDeleteModel(): void {
+    this.deletingDecision = false
     this.deletingReranker = false
     this.pendingDeleteModelId = ''
     this.showDeleteModelDialog = false
@@ -1263,6 +1349,7 @@ export class ChatViewModel {
   }
 
   confirmDeleteModel(): void {
+    if (this.deletingDecision) { this.deleteDecisionModel(); return }
     if (this.deletingReranker) { this.deleteReranker(); return }
     if (this.rejectWhileModelScanning()) {
       return
@@ -1371,6 +1458,7 @@ export class ChatViewModel {
     if (this.pendingDeleteModelId.length <= 0) {
       return undefined
     }
+    if (this.deletingDecision) return this.decisionProfiles.find((model: ModelProfile) => model.id === this.pendingDeleteModelId)
     if (this.deletingReranker) return this.selectedReranker()
     return this.findProfile(this.pendingDeleteModelId)
   }
@@ -1898,32 +1986,32 @@ export class ChatViewModel {
     this.statusTone = tone
   }
 
-  layaStatusText(): string {
-    if (this.layaRuntimeState === 'loading') return '正在加载决策模型'
-    if (this.layaRuntimeState === 'running') return '正在执行决策'
-    if (this.layaRuntimeState === 'releasing') return '正在释放'
-    if (this.layaRuntimeState === 'loaded') return '已加载'
-    return this.layaReady ? '已安装' : '未安装'
+  decisionStatusText(): string {
+    if (this.decisionRuntimeState === 'loading') return '正在加载决策模型'
+    if (this.decisionRuntimeState === 'running') return '正在执行决策'
+    if (this.decisionRuntimeState === 'releasing') return '正在释放'
+    if (this.decisionRuntimeState === 'loaded' && loadedDecisionModel()?.id === this.decisionSelectedId) return '已加载'
+    return this.decisionReady ? '已安装' : '未安装'
   }
 
   async loadDecisionModel(): Promise<void> {
-    if (this.busy || this.modelLoading || this.reranker.busy || isLayaLoaded()) return
+    if (this.busy || this.modelLoading || this.reranker.busy || this.decisionImporting || isDecisionLoaded()) return
     this.busy = true
     this.modelLoadTarget = 'decision'
     this.showModelLoadDialog = true
-    this.modelLoadMessage = '正在加载 Laya 决策模型，请保持应用在前台。'
-    this.setStatus('正在加载 Laya...', 'neutral')
+    this.modelLoadMessage = `正在加载 ${this.selectedDecisionModel().shortName} 决策模型，请保持应用在前台。`
+    this.setStatus(`正在加载 ${this.selectedDecisionModel().shortName}...`, 'neutral')
     this.startModelLoadTimer()
     this.notify()
     try {
       await this.nativeService.cancelTitleGeneration()
-      await loadLaya(this.filesDir)
-      this.setStatus('Laya 决策模型已加载', 'success')
-      this.modelLoadMessage = 'Laya 加载完成，可以用于决策请求。'
+      await loadDecision(this.filesDir, this.selectedDecisionModel())
+      this.setStatus(`${this.selectedDecisionModel().shortName} 决策模型已加载`, 'success')
+      this.modelLoadMessage = `${this.selectedDecisionModel().shortName} 加载完成，可以用于决策请求。`
       this.stopModelLoadTimer()
       this.modelLoadElapsedSeconds = Math.floor((Date.now() - this.modelLoadStartedAt) / 1000)
       setTimeout(() => {
-        if (this.modelLoadTarget === 'decision' && this.layaRuntimeState !== 'loading') {
+        if (this.modelLoadTarget === 'decision' && this.decisionRuntimeState !== 'loading') {
           this.showModelLoadDialog = false
           this.notify()
         }
@@ -1931,7 +2019,7 @@ export class ChatViewModel {
     } catch (error) {
       const message = formatError(error as Object)
       this.setStatus(`决策模型加载失败：${message}`, 'error')
-      this.modelLoadMessage = `Laya 加载失败。\n\n${message}`
+      this.modelLoadMessage = `${this.selectedDecisionModel().shortName} 加载失败。\n\n${message}`
       this.stopModelLoadTimer()
       this.modelLoadElapsedSeconds = 0
     } finally {
@@ -1940,14 +2028,21 @@ export class ChatViewModel {
     }
   }
 
-  async runDecision(state: string, type: string, instruction: string, options: string[]): Promise<string> {
+  async runDecision(state: string, type: string, instruction: string, options: string[],
+    labels: string[] = [], descriptions: string[] = [], imageUri: string = ''): Promise<string> {
     if (this.busy || this.modelLoading || this.reranker.busy) throw new Error('当前模型任务尚未结束')
-    if (!isLayaLoaded()) throw new Error('请先在模型页加载决策模型')
+    if (!isDecisionLoaded()) throw new Error('请先在模型页加载决策模型')
     this.busy = true
     this.notify()
     try {
       await this.nativeService.cancelTitleGeneration()
-      return await decideLaya(this.filesDir, state, type, instruction, options)
+      const names = type === 'score' ? options.map((_value: string, index: number) => `${index}`) : labels
+      const details = descriptions.length > 0 ? descriptions : options.map((value: string) => {
+        const separator = value.indexOf(':')
+        return separator >= 0 ? value.substring(separator + 1).trim() : value
+      })
+      const image = imageUri.length > 0 ? await this.imageService.buildImagePayload(imageUri) : undefined
+      return await decide(this.filesDir, state, type, instruction, options, names, details, image)
     } finally {
       this.busy = false
       this.notify()
@@ -1959,8 +2054,8 @@ export class ChatViewModel {
     this.busy = true
     this.notify()
     try {
-      await releaseLaya()
-      this.setStatus('Laya 决策模型已释放', 'neutral')
+      await releaseDecision()
+      this.setStatus('决策模型已释放', 'neutral')
     } catch (error) {
       this.toastCallback(formatError(error as Object))
     } finally {
@@ -1969,27 +2064,27 @@ export class ChatViewModel {
     }
   }
 
-  refreshLayaReady(): void {
-    const ready = isLayaReady(this.filesDir)
-    if (ready === this.layaReady) return
-    this.layaReady = ready
+  refreshDecisionReady(): void {
+    const ready = isDecisionReady(this.filesDir, this.selectedDecisionModel())
+    if (ready === this.decisionReady) return
+    this.decisionReady = ready
     this.notify()
   }
 
   modelLoadDialogName(): string {
-    if (this.modelLoadTarget === 'decision') return 'Laya（决策模型）'
+    if (this.modelLoadTarget === 'decision') return `${this.selectedDecisionModel().shortName}（决策模型）`
     if (this.modelLoadTarget === 'rerank') return `${this.selectedReranker()?.shortName ?? '重排模型'}（重排模型）`
     return `${this.currentModel().shortName}（MNN）`
   }
 
   modelLoadDialogBusy(): boolean {
-    if (this.modelLoadTarget === 'decision') return this.layaRuntimeState === 'loading'
+    if (this.modelLoadTarget === 'decision') return this.decisionRuntimeState === 'loading'
     if (this.modelLoadTarget === 'rerank') return this.rerankLoading
     return this.modelLoading
   }
 
   modelLoadDialogComplete(): boolean {
-    if (this.modelLoadTarget === 'decision') return isLayaLoaded()
+    if (this.modelLoadTarget === 'decision') return isDecisionLoaded()
     if (this.modelLoadTarget === 'rerank') return this.loadedReranker() !== undefined
     return this.loaded
   }
@@ -1999,22 +2094,22 @@ export class ChatViewModel {
   }
 
   headerStatus(): string {
-    if (this.layaRuntimeState === 'loading') return '正在加载决策模型...'
-    if (this.layaRuntimeState === 'running') return '正在执行决策...'
-    if (this.layaRuntimeState === 'releasing') return '正在释放 Laya...'
+    if (this.decisionRuntimeState === 'loading') return '正在加载决策模型...'
+    if (this.decisionRuntimeState === 'running') return '正在执行决策...'
+    if (this.decisionRuntimeState === 'releasing') return '正在释放决策模型...'
     if (!this.loaded && !this.busy && !this.modelLoading && this.status === '模型未加载' &&
-      this.layaRuntimeState === 'loaded') return 'Laya 决策模型已加载'
+      this.decisionRuntimeState === 'loaded') return `${loadedDecisionModel()?.shortName ?? this.selectedDecisionModel().shortName} 决策模型已加载`
     return this.headerText()
   }
 
   headerColor(): ResourceColor {
-    if (this.layaRuntimeState === 'loading' || this.layaRuntimeState === 'running' ||
-      this.layaRuntimeState === 'releasing') return $r('app.color.status_warning')
+    if (this.decisionRuntimeState === 'loading' || this.decisionRuntimeState === 'running' ||
+      this.decisionRuntimeState === 'releasing') return $r('app.color.status_warning')
     if (this.statusTone === 'error') return $r('app.color.status_error_alt')
     if (this.busy || this.modelLoading || this.speechRecognitionStarting || this.speechRecognizing ||
       this.speechRecognitionStopping) return $r('app.color.status_warning')
     if (this.statusTone === 'warning') return $r('app.color.status_warning')
-    return this.loaded || this.layaRuntimeState === 'loaded' || this.statusTone === 'success' ? $r('app.color.status_good') : $r('app.color.text_muted')
+    return this.loaded || this.decisionRuntimeState === 'loaded' || this.statusTone === 'success' ? $r('app.color.status_good') : $r('app.color.text_muted')
   }
 
   private headerText(): string {
@@ -2381,7 +2476,7 @@ export class ChatViewModel {
           this.rerankSelectedId = profiles.find((profile: ModelProfile) => profile.catalogItemId === installedItem.id)?.id ?? this.rerankSelectedId
           this.rerankMessage = ''
         }
-        if (installedItem.modelType === 'decision') this.refreshLayaReady()
+        if (installedItem.modelType === 'decision') this.refreshDecisionReady()
       }
       this.builtinModelInstalling = false
       this.busy = false

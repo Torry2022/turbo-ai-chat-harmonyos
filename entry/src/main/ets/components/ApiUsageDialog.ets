@@ -81,12 +81,12 @@ export struct ApiUsageDialog {
                 this.Endpoint('GET', '/v1/models', '查询可调用的模型')
                 this.Endpoint('GET', '/turbo/runtime', '查询模型状态与设备运行指标')
               } else {
-                Text(this.mode === 'rerank' ? '本地重排 API' : this.mode === 'decision' ? 'Laya 决策 API' : 'OpenAI 兼容聊天 API')
+                Text(this.mode === 'rerank' ? '本地重排 API' : this.mode === 'decision' ? '本地决策 API' : 'OpenAI 兼容聊天 API')
                   .fontSize(14).fontWeight(FontWeight.Medium)
                   .fontColor($r('app.color.text_title')).width('100%')
                 Text(this.mode === 'rerank' ?
                   '向 /v1/rerank 发送 POST 请求。query 为问题，documents 为候选文本数组，top_n 为可选的返回数量。结果按相关性降序排列，index 对应输入位置（从 0 开始）。需先在模型页加载重排模型。' : this.mode === 'decision' ?
-                  '向 API 地址后的 /v1/decisions 发送 POST 请求，Content-Type 设为 application/json。需先在模型页安装并加载决策模型。下方为选择题的请求体示例。' :
+                  '向 API 地址后的 /v1/decisions 发送 POST 请求，Content-Type 设为 application/json。需先在模型页安装并加载决策模型。省略 model 时使用已加载的决策模型。H2O-Lightning 可用 image 传入 PNG、JPEG 或 WebP 的 Base64 数据 URI，请求体上限 1 MiB。下方为选择题示例。' :
                     '在 Cherry Studio 等客户端中选择 OpenAI 兼容服务，填入本页 API 地址和 API Key，通过 GET /v1/models 获取模型列表。聊天需先在模型页加载模型，支持 Chat Completions 和 Responses 请求。')
                   .fontSize(13).lineHeight(21).fontColor($r('app.color.text_secondary')).width('100%')
                 if (this.mode !== 'chat' && this.mode !== 'overview' && this.mode !== 'log') {

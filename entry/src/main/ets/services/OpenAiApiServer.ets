@@ -1,3 +1,4 @@
+import { decisionProbabilities, DecisionOutput } from '../utils/decisionOutput'
 import { LAYA_MODEL_ID } from '../models/LayaModelConfig'
 import { RerankResponse, RerankRequest, validateRerankRequest, rankScores } from '../utils/rerank'
 import connection from '@ohos.net.connection'
@@ -60,6 +61,7 @@ export interface ApiServerCallbacks {
   cancelRerank: () => void
   isRerankBusy: () => boolean
   isModelLoaded: () => boolean
+  decisionModel?: () => ApiServerModel | undefined
   isDecisionLoaded: () => boolean
   isDecisionBusy: () => boolean
   isGenerationReady: () => boolean
@@ -117,12 +119,15 @@ interface ApiDecisionTask {
 }
 
 interface ApiDecisionBody {
+  image?: string
   model?: string
   input: string
   task: ApiDecisionTask
 }
 
 export interface PreparedApiDecision {
+  descriptions?: string[]
+  image?: string
   state: string
   type: LayaDecisionType
   resultType: ApiDecisionType
@@ -131,7 +136,8 @@ export interface PreparedApiDecision {
   options: string[]
 }
 
-interface ApiDecisionNativeResult {
+interface ApiDecisionNativeResult extends DecisionOutput {
+  probabilities?: number[]
   logits: number[]
   elapsed_ms: number
 }
@@ -145,6 +151,8 @@ interface ApiDecisionAnswer {
 }
 
 interface ApiDecisionMetadata {
+  cpu_threads?: number
+  input_tokens?: number
   task_calibrated: boolean
   elapsed_ms: number
 }
@@ -691,7 +699,7 @@ export class OpenAiApiServer {
       data.push({ id: model.id, object: 'model', created: 0, owned_by: SERVER_OWNER })
     }
     if (this.callbacks.isDecisionLoaded()) {
-      data.push({ id: DECISION_MODEL_ID, object: 'model', created: 0, owned_by: SERVER_OWNER })
+      data.push({ id: this.callbacks.decisionModel?.()?.id ?? DECISION_MODEL_ID, object: 'model', created: 0, owned_by: SERVER_OWNER })
     }
     const payload: ApiModelList = { object: 'list', data }
     this.sendJson(state, 200, payload)
@@ -753,7 +761,7 @@ export class OpenAiApiServer {
   private handleDecision(state: HttpConnectionState, bodyText: string): void {
     let request: PreparedApiDecision
     try {
-      request = prepareApiDecision(bodyText)
+      request = prepareApiDecision(bodyText, this.callbacks.decisionModel?.()?.id ?? DECISION_MODEL_ID)
     } catch (err) {
       this.callbacks.onLog('ERROR', `400 POST /v1/decisions · ${errorMessage(err)}`)
       this.sendError(state, 400, 'invalid_request_error', errorMessage(err))
@@ -779,12 +787,14 @@ export class OpenAiApiServer {
     this.activeRequestKind = 'decision'
     this.callbacks.onRequestState('decision', true)
     Promise.resolve().then(() => this.callbacks.decide(request)).then((raw: string) => {
-      const response = formatApiDecision(request, raw)
+      const response = formatApiDecision(request, raw, this.callbacks.decisionModel?.()?.id ?? DECISION_MODEL_ID)
       if (!state.closed) this.sendJson(state, 200, response)
       this.callbacks.onLog('RESP', `200 POST /v1/decisions · ${Date.now() - startedAt} ms`)
     }).catch((err: Error) => {
-      if (!state.closed) this.sendError(state, 500, 'decision_failed', errorMessage(err))
-      this.callbacks.onLog('ERROR', `500 POST /v1/decisions · ${errorMessage(err)}`)
+      const status = err.name === 'InvalidImageError' ? 400 : 500
+      const code = status === 400 ? 'invalid_request_error' : 'decision_failed'
+      if (!state.closed) this.sendError(state, status, code, errorMessage(err))
+      this.callbacks.onLog('ERROR', `${status} POST /v1/decisions · ${errorMessage(err)}`)
     }).finally(() => {
       if (this.activeClientId === clientId && this.activeRequestKind === 'decision') {
         this.activeClientId = -1
@@ -1209,16 +1219,22 @@ export class OpenAiApiServer {
   }
 }
 
-export function prepareApiDecision(bodyText: string): PreparedApiDecision {
+export function prepareApiDecision(bodyText: string, modelId: string = DECISION_MODEL_ID): PreparedApiDecision {
   const body = JSON.parse(bodyText.replace(/^\uFEFF/, '')) as ApiDecisionBody
-  if (body === null || typeof body !== 'object' || typeof body.input !== 'string' || body.input.trim().length === 0 ||
+  if (body === null || typeof body !== 'object' || typeof body.input !== 'string' || (body.input.trim().length === 0 && !body.image) ||
     body.task === undefined || body.task === null ||
     typeof body.task.instruction !== 'string' || body.task.instruction.trim().length === 0) {
     throw new Error('请填写 input 和 task.instruction。')
   }
-  if (body.model !== undefined && body.model !== DECISION_MODEL_ID) {
-    throw new Error(`当前仅支持 ${DECISION_MODEL_ID}。`)
+  if (body.model !== undefined && body.model !== modelId) {
+    throw new Error(`当前已加载的决策模型为 ${modelId}。`)
   }
+  if (body.image !== undefined && (modelId === DECISION_MODEL_ID || typeof body.image !== 'string' ||
+    !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(body.image))) {
+    throw new Error(modelId === DECISION_MODEL_ID ? '当前决策模型不支持图片。' : 'image 应为 PNG、JPEG 或 WebP 的 Base64 数据 URI。')
+  }
+  const maximum = modelId === DECISION_MODEL_ID ? 20 : 255
+  const descriptions: string[] = []
   const task = body.task
   const labels: string[] = []
   const options: string[] = []
@@ -1233,21 +1249,23 @@ export function prepareApiDecision(bodyText: string): PreparedApiDecision {
         throw new Error('候选项须包含非空标签和文本。')
       }
       const description = criteria[label].trim()
+      descriptions.push(description.length > 0 ? description : label)
       labels.push(label)
       options.push(description.length > 0 ? `${label}: ${description}` : label)
     }
     if (labels.length < 2) throw new Error('选择题至少需要两个候选项。')
-    if (labels.length > 20) throw new Error('选择题最多支持 20 个候选项。')
+    if (labels.length > maximum) throw new Error(`选择题最多支持 ${maximum} 个候选项。`)
   } else if (task.type === 'score') {
     if (!Array.isArray(task.levels) || task.levels.length < 2) {
       throw new Error('评分题的 task.levels 至少需要两个等级。')
     }
-    if (task.levels.length > 20) throw new Error('评分题最多支持 20 个等级。')
+    if (task.levels.length > maximum) throw new Error(`评分题最多支持 ${maximum} 个等级。`)
     const criteria = task.levels as string[]
     for (let index = 0; index < criteria.length; index++) {
       if (typeof criteria[index] !== 'string' || criteria[index].trim().length === 0) {
         throw new Error('评分等级不能为空。')
       }
+      descriptions.push(criteria[index].trim())
       labels.push(`等级 ${index}`)
       options.push(`level ${index}: ${criteria[index].trim()}`)
     }
@@ -1262,43 +1280,49 @@ export function prepareApiDecision(bodyText: string): PreparedApiDecision {
     if (typeof falseText !== 'string' || typeof trueText !== 'string') {
       throw new Error('判断标准须为文本。')
     }
+    descriptions.push(falseText, trueText)
     labels.push('否', '是')
     options.push(`false: ${falseText}`, `true: ${trueText}`)
   } else {
     throw new Error('task.type 只支持 choice、score 或 boolean。')
   }
-  return {
+  const prepared: PreparedApiDecision = {
     state: body.input.trim(), type: task.type === 'boolean' ? 'noul' : task.type,
     resultType: task.type, instruction: task.instruction.trim(), labels, options
   }
+  if (modelId !== DECISION_MODEL_ID) prepared.descriptions = descriptions
+  if (body.image !== undefined) prepared.image = body.image
+  return prepared
 }
 
-export function formatApiDecision(request: PreparedApiDecision, raw: string): ApiDecisionResponse {
+export function formatApiDecision(request: PreparedApiDecision, raw: string, modelId: string = DECISION_MODEL_ID): ApiDecisionResponse {
   const result = JSON.parse(raw) as ApiDecisionNativeResult
-  if (!Array.isArray(result.logits) || result.logits.length !== request.labels.length ||
-    !result.logits.every((value: number) => Number.isFinite(value))) {
-    throw new Error('Laya 模型输出与候选项不符。')
-  }
-  const peak = Math.max(...result.logits)
-  const weights = result.logits.map((value: number) => Math.exp(value - peak))
+  const weights = decisionProbabilities(result, request.labels.length)
   const total = weights.reduce((sum: number, value: number) => sum + value, 0)
   const probabilities: Record<string, number> = {}
   for (let index = 0; index < weights.length; index++) {
     const key = request.type === 'choice' ? request.labels[index] :
       request.type === 'score' ? `${index}` : index === 0 ? 'false' : 'true'
-    probabilities[key] = Number((weights[index] / total).toFixed(4))
+    probabilities[key] = weights[index]
   }
   const answer: ApiDecisionAnswer = { type: request.resultType, probabilities }
   if (request.type === 'choice') answer.choice = request.labels[weights.indexOf(Math.max(...weights))]
   else if (request.type === 'score') {
     answer.score = Number((weights.reduce((sum: number, value: number, index: number) =>
       sum + index * value, 0) / total).toFixed(4))
-  } else answer.value = probabilities['true'] >= probabilities['false']
-  return {
-    model: DECISION_MODEL_ID,
-    result: answer,
-    metadata: { task_calibrated: false, elapsed_ms: result.elapsed_ms }
+  } else answer.value = weights[1] >= weights[0]
+  const metadata: ApiDecisionMetadata = { task_calibrated: false, elapsed_ms: result.elapsed_ms }
+  if (result.input_tokens !== undefined) {
+    if (!Number.isSafeInteger(result.input_tokens) || result.input_tokens < 0)
+      throw new Error('模型返回的输入词元数无效')
+    metadata.input_tokens = result.input_tokens
   }
+  if (result.cpu_threads !== undefined) {
+    if (!Number.isInteger(result.cpu_threads) || result.cpu_threads < 1 || result.cpu_threads > 16)
+      throw new Error('模型返回的实际线程数无效')
+    metadata.cpu_threads = result.cpu_threads
+  }
+  return { model: modelId, result: answer, metadata }
 }
 
 export function splitApiOutput(rawText: string, finalValue: boolean): ApiReasoningOutput {

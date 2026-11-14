@@ -16,7 +16,13 @@ vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(__dirname,
   '../entry/src/main/ets/models/LayaModelConfig.ets'), 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 }
 }).outputText, configContext);
-const context = { exports: {}, LAYA_MODEL_ID: configContext.exports.LAYA_MODEL_ID };
+const probabilityContext = {exports:{}};
+vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(__dirname,
+  '../entry/src/main/ets/utils/decisionOutput.ets'),'utf8'), {
+  compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}
+}).outputText, probabilityContext);
+const context = { exports: {}, LAYA_MODEL_ID: configContext.exports.LAYA_MODEL_ID,
+  decisionProbabilities: probabilityContext.exports.decisionProbabilities };
 vm.runInNewContext(ts.transpileModule(selected.map(node => node.getText(ast)).join('\n'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 }
 }).outputText, context);
@@ -54,7 +60,7 @@ assert.throws(() => request({ input: 'x', task: { type: 'choice', instruction: '
   options: Object.fromEntries(Array.from({ length: 21 }, (_, index) => [`item${index}`, `Option ${index}`])) } }), /最多支持 20 个候选项/);
 assert.throws(() => request({ input: 'x', task: { type: 'score', instruction: 'Score',
   levels: Array.from({ length: 21 }, (_, index) => `Level ${index}`) } }), /最多支持 20 个等级/);
-assert.throws(() => request({ model: 'unknown', input: 'x', task: { type: 'boolean', instruction: 'Check' } }), /当前仅支持/);
+assert.throws(() => request({ model: 'unknown', input: 'x', task: { type: 'boolean', instruction: 'Check' } }), /当前已加载的决策模型/);
 assert.throws(() => request({ input: 'x', task: { type: 'noul', instruction: 'Check' } }), /只支持 choice、score 或 boolean/);
 console.log('PASS decision request mapping and response formatting');
 
@@ -118,3 +124,62 @@ for (const responsesApi of [false, true]) {
   assert.equal(status, 409);
 }
 console.log('PASS unloaded chat returns 503 while busy chat returns 409 for both API formats');
+
+const h2oId = 'H2O-Lightning-4B-MNN-INT8';
+const h2o = prepareApiDecision(JSON.stringify({model:h2oId,input:'',image:'data:image/png;base64,YQ==',
+  task:{type:'choice',instruction:'Color?',options:{blue:'Blue',red:'Red'}}}),h2oId);
+assert.deepEqual(Array.from(h2o.descriptions),['Blue','Red']);
+const h2oResult = formatApiDecision(h2o,JSON.stringify({logits:[1,9],probabilities:[0.8,0.2],elapsed_ms:4}),h2oId);
+assert.equal(h2oResult.model,h2oId);
+assert.equal(h2oResult.result.choice,'blue');
+assert.equal(h2oResult.result.probabilities.blue,0.8);
+assert.throws(()=>formatApiDecision(h2o,JSON.stringify({logits:[1,2],probabilities:[0.8,0.8]})),/概率无效/);
+assert.throws(()=>prepareApiDecision(JSON.stringify({input:'x',image:'file://private',task:{type:'boolean',instruction:'x'}}),h2oId),/数据 URI/);
+const nearTie = formatApiDecision(boolean,JSON.stringify({logits:[0,0],probabilities:[0.50001,0.49999],elapsed_ms:1}),h2oId);
+assert.equal(nearTie.result.value,false);
+console.log('PASS H2O model identity, image validation, calibrated probabilities and boolean rounding');
+
+async function verifyDecisionFailureStatus() {
+  context.errorMessage = error => error.message;
+  server.callbacks.isDecisionBusy = () => false;
+  server.callbacks.onRequestState = () => {};
+  for (const [name, expectedStatus] of [['InvalidImageError', 400], ['Error', 500]]) {
+    server.callbacks.decide = async () => {
+      const error = new Error('Invalid image data');
+      error.name = name;
+      throw error;
+    };
+    status = undefined;
+    context.exports.OpenAiApiServer.prototype.handleDecision.call(server,
+      { connection: { clientId: 7 }, closed: false }, decisionBody);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(status, expectedStatus);
+    assert.equal(server.activeClientId, -1);
+  }
+  console.log('PASS invalid image returns 400, inference failure returns 500 and request state is released');
+}
+verifyDecisionFailureStatus().catch(error => { console.error(error); process.exitCode = 1; });
+
+const preciseProbabilities = [0.5000100123456789, 0.4999899876543211];
+const preciseRaw = {logits: [0, 0], probabilities: preciseProbabilities, elapsed_ms: 6, input_tokens: 1984};
+const preciseResult = formatApiDecision(h2o, JSON.stringify(preciseRaw), h2oId);
+assert.equal(preciseResult.result.probabilities.blue, preciseProbabilities[0]);
+assert.equal(preciseResult.result.probabilities.red, preciseProbabilities[1]);
+assert.notEqual(preciseResult.result.probabilities.blue, preciseResult.result.probabilities.red);
+assert.equal(preciseResult.metadata.input_tokens, 1984);
+assert.equal(preciseResult.metadata.elapsed_ms, 6);
+assert.equal(preciseResult.metadata.task_calibrated, false);
+const legacyMetadata = formatApiDecision(boolean, native([0, 2])).metadata;
+assert.equal(Object.hasOwn(legacyMetadata, 'input_tokens'), false);
+assert.equal(formatApiDecision(h2o, JSON.stringify({...preciseRaw, input_tokens: 0}), h2oId).metadata.input_tokens, 0);
+for (const invalid of [-1, 1.5, '1984']) {
+  assert.throws(() => formatApiDecision(h2o, JSON.stringify({...preciseRaw, input_tokens: invalid}), h2oId), /输入词元数无效/);
+}
+console.log('PASS unrounded native probabilities, actual input tokens and legacy metadata compatibility');
+
+assert.equal(formatApiDecision(h2o, JSON.stringify({...preciseRaw, cpu_threads: 8}), h2oId).metadata.cpu_threads, 8);
+assert.equal(Object.hasOwn(legacyMetadata, 'cpu_threads'), false);
+for (const invalid of [0, 17, 4.5, '8']) {
+  assert.throws(() => formatApiDecision(h2o, JSON.stringify({...preciseRaw, cpu_threads: invalid}), h2oId), /实际线程数无效/);
+}
+console.log('PASS verified CPU thread receipt and legacy compatibility');

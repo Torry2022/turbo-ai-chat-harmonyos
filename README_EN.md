@@ -312,11 +312,13 @@ The chat API accepts text input, serves the currently loaded chat model, and pro
 
 `GET /turbo/runtime` exposes CPU, memory, temperature, threads, storage and chat-model state using the same server authentication. It remains available during generation without opening the Monitor page. Numeric fields have explicit units and sample timestamps; see the [runtime API reference](docs/runtime-api_EN.md). Both the Monitor page and chat memory indicator use RSS (resident memory).
 
-### Laya Decision API
+### Decision API
 
-Install and load Laya in the Decision Model category, then call `/v1/decisions` on the same API server. A chat model is not required. After releasing the decision model, load it again before making another request.
+Select and load a model in the Decision Model category, then call `/v1/decisions`. One decision model can be loaded at a time. Release it before switching to another. Chat, decision, and reranking models are managed separately while the API server remains running.
 
-`POST /v1/decisions` supports `choice`, `score`, and `boolean` tasks. See the Service page’s API Guide for copyable request examples. Laya uses separate model files rather than chat-model ZIP import; weights are not included in the HAP.
+Download Laya from the Model Gallery. Import H2O-Lightning as a complete MNN directory or ZIP, or push its directory into `decision-models/` under the app's files directory and select Scan Model Directories. The H2O package's `config.json` must contain `"decision_engine": "h2o-lightning"` and `"decision_contract": "h2o-lightning-v1.4.2"`, alongside the backbone, embeddings, tokenizer, and visual model. Model weights are installed separately.
+
+`POST /v1/decisions` supports `choice`, `score`, and `boolean` tasks. Omit `model` to use the loaded decision model, or supply its ID from `GET /v1/models`. H2O-Lightning also accepts an optional `image` field containing a PNG, JPEG, or WebP Base64 data URI. Its trial dialog provides an image picker. The complete request body is limited to 1 MiB. Returned candidate probabilities preserve each model's calculation rules and numeric precision. H2O responses include the actual input token count in `metadata.input_tokens`, including the prompt template and options. `metadata.cpu_threads` reports the verified runtime CPU thread count. H2O loads `thread_num` from the model’s `config.json`, accepting integers from 1 to 16 and defaulting to 4 when omitted. Scores are probability-weighted expected levels. The Service page's API Guide includes request examples.
 
 ## Install from HAP
 

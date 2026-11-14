@@ -16,7 +16,7 @@ const code = ts.transpileModule(declaration.getText(ast).replace('export class',
   compilerOptions: { target: ts.ScriptTarget.ES2020 }
 }).outputText;
 
-async function check(name, run, reranker = false) {
+async function check(name, run, reranker = false, decision = false) {
   let available = 1e12;
   let unzipError = false;
   let link = false;
@@ -58,7 +58,7 @@ async function check(name, run, reranker = false) {
     IMPORTED_MODELS_DIR: 'model-imports', IMPORTED_MODEL_SOURCE: 'imported',
     DEFAULT_IMPORTED_MODEL_PROMPT: '', CHAT_FORMAT_MNN_AUTO: 'mnn'
   });
-  const service = new Service(reranker);
+  const service = new Service(reranker, decision);
   Object.assign(service, {
     pickSource: async () => '/selected', ensureDir: async () => {},
     exists: async () => true,
@@ -187,4 +187,15 @@ async function check(name, run, reranker = false) {
     await assert.rejects(t.service.pickAndImport({ filesDir: '/app' }, [], true), /校验模型目录失败/);
     assert.equal(t.saved(), undefined);
   });
+  await check('decision imports use a separate directory and require the matching contract', async t => {
+    assert.equal(t.service.importRoot('/app'), '/app/decision-models');
+    t.fs.readText = async () => '\uFEFF' + JSON.stringify({
+      decision_engine: 'h2o-lightning', decision_contract: 'h2o-lightning-v1.4.2'
+    });
+    await t.service.requireDecisionPackage('/model/config.json');
+    t.fs.readText = async () => '{}';
+    await assert.rejects(t.service.requireDecisionPackage('/model/config.json'), /决策配置/);
+    t.fs.readText = async () => JSON.stringify({ decision_engine: 'h2o-lightning', decision_contract: 'unknown' });
+    await assert.rejects(t.service.requireDecisionPackage('/model/config.json'), /决策配置/);
+  }, false, true);
 })().catch(err => { console.error(err); process.exitCode = 1; });

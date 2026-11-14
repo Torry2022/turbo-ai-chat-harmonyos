@@ -26,9 +26,9 @@ export struct ModelTab {
   @StorageProp('darkAppearance') private darkAppearance: boolean = true
   @ObjectLink viewModel: ChatViewModel
   @Prop @Watch('onRenderVersionChange') renderVersion: number = 0
-  @Prop layaReady: boolean = false
-  @Prop layaStatus: string = '未安装'
-  onLayaDecision: () => void = () => {}
+  @Prop decisionReady: boolean = false
+  @Prop decisionStatus: string = '未安装'
+  onDecisionTrial: () => void = () => {}
   onDragStateChange: (dragging: boolean) => void = (_dragging: boolean) => {}
   @State sliderMaxNewTokens: number = DEFAULT_MAX_NEW_TOKENS
   @State sliderTemperature: number = DEFAULT_TEMPERATURE
@@ -86,6 +86,7 @@ export struct ModelTab {
     return !this.viewModel.busy &&
       !this.viewModel.modelLoading &&
       !this.viewModel.modelImporting &&
+      !this.viewModel.decisionImporting &&
       !this.viewModel.builtinModelInstalling &&
       !this.viewModel.apiServerStarting
   }
@@ -450,37 +451,40 @@ export struct ModelTab {
   @Builder
   private DecisionModelCard() {
     Column({ space: 10 }) {
-      Column({ space: 4 }) {
-        Row({ space: 6 }) {
-          Text(LAYA_MODEL_ID)
-            .fontSize(14).fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.text_title')).layoutWeight(1)
-          if (this.layaStatus === '已加载') {
-            this.CapabilityTag('已加载', $r('app.color.tag_green_text'), $r('app.color.tag_green_background'))
-          }
-        }
-        .width('100%')
-        Text('多语言决策模型，支持选择、评分与是非判断。')
-          .fontSize(12).lineHeight(18).fontColor($r('app.color.text_note')).width('100%')
-      }
-      .width('100%').padding(10).backgroundColor($r('app.color.selected_background')).borderRadius(8)
-      if (this.layaReady) {
-        Button(this.layaStatus === '已加载' ? '释放模型' : this.layaStatus === '正在加载决策模型' ? '加载中…' : '加载当前模型')
-          .attributeModifier(new ActionButtonStyle(this.layaStatus === '已加载' ? $r('app.color.button_secondary_background') : $r('app.color.button_primary_background'),
-            this.layaStatus === '已加载' ? $r('app.color.button_secondary_text') : $r('app.color.button_primary_text')))
+      ForEach(this.viewModel.decisionModels(), (model: ModelProfile) => {
+        Column({ space: 4 }) {
+          Row({ space: 6 }) {
+            Text(model.name).fontSize(14).fontWeight(FontWeight.Medium)
+              .fontColor($r('app.color.text_title')).layoutWeight(1)
+            if (model.id === this.viewModel.loadedDecision()?.id) {
+              this.CapabilityTag('已加载', $r('app.color.tag_green_text'), $r('app.color.tag_green_background'))
+            }
+          }.width('100%')
+          Text(model.description).fontSize(12).lineHeight(18)
+            .fontColor($r('app.color.text_note')).width('100%')
+        }.width('100%').padding(10).borderRadius(8)
+        .backgroundColor(model.id === this.viewModel.decisionSelectedId ?
+          $r('app.color.selected_background') : $r('app.color.list_background'))
+        .onClick(() => this.viewModel.selectDecisionModel(model.id))
+      }, (model: ModelProfile) => model.id)
+      if (this.decisionReady || this.viewModel.loadedDecision()) {
+        Button(this.viewModel.loadedDecision() ? '释放模型' : this.decisionStatus === '正在加载决策模型' ? '加载中…' : '加载当前模型')
+          .attributeModifier(new ActionButtonStyle(this.viewModel.loadedDecision() ? $r('app.color.button_secondary_background') : $r('app.color.button_primary_background'),
+            this.viewModel.loadedDecision() ? $r('app.color.button_secondary_text') : $r('app.color.button_primary_text')))
           .enabled(this.controlsEnabled())
           .width('100%')
           .onClick(() => {
-            if (this.layaStatus === '已加载') this.viewModel.releaseDecisionModel()
+            if (this.viewModel.loadedDecision()) this.viewModel.releaseDecisionModel()
             else this.viewModel.loadDecisionModel()
           })
       }
-      Button(this.layaReady ? '进入决策' : '下载模型')
+      Button(this.decisionReady ? '进入决策' : this.viewModel.decisionSelectedId === LAYA_MODEL_ID ? '下载模型' : '扫描模型目录')
         .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
         .width('100%')
         .onClick(() => {
-          if (this.layaReady) this.onLayaDecision()
-          else this.viewModel.openModelMarketDialog()
+          if (this.decisionReady) this.onDecisionTrial()
+          else if (this.viewModel.decisionSelectedId === LAYA_MODEL_ID) this.viewModel.openModelMarketDialog()
+          else this.viewModel.importDecisionModel(false, true)
         })
     }
     .width('100%')
@@ -1028,6 +1032,32 @@ export struct ModelTab {
             }.width('100%').padding(12).backgroundColor($r('app.color.inset')).borderRadius($r('app.float.card_radius'))
           } else {
             this.DecisionGuideCard()
+            Column({ space: 10 }) {
+              this.SectionTitle('模型管理')
+              Text('可从模型广场下载 Laya，或导入 H2O-Lightning 的完整 MNN 模型目录。')
+                .fontSize(12).lineHeight(18).fontColor($r('app.color.text_muted')).width('100%')
+              Button('选择文件夹导入')
+                .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
+                .width('100%').enabled(this.controlsEnabled() && !this.viewModel.decisionImporting)
+                .onClick(() => this.viewModel.importDecisionModel(true))
+              Button(this.viewModel.decisionImporting ? '正在导入' : '选择压缩包导入')
+                .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
+                .width('100%').enabled(this.controlsEnabled() && !this.viewModel.decisionImporting)
+                .onClick(() => this.viewModel.importDecisionModel())
+              Button('扫描模型目录')
+                .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
+                .width('100%').enabled(this.controlsEnabled() && !this.viewModel.decisionImporting)
+                .onClick(() => this.viewModel.importDecisionModel(false, true))
+              if (this.viewModel.decisionSelectedId !== LAYA_MODEL_ID) {
+                Button('删除当前模型')
+                  .attributeModifier(new ActionButtonStyle($r('app.color.button_danger_background'), $r('app.color.button_danger_text')))
+                  .width('100%').enabled(this.controlsEnabled() && !this.viewModel.decisionImporting)
+                  .onClick(() => this.viewModel.requestDeleteDecisionModel())
+              }
+              if (this.viewModel.decisionMessage.length > 0) {
+                Text(this.viewModel.decisionMessage).fontSize(12).fontColor($r('app.color.text_muted')).width('100%')
+              }
+            }.width('100%').padding(12).backgroundColor($r('app.color.inset')).borderRadius($r('app.float.card_radius'))
           }
         }
         .width(this.contentWidth >= 800 ?

@@ -10,7 +10,7 @@ import { DesktopTitleBar } from '../components/DesktopTitleBar'
 import { DesktopHelpDialog } from '../components/DesktopHelpDialog'
 import { ApiServerTab } from '../components/ApiServerTab'
 import { ApiUsageDialog } from '../components/ApiUsageDialog'
-import { LayaDecisionDialog } from '../components/LayaDecisionDialog'
+import { DecisionDialog } from '../components/DecisionDialog'
 import { PhoneTabs } from '../components/PhoneTabs'
 import { BottomTabs } from '../components/BottomTabs'
 import { BuiltinModelInstallDialog } from '../components/BuiltinModelInstallDialog'
@@ -41,7 +41,7 @@ struct Index {
   private tabTransitionSerial: number = 0
   @State @Watch('onSettingsChanged') private showSettings: boolean = false
   @State @Watch('onSettingsChanged') private helpDialog: string = ''
-  @State @Watch('onSettingsChanged') private showLayaDecision: boolean = false
+  @State @Watch('onSettingsChanged') private showDecision: boolean = false
   @State @Watch('onSettingsChanged') private apiUsageMode: string = ''
   @State private apiUsageExample: string = ''
   @State private dialogExitBlocking: boolean = false
@@ -109,8 +109,8 @@ struct Index {
       this.apiUsageMode = ''
       return true
     }
-    if (this.showLayaDecision) {
-      this.showLayaDecision = false
+    if (this.showDecision) {
+      this.showDecision = false
       return true
     }
     if (this.helpDialog.length > 0) {
@@ -212,7 +212,7 @@ struct Index {
 
   private modalFocusId(): string {
     if (this.apiUsageMode.length > 0) return 'api-usage-dialog'
-    if (this.showLayaDecision) return 'laya-decision-dialog'
+    if (this.showDecision) return 'decision-dialog'
     if (this.helpDialog.length > 0) return 'desktop-help-dialog'
     if (this.showSettings) return 'settings-dialog'
     if (this.viewModel.showDeleteModelDialog) return 'delete-dialog'
@@ -298,8 +298,8 @@ struct Index {
         this.apiUsageMode = ''
         return true
       }
-      if (this.showLayaDecision) {
-        this.showLayaDecision = false
+      if (this.showDecision) {
+        this.showDecision = false
         return true
       }
       if (this.helpDialog.length > 0) {
@@ -320,7 +320,7 @@ struct Index {
       this.newChatKeyHeld = false
       return false
     }
-    if (this.apiUsageMode.length > 0 || this.showLayaDecision || this.helpDialog.length > 0 || this.showSettings || this.activeTab !== 0 || !event.getModifierKeyState?.(['ctrl']) ||
+    if (this.apiUsageMode.length > 0 || this.showDecision || this.helpDialog.length > 0 || this.showSettings || this.activeTab !== 0 || !event.getModifierKeyState?.(['ctrl']) ||
       this.viewModel.showModelLoadDialog || this.viewModel.showBuiltinModelInstallDialog ||
       this.viewModel.showModelMarketDialog || this.viewModel.showDeleteModelDialog) {
       return false
@@ -424,7 +424,7 @@ struct Index {
         viewModel: this.viewModel,
         renderVersion: this.stateVersion,
         active: this.activeTab === 0,
-        dialogVisible: this.apiUsageMode.length > 0 || this.showLayaDecision || this.helpDialog.length > 0 || this.dialogExitBlocking || this.showSettings || this.viewModel.showModelLoadDialog || this.viewModel.showBuiltinModelInstallDialog ||
+        dialogVisible: this.apiUsageMode.length > 0 || this.showDecision || this.helpDialog.length > 0 || this.dialogExitBlocking || this.showSettings || this.viewModel.showModelLoadDialog || this.viewModel.showBuiltinModelInstallDialog ||
           this.viewModel.showModelMarketDialog || this.viewModel.showDeleteModelDialog
       })
       .padding({ left: this.usePhoneTabs() || this.windowWidth >= 840 ? 0 : this.pagePadding(), right: this.usePhoneTabs() ? 0 : this.pagePadding() })
@@ -450,9 +450,9 @@ struct Index {
       onContentScroll: (yOffset: number): void => {
         this.handleLongPageScroll(yOffset)
       },
-      layaReady: this.viewModel.layaReady,
-      layaStatus: this.viewModel.layaStatusText(),
-      onLayaDecision: () => { this.showLayaDecision = true },
+      decisionReady: this.viewModel.decisionReady,
+      decisionStatus: this.viewModel.decisionStatusText(),
+      onDecisionTrial: () => { this.showDecision = true },
       extendBottom: this.windowWidth >= 600,
       bottomOverlayInset: this.windowWidth < 600 && !this.keyboardVisible && !this.usePhoneTabs() ?
         this.mobileNavigationHeight() : 0,
@@ -479,8 +479,8 @@ struct Index {
       onContentScroll: (yOffset: number): void => {
         this.handleLongPageScroll(yOffset)
       },
-      layaReady: this.viewModel.layaReady,
-      layaStatus: this.viewModel.layaStatusText(),
+      decisionReady: this.viewModel.decisionReady,
+      decisionStatus: this.viewModel.decisionStatusText(),
       onApiHelp: (mode: 'log' | 'rerank' | 'chat' | 'decision', example: string) => {
         this.apiUsageMode = mode
         this.apiUsageExample = example
@@ -735,20 +735,24 @@ struct Index {
         .focusable(true)
         .onAppear(() => this.updateModalFocus(true))
       }
-      if (this.showLayaDecision) {
-        LayaDecisionDialog({
+      if (this.showDecision) {
+        DecisionDialog({
           availableWidth: this.windowWidth,
           availableHeight: this.windowHeight,
-          filesDir: this.abilityContext?.filesDir ?? '',
-          onModelReady: () => { this.viewModel.refreshLayaReady() },
-          onDecision: (state: string, type: string, instruction: string, options: string[]) =>
-            this.viewModel.runDecision(state, type, instruction, options),
+
+          modelId: this.viewModel.selectedDecisionModel().id,
+          modelName: this.viewModel.selectedDecisionModel().shortName,
+          supportsImage: this.viewModel.selectedDecisionModel().supportsImage,
+          installed: this.viewModel.decisionReady,
+          loaded: this.viewModel.loadedDecision()?.id === this.viewModel.decisionSelectedId,
+          onDecision: (state: string, type: string, instruction: string, options: string[], labels: string[], imageUri: string) =>
+            this.viewModel.runDecision(state, type, instruction, options, labels, [], imageUri),
           onClose: () => {
-            this.showLayaDecision = false
-            this.viewModel.refreshLayaReady()
+            this.showDecision = false
+            this.viewModel.refreshDecisionReady()
           }
         })
-        .id('laya-decision-dialog')
+        .id('decision-dialog')
         .focusable(true)
         .onAppear(() => this.updateModalFocus(true))
       }

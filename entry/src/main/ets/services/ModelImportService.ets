@@ -33,9 +33,15 @@ import {
 } from '../utils/modelNaming'
 import { ModelDirectoryPreflightService } from './ModelDirectoryPreflightService'
 
+interface DecisionPackageConfig {
+  decision_engine?: string
+  decision_contract?: string
+}
+
 export class ModelImportService {
   private reranker: boolean = false
-  constructor(reranker: boolean = false) { this.reranker = reranker }
+  private decision: boolean = false
+  constructor(reranker: boolean = false, decision: boolean = false) { this.reranker = reranker; this.decision = decision }
   private preflightService: ModelDirectoryPreflightService = new ModelDirectoryPreflightService()
 
   async pickAndImport(context: common.UIAbilityContext, existingProfiles: ModelProfile[], folder: boolean = false): Promise<ModelImportResult | undefined> {
@@ -90,8 +96,9 @@ export class ModelImportService {
         throw new Error('模型包中未找到 config.json')
       }
 
+      if (this.decision) await this.requireDecisionPackage(configPath)
       const supportsImage = await this.detectSupportsImage(configPath)
-      await this.preflightService.requireCompatible(configPath, supportsImage, [], !this.reranker)
+      await this.preflightService.requireCompatible(configPath, supportsImage, [], !this.reranker && !this.decision)
 
       const sourceName = this.inferName(zipUri, configPath, targetDir)
       const inferredName = uniqueModelName(sourceName, existingProfiles)
@@ -101,7 +108,7 @@ export class ModelImportService {
         name: inferredName,
         shortName: inferredShortName,
         directoryName: modelId,
-        description: this.reranker ? '用户导入的 MNN 重排模型。' : '用户导入的 MNN 模型。',
+        description: this.decision ? 'H2O-Lightning 多模态决策模型，支持选择、评分与是非判断。' : this.reranker ? '用户导入的 MNN 重排模型。' : '用户导入的 MNN 模型。',
         supportsImage,
         systemPrompt: DEFAULT_IMPORTED_MODEL_PROMPT,
         source: IMPORTED_MODEL_SOURCE,
@@ -170,13 +177,17 @@ export class ModelImportService {
       }
 
       const supportsImage = await this.detectSupportsImage(configPath)
-      const preflight = await this.preflightService.validate(configPath, supportsImage, [], !this.reranker)
+      const preflight = await this.preflightService.validate(configPath, supportsImage, [], !this.reranker && !this.decision)
       if (!preflight.compatible) {
         skippedCount++
         errors.push(`${directoryName}：${preflight.message}`)
         continue
       }
 
+      if (this.decision) {
+        try { await this.requireDecisionPackage(configPath) }
+        catch (error) { errors.push(`${directoryName}：${formatError(error as Object)}`); continue }
+      }
       const profilePool = existingProfiles.concat(nextProfiles)
       const sourceName = this.inferNameFromDirectory(configPath, targetDir, directoryName)
       const inferredName = uniqueModelName(sourceName, profilePool)
@@ -186,7 +197,7 @@ export class ModelImportService {
         name: inferredName,
         shortName: inferredShortName,
         directoryName,
-        description: this.reranker ? '用户导入的 MNN 重排模型。' : '用户导入的 MNN 模型。',
+        description: this.decision ? 'H2O-Lightning 多模态决策模型，支持选择、评分与是非判断。' : this.reranker ? '用户导入的 MNN 重排模型。' : '用户导入的 MNN 模型。',
         supportsImage,
         systemPrompt: DEFAULT_IMPORTED_MODEL_PROMPT,
         source: IMPORTED_MODEL_SOURCE,
@@ -385,8 +396,14 @@ export class ModelImportService {
     return files
   }
 
+  private async requireDecisionPackage(configPath: string): Promise<void> {
+    const config = JSON.parse((await fs.readText(configPath)).replace(/^\uFEFF/, '')) as DecisionPackageConfig
+    if (config.decision_engine !== 'h2o-lightning' || config.decision_contract !== 'h2o-lightning-v1.4.2')
+      throw new Error('请选择带有 H2O-Lightning 决策配置的完整 MNN 模型包')
+  }
+
   private importRoot(filesDir: string): string {
-    return `${filesDir}/${this.reranker ? 'rerank-models' : IMPORTED_MODELS_DIR}`
+    return `${filesDir}/${this.decision ? 'decision-models' : this.reranker ? 'rerank-models' : IMPORTED_MODELS_DIR}`
   }
 
   private storePath(filesDir: string): string {
