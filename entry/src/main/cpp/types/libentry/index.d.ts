@@ -60,7 +60,7 @@ export const stopGeneration: () => void;
 export const reset: () => void;
 export const isLoaded: () => boolean;
 
-export const layaLoadAsync: (modelPath: string, tokenizerPath: string) => Promise<void>;
+export const layaLoadAsync: (modelPath: string, tokenizerPath: string, threads?: number) => Promise<string>;
 export const layaDecideAsync: (modelPath: string, tokenizerPath: string, state: string,
   type: string, instruction: string, options: string[]) => Promise<string>;
 export const layaReleaseAsync: () => Promise<void>;

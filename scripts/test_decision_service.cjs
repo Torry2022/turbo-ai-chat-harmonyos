@@ -63,6 +63,13 @@ const h2o = {id:'h2o',configPath:'/h2o/config.json'};
     assert.equal(service.isDecisionLoaded(), false);
     assert.equal(states.at(-1), 'idle');
   }
+  threadConfig = {thread_num: 8};
+  await service.loadDecision('/files', h2o, 2);
+  assert.equal(loadedThreads, 2);
+  await service.releaseDecision();
+  await service.loadDecision('/files', h2o, 12);
+  assert.equal(loadedThreads, 12);
+  await service.releaseDecision();
   threadConfig = {};
   failLoad = true;
   await assert.rejects(service.loadDecision('/files',h2o));

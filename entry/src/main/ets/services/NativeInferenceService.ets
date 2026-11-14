@@ -7,6 +7,7 @@ export interface ModelThreadWidth {
 }
 
 export interface NativeModelThreadInfo {
+  maxThreads: number
   chat: ModelThreadWidth
   rerank: ModelThreadWidth
 }

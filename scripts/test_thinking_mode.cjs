@@ -64,7 +64,7 @@ console.log('PASS thinking controls follow actual template branches and model de
 const source = fs.readFileSync(path.join(root,'state/ChatViewModel.ets'),'utf8');
 const ast = ts.createSourceFile('view.ts',source,ts.ScriptTarget.Latest,true);
 const declaration = ast.statements.find(node => ts.isClassDeclaration(node) && node.name.text==='ChatViewModel');
-const names=['loadThinkingSettings','refreshThinkingMode','setThinkingEnabled','resetThinkingMode','saveThinkingSettings','currentGenerationSettings'];
+const names=['settingFeedback','loadThinkingSettings','refreshThinkingMode','setThinkingEnabled','resetThinkingMode','saveThinkingSettings','currentGenerationSettings'];
 const members=declaration.members.filter(node=>node.name && (names.includes(node.name.getText(ast)) || node.name.getText(ast).startsWith('thinking')));
 let read = async name => name.endsWith('llm_config.json') ? llm : '{}';
 const store = new Map();
@@ -74,7 +74,7 @@ const Subject = vm.runInNewContext(compile(`class Subject { ${members.map(node=>
 });
 const flush=async()=>{for(let i=0;i<20;i++) await Promise.resolve();};
 (async()=>{
-  const view=new Subject();Object.assign(view,{context:{},selectedModelId:'model-a',modelPath:'/a/config.json',notify:()=>{},toastCallback:message=>{throw Error(message);}});
+  const view=new Subject();Object.assign(view,{context:{},selectedModelId:'model-a',modelPath:'/a/config.json',notify:()=>{},toastCallback:message=>{assert.equal(message, '下次生成使用此思考设置');}});
   await view.loadThinkingSettings();await flush();assert.equal(view.thinkingSupported,true);assert.equal(view.thinkingEnabled,true);
   assert.equal(view.currentGenerationSettings().thinkingEnabled,undefined,'untouched settings preserve the native model default');
   view.setThinkingEnabled(false);await flush();assert.equal(view.currentGenerationSettings().thinkingEnabled,false);

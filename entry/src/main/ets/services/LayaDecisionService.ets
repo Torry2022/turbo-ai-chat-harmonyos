@@ -23,13 +23,15 @@ export function isLayaLoaded(): boolean {
   return runtimeState === 'loaded' || runtimeState === 'running'
 }
 
-export async function loadLaya(filesDir: string): Promise<void> {
+export async function loadLaya(filesDir: string, threads: number = 4): Promise<void> {
+  if (!Number.isInteger(threads) || threads < 1 || threads > 16) throw new Error('推理线程应为 1 至 16 的整数')
   if (isRerankerActive() || runtimeState !== 'idle') throw new Error('请等待当前模型任务结束')
   if (!isLayaReady(filesDir)) throw new Error('请先下载完整的决策模型')
   setRuntimeState('loading')
   try {
-    await entry.layaLoadAsync(`${filesDir}/${LAYA_MODEL_DIRECTORY}/${LAYA_MODEL_FILE}`,
-      `${filesDir}/${LAYA_MODEL_DIRECTORY}/${LAYA_TOKENIZER_FILE}`)
+    const receipt: string = await entry.layaLoadAsync(`${filesDir}/${LAYA_MODEL_DIRECTORY}/${LAYA_MODEL_FILE}`,
+      `${filesDir}/${LAYA_MODEL_DIRECTORY}/${LAYA_TOKENIZER_FILE}`, threads)
+    console.info(`[ModelThreads] Laya requested=${threads} receipt=${receipt}`)
     setRuntimeState('loaded')
   } catch (error) {
     setRuntimeState('idle')

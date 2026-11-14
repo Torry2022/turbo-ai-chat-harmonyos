@@ -40,6 +40,7 @@ export struct ModelTab {
   @State sliderPenaltyWindow: number = DEFAULT_PENALTY_WINDOW
   @State generationExpanded: boolean = false
   @State runtimeExpanded: boolean = false
+  @State decisionRuntimeExpanded: boolean = false
   @State importedConfigExpanded: boolean = false
   @State visibleModelProfiles: ModelProfile[] = []
   @State draggingModelId: string = ''
@@ -491,6 +492,47 @@ export struct ModelTab {
   }
 
   @Builder
+  private DecisionRuntimeCard() {
+    Column({ space: 10 }) {
+      Row() {
+        Text('运行配置').fontSize(16).fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.text_title')).layoutWeight(1)
+        Text(this.decisionRuntimeExpanded ? '收起 ▲' : '展开 ▼')
+          .fontSize(12).fontColor($r('app.color.button_action_text'))
+      }.width('100%').onClick(() => {
+        this.getUIContext().animateTo({ duration: 220, curve: Curve.EaseInOut }, () => {
+          this.decisionRuntimeExpanded = !this.decisionRuntimeExpanded
+        })
+      })
+      if (this.viewModel.decisionRuntimeHint().length > 0) {
+        Text(this.viewModel.decisionRuntimeHint())
+          .fontSize(11).fontColor($r('app.color.text_model_hint')).width('100%')
+      }
+      if (this.decisionRuntimeExpanded) {
+        Column({ space: 10 }) {
+          Text(`推理线程：${this.viewModel.decisionThreads}`)
+            .fontSize(12).fontColor($r('app.color.text_secondary')).width('100%')
+          Slider({ value: this.viewModel.decisionThreads, min: 1, max: this.viewModel.threadMax, step: 1 })
+            .attributeModifier(new ParameterSliderStyle())
+            .enabled(this.controlsEnabled() && this.viewModel.decisionRuntimeState !== 'running' && this.viewModel.decisionRuntimeState !== 'loading' && this.viewModel.decisionRuntimeState !== 'releasing')
+            .onChange((value: number, mode: SliderChangeMode) => {
+              this.viewModel.decisionThreads = Math.round(value)
+              if (mode === SliderChangeMode.End || mode === SliderChangeMode.Click) {
+                this.viewModel.settingFeedback(this.viewModel.decisionRuntimeHint())
+              }
+            })
+          if (this.viewModel.decisionRuntimeChanged()) {
+            Button('重新加载')
+              .attributeModifier(new ActionButtonStyle($r('app.color.button_primary_background'), $r('app.color.button_primary_text')))
+              .width('100%').enabled(this.controlsEnabled())
+              .onClick(() => this.viewModel.reloadDecisionModel())
+          }
+        }.width('100%').transition(TransitionEffect.OPACITY)
+      }
+    }.width('100%').padding(12).backgroundColor($r('app.color.inset')).borderRadius($r('app.float.card_radius'))
+  }
+
+  @Builder
   private DecisionGuideCard() {
     Column({ space: 10 }) {
       this.SectionTitle('使用方式')
@@ -523,9 +565,12 @@ export struct ModelTab {
       Slider({ value: this.sliderMaxNewTokens, min: 128, max: this.viewModel.maxGenerationTokens, step: 128 })
         .attributeModifier(new ParameterSliderStyle())
         .enabled(this.controlsEnabled())
-        .onChange((value: number, _mode: SliderChangeMode) => {
+        .onChange((value: number, mode: SliderChangeMode) => {
           this.sliderMaxNewTokens = Math.round(value)
           this.viewModel.updateMaxNewTokens(this.sliderMaxNewTokens, false)
+          if (mode === SliderChangeMode.End || mode === SliderChangeMode.Click) {
+            this.viewModel.settingFeedback('下次生成使用当前参数')
+          }
         })
     }
     .width('100%')
@@ -544,9 +589,12 @@ export struct ModelTab {
       Slider({ value: this.sliderTemperature, min: 0, max: 2, step: 0.05 })
         .attributeModifier(new ParameterSliderStyle())
         .enabled(this.controlsEnabled())
-        .onChange((value: number, _mode: SliderChangeMode) => {
+        .onChange((value: number, mode: SliderChangeMode) => {
           this.sliderTemperature = Math.round(value * 100) / 100
           this.viewModel.updateTemperature(this.sliderTemperature, false)
+          if (mode === SliderChangeMode.End || mode === SliderChangeMode.Click) {
+            this.viewModel.settingFeedback('下次生成使用当前参数')
+          }
         })
     }
     .width('100%')
@@ -565,9 +613,12 @@ export struct ModelTab {
       Slider({ value: this.sliderTopP, min: 0.05, max: 1, step: 0.05 })
         .attributeModifier(new ParameterSliderStyle())
         .enabled(this.controlsEnabled())
-        .onChange((value: number, _mode: SliderChangeMode) => {
+        .onChange((value: number, mode: SliderChangeMode) => {
           this.sliderTopP = Math.round(value * 100) / 100
           this.viewModel.updateTopP(this.sliderTopP, false)
+          if (mode === SliderChangeMode.End || mode === SliderChangeMode.Click) {
+            this.viewModel.settingFeedback('下次生成使用当前参数')
+          }
         })
     }
     .width('100%')
@@ -586,9 +637,12 @@ export struct ModelTab {
       Slider({ value: this.sliderTopK, min: 1, max: 128, step: 1 })
         .attributeModifier(new ParameterSliderStyle())
         .enabled(this.controlsEnabled())
-        .onChange((value: number, _mode: SliderChangeMode) => {
+        .onChange((value: number, mode: SliderChangeMode) => {
           this.sliderTopK = Math.round(value)
           this.viewModel.updateTopK(this.sliderTopK, false)
+          if (mode === SliderChangeMode.End || mode === SliderChangeMode.Click) {
+            this.viewModel.settingFeedback('下次生成使用当前参数')
+          }
         })
     }
     .width('100%')
@@ -607,9 +661,12 @@ export struct ModelTab {
       Slider({ value: this.sliderRepetitionPenalty, min: 1, max: 1.5, step: 0.05 })
         .attributeModifier(new ParameterSliderStyle())
         .enabled(this.controlsEnabled())
-        .onChange((value: number, _mode: SliderChangeMode) => {
+        .onChange((value: number, mode: SliderChangeMode) => {
           this.sliderRepetitionPenalty = Math.round(value * 100) / 100
           this.viewModel.updateRepetitionPenalty(this.sliderRepetitionPenalty, false)
+          if (mode === SliderChangeMode.End || mode === SliderChangeMode.Click) {
+            this.viewModel.settingFeedback('下次生成使用当前参数')
+          }
         })
     }
     .width('100%')
@@ -628,9 +685,12 @@ export struct ModelTab {
       Slider({ value: this.sliderFrequencyPenalty, min: 0, max: 1, step: 0.05 })
         .attributeModifier(new ParameterSliderStyle())
         .enabled(this.controlsEnabled())
-        .onChange((value: number, _mode: SliderChangeMode) => {
+        .onChange((value: number, mode: SliderChangeMode) => {
           this.sliderFrequencyPenalty = Math.round(value * 100) / 100
           this.viewModel.updateFrequencyPenalty(this.sliderFrequencyPenalty, false)
+          if (mode === SliderChangeMode.End || mode === SliderChangeMode.Click) {
+            this.viewModel.settingFeedback('下次生成使用当前参数')
+          }
         })
     }
     .width('100%')
@@ -649,9 +709,12 @@ export struct ModelTab {
       Slider({ value: this.sliderPresencePenalty, min: 0, max: 1, step: 0.05 })
         .attributeModifier(new ParameterSliderStyle())
         .enabled(this.controlsEnabled())
-        .onChange((value: number, _mode: SliderChangeMode) => {
+        .onChange((value: number, mode: SliderChangeMode) => {
           this.sliderPresencePenalty = Math.round(value * 100) / 100
           this.viewModel.updatePresencePenalty(this.sliderPresencePenalty, false)
+          if (mode === SliderChangeMode.End || mode === SliderChangeMode.Click) {
+            this.viewModel.settingFeedback('下次生成使用当前参数')
+          }
         })
     }
     .width('100%')
@@ -670,9 +733,12 @@ export struct ModelTab {
       Slider({ value: this.sliderPenaltyWindow, min: 0, max: 2048, step: 64 })
         .attributeModifier(new ParameterSliderStyle())
         .enabled(this.controlsEnabled())
-        .onChange((value: number, _mode: SliderChangeMode) => {
+        .onChange((value: number, mode: SliderChangeMode) => {
           this.sliderPenaltyWindow = Math.round(value)
           this.viewModel.updatePenaltyWindow(this.sliderPenaltyWindow, false)
+          if (mode === SliderChangeMode.End || mode === SliderChangeMode.Click) {
+            this.viewModel.settingFeedback('下次生成使用当前参数')
+          }
         })
     }
     .width('100%')
@@ -730,6 +796,8 @@ export struct ModelTab {
       }
       if (this.generationExpanded) {
         Column({ space: 10 }) {
+          Text('参数调整后用于下一次生成，无需重新加载模型').fontSize(11)
+            .fontColor($r('app.color.text_model_hint')).width('100%')
           this.GenerationSliders()
           Button('恢复默认')
             .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
@@ -737,6 +805,7 @@ export struct ModelTab {
             .width('100%')
             .onClick(() => {
               this.resetGenerationSliders()
+              this.viewModel.settingFeedback('已恢复默认参数，下次生成生效')
             })
         }.width('100%').transition(TransitionEffect.OPACITY)
       }
@@ -768,7 +837,7 @@ export struct ModelTab {
           this.runtimeExpanded = !this.runtimeExpanded
         })
       })
-      Text('可修改模型文件路径和 CPU 推理线程数，修改后需重新加载模型')
+      Text('可修改模型文件路径和 CPU 推理线程数')
         .fontSize(11)
         .fontColor($r('app.color.text_model_hint'))
         .width('100%')
@@ -805,25 +874,30 @@ export struct ModelTab {
               .fontColor($r('app.color.text_body'))
           }
           .width('100%')
-          Slider({ value: this.viewModel.threadNum, min: 2, max: 8, step: 1 })
+          Slider({ value: this.viewModel.threadNum, min: 1, max: this.viewModel.threadMax, step: 1 })
             .attributeModifier(new ParameterSliderStyle())
             .enabled(this.controlsEnabled())
             .onChange((value: number, _mode: SliderChangeMode) => {
               this.viewModel.updateThreadNum(value)
+              if (_mode === SliderChangeMode.End || _mode === SliderChangeMode.Click) {
+                this.viewModel.settingFeedback(this.viewModel.threadConfigHint())
+              }
             })
-          Text('更改后需重新加载模型生效')
+          Text(this.viewModel.loaded ? '修改后点击重新加载以应用配置' : '点击模型列表中的加载按钮以应用配置')
             .fontSize(11)
             .fontColor($r('app.color.text_model_hint'))
             .width('100%')
         }
         .width('100%')
-          Button(this.viewModel.loaded ? '应用并重新加载' : '应用并加载')
-            .attributeModifier(new ActionButtonStyle($r('app.color.button_primary_background'), $r('app.color.button_primary_text')))
-            .enabled(this.controlsEnabled())
-            .width('100%')
-            .onClick(() => {
-              this.viewModel.applyRuntimeConfigAndLoad()
-            })
+          if (this.viewModel.loaded && this.viewModel.runtimeConfigDirty) {
+            Button('重新加载')
+              .attributeModifier(new ActionButtonStyle($r('app.color.button_primary_background'), $r('app.color.button_primary_text')))
+              .enabled(this.controlsEnabled())
+              .width('100%')
+              .onClick(() => {
+                this.viewModel.applyRuntimeConfigAndLoad()
+              })
+          }
         }.width('100%').transition(TransitionEffect.OPACITY)
       }
     }
@@ -1031,6 +1105,7 @@ export struct ModelTab {
               RerankerModels({ viewModel: this.viewModel, renderVersion: this.renderVersion, management: true })
             }.width('100%').padding(12).backgroundColor($r('app.color.inset')).borderRadius($r('app.float.card_radius'))
           } else {
+            this.DecisionRuntimeCard()
             this.DecisionGuideCard()
             Column({ space: 10 }) {
               this.SectionTitle('模型管理')

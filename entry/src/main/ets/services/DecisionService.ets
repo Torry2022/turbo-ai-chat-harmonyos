@@ -28,19 +28,20 @@ export function isDecisionReady(filesDir: string, model: ModelProfile): boolean 
   try { return fs.statSync(model.configPath ?? '').isFile() } catch (_) { return false }
 }
 
-export async function loadDecision(filesDir: string, model: ModelProfile): Promise<void> {
+export async function loadDecision(filesDir: string, model: ModelProfile, requestedThreads?: number): Promise<void> {
   if (state !== 'idle' || isRerankerActive()) throw new Error('请先释放已加载的决策模型，并等待当前任务结束')
   update('loading')
   try {
-    if (model.id === LAYA_MODEL_ID) await loadLaya(filesDir)
+    if (model.id === LAYA_MODEL_ID) await loadLaya(filesDir, requestedThreads ?? 4)
     else {
       await new ModelDirectoryPreflightService().requireCompatible(model.configPath ?? '', true, [], false)
       const configPath = model.configPath ?? ''
       const config = JSON.parse((await fs.readText(configPath)).replace(/^\uFEFF/, '')) as DecisionThreadConfig
-      const threads = config.thread_num ?? 4
+      const threads = requestedThreads ?? config.thread_num ?? 4
       if (!Number.isInteger(threads) || threads < 1 || threads > 16)
         throw new Error('决策模型 thread_num 应为 1 至 16 的整数')
-      await entry.h2oLoadAsync(configPath, threads)
+      const receipt: string = await entry.h2oLoadAsync(configPath, threads)
+      console.info(`[ModelThreads] H2O requested=${threads} receipt=${receipt}`)
     }
     loaded = model
     update('loaded')

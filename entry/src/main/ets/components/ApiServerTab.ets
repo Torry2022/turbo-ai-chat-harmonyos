@@ -225,6 +225,7 @@ export struct ApiServerTab {
 
       Column({ space: 6 }) {
         this.SectionTitle('连接设置')
+        this.Label('服务停止时可修改端口，启动服务时生效。')
         Row({ space: 8 }) {
           Column({ space: 4 }) {
             this.Label('API 地址（点击下方复制）')
@@ -265,6 +266,7 @@ export struct ApiServerTab {
               .onChange((value: string) => {
                 this.viewModel.updateApiServerPort(value)
               })
+              .onBlur(() => this.viewModel.confirmApiPort())
           }
           .width(82)
           .alignItems(HorizontalAlign.Start)
@@ -294,7 +296,7 @@ export struct ApiServerTab {
         .width('100%')
         .alignItems(VerticalAlign.Center)
 
-        this.Label('开启后，调用 API 需携带有效的 API Key。')
+        this.Label('开启后，调用 API 需携带有效的 API Key。鉴权设置和密钥在下次启动服务时生效。')
 
         if (this.apiServerRequireKey) {
           this.Label('API Key（点击下方复制）')

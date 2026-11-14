@@ -111,6 +111,8 @@ export class ChatViewModel {
   private historyTimer: number = -1
   private historyCloseHandler: () => boolean = () => false
   maxNewTokens: number = DEFAULT_MAX_NEW_TOKENS
+  threadMax: number = 16
+  decisionThreads: number = 4
   threadNum: number = DEFAULT_THREAD_NUM
   temperature: number = DEFAULT_TEMPERATURE
   topP: number = DEFAULT_TOP_P
@@ -119,6 +121,10 @@ export class ChatViewModel {
   frequencyPenalty: number = DEFAULT_FREQUENCY_PENALTY
   presencePenalty: number = DEFAULT_PRESENCE_PENALTY
   penaltyWindow: number = DEFAULT_PENALTY_WINDOW
+  private loadedModelPath: string = ''
+  private decisionLoadedThreads: number = 0
+  private rerankLoadedThreads: number = 0
+  private rerankLoadedTokens: number = 0
   runtimeConfigDirty: boolean = false
   startupAutoLoadEnabled: boolean = false
   startupModelId: string = ''
@@ -310,6 +316,10 @@ export class ChatViewModel {
   }
 
   initialize(context: common.UIAbilityContext): void {
+    this.threadMax = this.nativeService.modelThreadInfo().maxThreads
+    this.threadNum = Math.min(this.threadNum, this.threadMax)
+    this.rerankThreads = Math.min(this.rerankThreads, this.threadMax)
+    this.decisionThreads = Math.min(this.decisionThreads, this.threadMax)
     this.context = context
     this.filesDir = context.filesDir
     this.decisionImport.loadImportedProfiles(this.filesDir).then((profiles: ModelProfile[]) => {
@@ -528,8 +538,7 @@ export class ChatViewModel {
     finally { this.rerankImporting = false; this.notify() }
   }
 
-  async loadRerankModel(): Promise<void> {
-    const model = this.selectedReranker()
+  async loadRerankModel(model: ModelProfile | undefined = this.selectedReranker(), reloading: boolean = false): Promise<void> {
     if (model === undefined || this.decisionRuntimeState === 'loading' || this.decisionRuntimeState === 'running' || this.decisionRuntimeState === 'releasing' || this.busy || this.modelLoading || this.reranker.busy || this.rerankImporting) return
     this.busy = true
     this.rerankLoading = true
@@ -543,6 +552,9 @@ export class ChatViewModel {
     try {
       await this.nativeService.cancelTitleGeneration()
       await this.reranker.load(model, this.rerankThreads, this.rerankMaxTokens)
+      this.rerankLoadedThreads = this.rerankThreads
+      this.rerankLoadedTokens = this.rerankMaxTokens
+      if (reloading) this.toastCallback('运行配置已应用')
       this.rerankMessage = ''
       this.setStatus(`${model.shortName} 已加载`, 'success')
       this.modelLoadMessage = `${model.shortName} 加载完成，可以用于重排请求。`
@@ -566,7 +578,11 @@ export class ChatViewModel {
 
   async releaseRerankModel(): Promise<void> {
     if (this.reranker.busy || this.rerankLoading) return
-    try { await this.reranker.release(); this.rerankMessage = '' }
+    try {
+      await this.reranker.release()
+      this.rerankMessage = ''
+      this.setStatus('重排模型已释放', 'neutral')
+    }
     catch (error) { this.rerankMessage = `释放失败：${formatError(error as Object)}` }
     this.notify()
   }
@@ -625,11 +641,70 @@ export class ChatViewModel {
     return this.modelManager.currentModel()
   }
 
+  settingFeedback(message: string): void {
+    this.notify()
+    if (message.length > 0) this.toastCallback(message)
+  }
+
+  decisionRuntimeChanged(): boolean {
+    return isDecisionLoaded() && this.decisionLoadedThreads !== this.decisionThreads
+  }
+
+  decisionRuntimeHint(): string {
+    if (!isDecisionLoaded()) return '下次加载时使用此配置'
+    return this.decisionRuntimeChanged() ? `当前使用 ${this.decisionLoadedThreads} 线程，重新加载后生效` :
+      ''
+  }
+
+  rerankRuntimeChanged(): boolean {
+    return this.reranker.loadedId.length > 0 &&
+      (this.rerankLoadedThreads !== this.rerankThreads || this.rerankLoadedTokens !== this.rerankMaxTokens)
+  }
+
+  rerankRuntimeHint(): string {
+    if (this.reranker.loadedId.length === 0) return '下次加载时使用此配置'
+    return this.rerankRuntimeChanged() ?
+      `当前使用 ${this.rerankLoadedThreads} 线程，输入上限 ${this.rerankLoadedTokens} tokens，重新加载后生效` :
+      ''
+  }
+
+  async reloadDecisionModel(): Promise<void> {
+    const model = loadedDecisionModel()
+    if (model === undefined || this.busy || this.modelLoading || this.reranker.busy || this.decisionImporting ||
+      this.decisionRuntimeState !== 'loaded') return
+    this.busy = true
+    this.notify()
+    try {
+      await this.nativeService.cancelTitleGeneration()
+      await releaseDecision()
+    } catch (error) {
+      this.settingFeedback(`释放失败：${formatError(error as Object)}`)
+      return
+    } finally { this.busy = false; this.notify() }
+    await this.loadDecisionModel(model, true)
+  }
+
+  async reloadRerankModel(): Promise<void> {
+    const model = this.loadedReranker()
+    if (model === undefined || this.busy || this.modelLoading || this.reranker.busy || this.rerankImporting ||
+      this.decisionRuntimeState === 'running' || this.decisionRuntimeState === 'loading' ||
+      this.decisionRuntimeState === 'releasing') return
+    this.busy = true
+    this.notify()
+    try {
+      await this.nativeService.cancelTitleGeneration()
+      await this.reranker.release()
+    } catch (error) {
+      this.settingFeedback(`释放失败：${formatError(error as Object)}`)
+      return
+    } finally { this.busy = false; this.notify() }
+    await this.loadRerankModel(model, true)
+  }
+
   threadConfigHint(): string {
-    if (!this.loaded) return ''
+    if (!this.loaded) return '下次加载时使用此配置'
     const actual = this.nativeService.modelThreadInfo().chat.actual
-    return actual > 0 && actual !== this.threadNum ?
-      `当前使用 ${actual} 线程，重新加载后生效` : ''
+    return this.runtimeConfigDirty ? `当前使用 ${actual} 线程，重新加载后生效` : ''
   }
 
   startupModelName(): string {
@@ -646,7 +721,7 @@ export class ChatViewModel {
       this.startupModelId = this.selectedModelId
     }
     this.saveStartupModelSettings()
-    this.notify()
+    this.settingFeedback('下次启动应用时按此设置加载模型')
   }
 
   modelCatalogItems(): ModelCatalogItem[] {
@@ -772,13 +847,20 @@ export class ChatViewModel {
     this.notify()
   }
 
+  confirmApiPort(): void {
+    if (this.apiServerRunning || this.apiServerStarting) return
+    const port = this.apiServerPort()
+    this.settingFeedback(port >= 1 && port <= 65535 ? '下次启动 API 服务时使用此端口' : '端口应为 1 至 65535')
+  }
+
   updateApiServerRequireKey(value: boolean): void {
     if (this.apiServerRunning || this.apiServerStarting) {
       return
     }
+    if (this.apiServerRequireKey === value) return
     this.apiServerRequireKey = value
     this.saveApiServerSettings()
-    this.notify()
+    this.settingFeedback('下次启动 API 服务时生效')
   }
 
   regenerateApiServerKey(): void {
@@ -945,8 +1027,9 @@ export class ChatViewModel {
       return
     }
     this.refreshThinkingMode()
-    this.runtimeConfigDirty = true
-    this.setStatus(this.loaded ? '运行配置已修改，应用并重新加载后生效。' : '运行配置已修改，应用并加载后生效。', 'neutral')
+    this.runtimeConfigDirty = this.loaded && (this.modelPath !== this.loadedModelPath ||
+      this.threadNum !== this.nativeService.modelThreadInfo().chat.actual)
+    this.setStatus(this.loaded ? '运行配置已修改，重新加载后生效。' : '运行配置已修改，下次加载时生效。', 'neutral')
     this.notify()
   }
 
@@ -1065,13 +1148,14 @@ export class ChatViewModel {
   }
 
   updateThreadNum(value: number): void {
-    const nextThreadNum = Math.round(value)
+    const nextThreadNum = Math.max(1, Math.min(this.threadMax, Math.round(value)))
     if (this.threadNum === nextThreadNum) {
       return
     }
     this.threadNum = nextThreadNum
-    this.runtimeConfigDirty = true
-    this.setStatus(this.loaded ? '运行配置已修改，应用并重新加载后生效。' : '运行配置已修改，应用并加载后生效。', 'neutral')
+    this.runtimeConfigDirty = this.loaded && (this.modelPath !== this.loadedModelPath ||
+      this.threadNum !== this.nativeService.modelThreadInfo().chat.actual)
+    this.setStatus(this.loaded ? '运行配置已修改，重新加载后生效。' : '运行配置已修改，下次加载时生效。', 'neutral')
     this.notify()
   }
 
@@ -1994,20 +2078,22 @@ export class ChatViewModel {
     return this.decisionReady ? '已安装' : '未安装'
   }
 
-  async loadDecisionModel(): Promise<void> {
+  async loadDecisionModel(model: ModelProfile = this.selectedDecisionModel(), reloading: boolean = false): Promise<void> {
     if (this.busy || this.modelLoading || this.reranker.busy || this.decisionImporting || isDecisionLoaded()) return
     this.busy = true
     this.modelLoadTarget = 'decision'
     this.showModelLoadDialog = true
-    this.modelLoadMessage = `正在加载 ${this.selectedDecisionModel().shortName} 决策模型，请保持应用在前台。`
-    this.setStatus(`正在加载 ${this.selectedDecisionModel().shortName}...`, 'neutral')
+    this.modelLoadMessage = `正在加载 ${model.shortName} 决策模型，请保持应用在前台。`
+    this.setStatus(`正在加载 ${model.shortName}...`, 'neutral')
     this.startModelLoadTimer()
     this.notify()
     try {
       await this.nativeService.cancelTitleGeneration()
-      await loadDecision(this.filesDir, this.selectedDecisionModel())
-      this.setStatus(`${this.selectedDecisionModel().shortName} 决策模型已加载`, 'success')
-      this.modelLoadMessage = `${this.selectedDecisionModel().shortName} 加载完成，可以用于决策请求。`
+      await loadDecision(this.filesDir, model, this.decisionThreads)
+      this.decisionLoadedThreads = this.decisionThreads
+      if (reloading) this.toastCallback('运行配置已应用')
+      this.setStatus(`${model.shortName} 决策模型已加载`, 'success')
+      this.modelLoadMessage = `${model.shortName} 加载完成，可以用于决策请求。`
       this.stopModelLoadTimer()
       this.modelLoadElapsedSeconds = Math.floor((Date.now() - this.modelLoadStartedAt) / 1000)
       setTimeout(() => {
@@ -2019,7 +2105,7 @@ export class ChatViewModel {
     } catch (error) {
       const message = formatError(error as Object)
       this.setStatus(`决策模型加载失败：${message}`, 'error')
-      this.modelLoadMessage = `${this.selectedDecisionModel().shortName} 加载失败。\n\n${message}`
+      this.modelLoadMessage = `${model.shortName} 加载失败。\n\n${message}`
       this.stopModelLoadTimer()
       this.modelLoadElapsedSeconds = 0
     } finally {
@@ -2272,21 +2358,28 @@ export class ChatViewModel {
       return
     }
     if (this.busy || this.modelLoading || this.modelImporting || this.builtinModelInstalling ||
-      this.apiServerStarting) {
+      this.apiServerStarting || this.reranker.busy || this.decisionRuntimeState === 'running' ||
+      this.decisionRuntimeState === 'loading' || this.decisionRuntimeState === 'releasing') {
       return
     }
-    if (this.loaded) {
-      const restartApiServer = this.apiServerRunning
-      this.stopApiServerForModelChange(restartApiServer)
-      this.modelLifecycleService.reset()
-      this.loaded = false
-    }
+    this.busy = true
+    this.notify()
     this.ensureCurrentModelInstalled().then((installed: boolean) => {
       if (!installed) {
+        this.busy = false
+        this.notify()
         return
       }
-      this.startModelLoad()
+      if (this.loaded) {
+        const restartApiServer = this.apiServerRunning
+        this.stopApiServerForModelChange(restartApiServer)
+        this.modelLifecycleService.reset()
+        this.loaded = false
+      }
+      this.busy = false
+      this.startModelLoad(true, false)
     }).catch((err: Error) => {
+      this.busy = false
       this.apiServerStartAfterModelLoad = false
       this.setStatus(`检查模型失败：${formatError(err as Object)}`, 'error')
       this.notify()
@@ -2329,10 +2422,12 @@ export class ChatViewModel {
         throw new Error('模型加载未完成。')
       }
       this.loaded = loaded
+      this.loadedModelPath = this.modelPath
       this.refreshThinkingMode()
       this.runtimeConfigDirty = false
       this.setStatus(`${this.currentModel().shortName} 已加载`, 'success')
       this.modelLoadMessage = `${this.currentModel().shortName} 加载完成，可以开始聊天。`
+      if (showProgressDialog && !announceReady) this.toastCallback('运行配置已应用')
       this.stopModelLoadTimer()
       this.modelLoadElapsedSeconds = Math.floor((Date.now() - this.modelLoadStartedAt) / 1000)
       if (announceReady) {
@@ -2974,7 +3069,7 @@ export class ChatViewModel {
     this.thinkingOverrides[this.selectedModelId] = enabled
     this.thinkingEnabled = enabled
     this.saveThinkingSettings()
-    this.notify()
+    this.settingFeedback('下次生成使用此思考设置')
   }
 
   resetThinkingMode(): void {
@@ -3166,7 +3261,7 @@ export class ChatViewModel {
       this.apiServerKey = key
       this.saveApiServerSettings()
       if (showResult) {
-        this.toastCallback('已重新生成 API Key')
+        this.toastCallback('已重新生成 API Key，下次启动服务时使用')
       }
       this.notify()
     }).catch((err: Error) => {

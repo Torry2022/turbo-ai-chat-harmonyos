@@ -9,6 +9,8 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cmath>
+#include <unistd.h>
 #include <string>
 #include <vector>
 #include <memory>
@@ -67,6 +69,7 @@ struct LayaDecisionWork {
     napi_deferred deferred = nullptr;
     std::string modelPath;
     std::string tokenizerPath;
+    int threads = 4;
     std::string state;
     std::string type;
     std::string instruction;
@@ -332,6 +335,21 @@ bool ReadRgbaImage(
     return true;
 }
 
+bool ReadThreadCount(napi_env env, napi_value* args, size_t argc, size_t index, int32_t& threads) {
+    threads = 4;
+    if (index >= argc) return true;
+    napi_valuetype type;
+    if (napi_typeof(env, args[index], &type) == napi_ok && type == napi_undefined) return true;
+    double value = 0;
+    if (napi_get_value_double(env, args[index], &value) != napi_ok || !std::isfinite(value) ||
+        value < 1 || value > 16 || std::floor(value) != value) {
+        napi_throw_range_error(env, nullptr, "Inference threads must be an integer from 1 to 16");
+        return false;
+    }
+    threads = static_cast<int32_t>(value);
+    return true;
+}
+
 napi_value LoadModel(napi_env env, napi_callback_info info) {
     size_t argc = 4;
     napi_value args[4] = {nullptr};
@@ -343,7 +361,8 @@ napi_value LoadModel(napi_env env, napi_callback_info info) {
     }
 
     std::string configPath = ReadString(env, args[0]);
-    int32_t threadNum = std::clamp(ReadOptionalInt(env, args, argc, 1, 4), 1, 8);
+    int32_t threadNum = 4;
+    if (!ReadThreadCount(env, args, argc, 1, threadNum)) return nullptr;
     MnnLlmRunner::SamplingConfig sampling = ReadSamplingConfig(env, args, argc, 2, 128, 3);
 
     std::string error;
@@ -365,10 +384,12 @@ napi_value LoadModelAsync(napi_env env, napi_callback_info info) {
         return nullptr;
     }
 
+    int32_t threads = 4;
+    if (!ReadThreadCount(env, args, argc, 1, threads)) return nullptr;
     auto* work = new AsyncLoadWork();
     work->env = env;
     work->configPath = ReadString(env, args[0]);
-    work->threadNum = std::clamp(ReadOptionalInt(env, args, argc, 1, 4), 1, 8);
+    work->threadNum = threads;
     work->sampling = ReadSamplingConfig(env, args, argc, 2, 128, 3);
 
     napi_value promise = nullptr;
@@ -912,16 +933,19 @@ napi_value IsLoaded(napi_env env, napi_callback_info info) {
 }
 
 napi_value LayaLoadAsync(napi_env env, napi_callback_info info) {
-    size_t argc = 2;
-    napi_value args[2] = {nullptr};
+    size_t argc = 3;
+    napi_value args[3] = {nullptr};
     napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
-    if (argc != 2) {
+    if (argc < 2) {
         napi_throw_type_error(env, nullptr, "Expected model and tokenizer paths");
         return nullptr;
     }
+    int32_t threads = 4;
+    if (!ReadThreadCount(env, args, argc, 2, threads)) return nullptr;
     auto* work = new LayaDecisionWork();
     work->modelPath = ReadString(env, args[0]);
     work->tokenizerPath = ReadString(env, args[1]);
+    work->threads = threads;
     napi_value promise = nullptr;
     napi_create_promise(env, &work->deferred, &promise);
     napi_value resourceName = MakeString(env, "layaLoadAsync");
@@ -930,14 +954,14 @@ napi_value LayaLoadAsync(napi_env env, napi_callback_info info) {
             auto* work = static_cast<LayaDecisionWork*>(data);
             try {
                 PrepareMnnCpuCapacity();
-                loadLayaDecision(work->modelPath, work->tokenizerPath);
+                const int threads = loadLayaDecision(work->modelPath, work->tokenizerPath, work->threads);
+                work->output = "{\"session_threads\":" + std::to_string(threads) + "}";
             }
             catch (const std::exception& error) { work->error = error.what(); }
         },
         [](napi_env env, napi_status, void* data) {
             auto* work = static_cast<LayaDecisionWork*>(data);
-            napi_value result = nullptr;
-            napi_get_undefined(env, &result);
+            napi_value result = MakeString(env, work->output);
             if (work->error.empty()) napi_resolve_deferred(env, work->deferred, result);
             else napi_reject_deferred(env, work->deferred, MakeString(env, work->error));
             napi_delete_async_work(env, work->work);
@@ -1095,7 +1119,9 @@ napi_value RerankerCancel(napi_env env, napi_callback_info) {
 napi_value ModelThreadInfo(napi_env env, napi_callback_info) {
     // Cached under each model's lifecycle lock when loading finishes. Sampling
     // must not wait for an active generation or create another CPU backend.
-    const std::string json = "{\"chat\":{\"requested\":" + std::to_string(g_runner.requestedThreads()) +
+    const long logicalCpus = sysconf(_SC_NPROCESSORS_CONF);
+    const int maximum = static_cast<int>(std::clamp(logicalCpus, 1L, 16L));
+    const std::string json = "{\"maxThreads\":" + std::to_string(maximum) + ",\"chat\":{\"requested\":" + std::to_string(g_runner.requestedThreads()) +
         ",\"actual\":" + std::to_string(g_runner.actualCpuThreads()) +
         "},\"rerank\":{\"requested\":" + std::to_string(rerankerRequestedThreads()) +
         ",\"actual\":" + std::to_string(rerankerActualCpuThreads()) + "}}";

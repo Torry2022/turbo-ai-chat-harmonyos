@@ -15,8 +15,10 @@ let resolveDecision, rejectDecision, calls = 0, releases = 0, resolveLoad, rejec
 let nativePaths;
 const installedFiles = new Map(config.LAYA_DOWNLOAD_SPEC.files.map(file =>
   [`/files/${config.LAYA_MODEL_DIRECTORY}/${file.relativePath}`, file.sizeBytes]));
+let loadThreads;
 const native = {
-  layaLoadAsync: (modelPath, tokenizerPath) => {
+  layaLoadAsync: (modelPath, tokenizerPath, threads) => {
+    loadThreads = threads;
     loads++; nativePaths = [modelPath, tokenizerPath];
     return new Promise((resolve, reject) => { resolveLoad = resolve; rejectLoad = reject; });
   },
@@ -44,6 +46,9 @@ const api = context.exports;
   assert.equal(api.isLayaReady('/files'), false);
   installedFiles.set(tokenizerPath, config.LAYA_TOKENIZER_BYTES);
   assert.equal(api.isLayaReady('/missing'), false);
+  for (const threads of [0, 17, 2.5, NaN]) {
+    await assert.rejects(api.loadLaya('/files', threads));
+  }
   api.observeLayaRuntime(state => states.push(state));
   assert.equal(api.isLayaLoaded(), false);
   await assert.rejects(api.decideLaya('/files', 'text', 'choice', 'question', ['a', 'b']), /先在模型页加载/);

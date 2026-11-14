@@ -81,6 +81,7 @@ export struct SettingsDialog {
               .fontWeight(FontWeight.Bold)
               .fontColor($r('app.color.text_title'))
               .width('100%')
+            Text('外观切换后立即生效').fontSize(11).fontColor($r('app.color.text_model_hint')).width('100%')
             Row({ space: 6 }) {
               this.ThemeButton('浅色模式', 'light', $r('app.media.theme_day'))
               this.ThemeButton('深色模式', 'dark', $r('app.media.theme_night'))

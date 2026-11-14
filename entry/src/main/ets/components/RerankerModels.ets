@@ -58,20 +58,38 @@ export struct RerankerModels {
             this.runtimeExpanded = !this.runtimeExpanded
           })
         })
-        Text('释放模型后可修改 CPU 推理线程数和单条输入上限')
-          .fontSize(11).fontColor($r('app.color.text_model_hint')).width('100%')
+        if (this.viewModel.rerankRuntimeHint().length > 0) {
+          Text(this.viewModel.rerankRuntimeHint())
+            .fontSize(11).fontColor($r('app.color.text_model_hint')).width('100%')
+        }
         if (this.runtimeExpanded) {
           Column({ space: 10 }) {
             Text(`推理线程：${this.viewModel.rerankThreads}`)
               .fontSize(12).fontColor($r('app.color.text_secondary')).width('100%')
-            Slider({ value: this.viewModel.rerankThreads, min: 2, max: 8, step: 1 })
-              .attributeModifier(new ParameterSliderStyle()).enabled(this.controlsEnabled() && !this.viewModel.loadedReranker())
-              .onChange((value: number) => { this.viewModel.rerankThreads = Math.round(value) })
+            Slider({ value: this.viewModel.rerankThreads, min: 1, max: this.viewModel.threadMax, step: 1 })
+              .attributeModifier(new ParameterSliderStyle()).enabled(this.controlsEnabled() && !this.viewModel.busy && !this.viewModel.modelLoading)
+              .onChange((value: number, mode: SliderChangeMode) => {
+                this.viewModel.rerankThreads = Math.round(value)
+                if (mode === SliderChangeMode.End || mode === SliderChangeMode.Click) {
+                  this.viewModel.settingFeedback(this.viewModel.rerankRuntimeHint())
+                }
+              })
             Text(`单条输入上限：${this.viewModel.rerankMaxTokens} tokens`)
               .fontSize(12).fontColor($r('app.color.text_secondary')).width('100%')
             Slider({ value: this.viewModel.rerankMaxTokens, min: 128, max: 8192, step: 128 })
-              .attributeModifier(new ParameterSliderStyle()).enabled(this.controlsEnabled() && !this.viewModel.loadedReranker())
-              .onChange((value: number) => { this.viewModel.rerankMaxTokens = Math.round(value) })
+              .attributeModifier(new ParameterSliderStyle()).enabled(this.controlsEnabled() && !this.viewModel.busy && !this.viewModel.modelLoading)
+              .onChange((value: number, mode: SliderChangeMode) => {
+                this.viewModel.rerankMaxTokens = Math.round(value)
+                if (mode === SliderChangeMode.End || mode === SliderChangeMode.Click) {
+                  this.viewModel.settingFeedback(this.viewModel.rerankRuntimeHint())
+                }
+              })
+            if (this.viewModel.rerankRuntimeChanged()) {
+              Button('重新加载')
+                .attributeModifier(new ActionButtonStyle($r('app.color.button_primary_background'), $r('app.color.button_primary_text')))
+                .width('100%').enabled(this.controlsEnabled() && !this.viewModel.busy && !this.viewModel.modelLoading)
+                .onClick(() => this.viewModel.reloadRerankModel())
+            }
             Text('输入上限包含问题、候选文本和模型模板。超长请求会报错，不会自动截断。')
               .fontSize(12).lineHeight(18).fontColor($r('app.color.text_hint')).width('100%')
           }.width('100%').transition(TransitionEffect.OPACITY)

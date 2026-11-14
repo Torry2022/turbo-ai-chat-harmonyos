@@ -19,6 +19,7 @@ struct LayaRuntime {
     std::unique_ptr<LayaTokenizer> tokenizer;
     std::unique_ptr<MNN::Interpreter> interpreter;
     MNN::Session* session = nullptr;
+    int threads = 4;
 
     LayaRuntime(const std::string& model, const std::string& tokens) : modelPath(model), tokenizerPath(tokens) {}
     ~LayaRuntime() {
@@ -74,7 +75,8 @@ bool resizeInput(MNN::Interpreter& interpreter, MNN::Session* session, const cha
 
 } // namespace
 
-void loadLayaDecision(const std::string& modelPath, const std::string& tokenizerPath) {
+int loadLayaDecision(const std::string& modelPath, const std::string& tokenizerPath, int threads) {
+    if (threads < 1 || threads > 16) throw std::invalid_argument("Laya threads must be from 1 to 16");
     std::lock_guard<std::mutex> lock(runtimeMutex);
     if (runtime) throw std::runtime_error("Release the loaded decision model first");
     auto candidate = std::make_unique<LayaRuntime>(modelPath, tokenizerPath);
@@ -83,10 +85,15 @@ void loadLayaDecision(const std::string& modelPath, const std::string& tokenizer
     if (!candidate->interpreter) throw std::runtime_error("Cannot load Laya model");
     MNN::ScheduleConfig config;
     config.type = MNN_FORWARD_CPU;
-    config.numThread = 4;
+    config.numThread = threads;
     candidate->session = candidate->interpreter->createSession(config);
     if (!candidate->session) throw std::runtime_error("Cannot create Laya session");
+    int sessionThreads = 0;
+    if (!candidate->interpreter->getSessionInfo(candidate->session, MNN::Interpreter::THREAD_NUMBER,
+        &sessionThreads) || sessionThreads != threads) throw std::runtime_error("Laya session thread configuration mismatch");
+    candidate->threads = sessionThreads;
     runtime = std::move(candidate);
+    return sessionThreads;
 }
 
 void releaseLayaDecision() {
@@ -150,7 +157,7 @@ std::string runLayaDecision(const std::string& modelPath, const std::string& tok
     if (!runtime->session) {
         MNN::ScheduleConfig config;
         config.type = MNN_FORWARD_CPU;
-        config.numThread = 4;
+        config.numThread = runtime->threads;
         runtime->session = runtime->interpreter->createSession(config);
     }
     if (!runtime->session) throw std::runtime_error("Cannot create Laya session");
