@@ -469,7 +469,7 @@ export struct ModelTab {
         .onClick(() => this.viewModel.selectDecisionModel(model.id))
       }, (model: ModelProfile) => model.id)
       if (this.decisionReady || this.viewModel.loadedDecision()) {
-        Button(this.viewModel.loadedDecision() ? '释放模型' : this.decisionStatus === '正在加载决策模型' ? '加载中…' : '加载当前模型')
+        Button(this.viewModel.loadedDecision() ? '释放当前模型' : this.decisionStatus === '正在加载决策模型' ? '加载中…' : '加载当前模型')
           .attributeModifier(new ActionButtonStyle(this.viewModel.loadedDecision() ? $r('app.color.button_secondary_background') : $r('app.color.button_primary_background'),
             this.viewModel.loadedDecision() ? $r('app.color.button_secondary_text') : $r('app.color.button_primary_text')))
           .enabled(this.controlsEnabled())
@@ -479,16 +479,23 @@ export struct ModelTab {
             else this.viewModel.loadDecisionModel()
           })
       }
-      Button(this.decisionReady ? '进入决策' : this.viewModel.decisionSelectedId === LAYA_MODEL_ID ? '下载模型' : '扫描模型目录')
+      Button(this.decisionReady ? '进入决策' : '下载模型')
         .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
         .width('100%')
         .onClick(() => {
           if (this.decisionReady) this.onDecisionTrial()
-          else if (this.viewModel.decisionSelectedId === LAYA_MODEL_ID) this.viewModel.openModelMarketDialog()
-          else this.viewModel.importDecisionModel(false, true)
+          else this.viewModel.openModelMarketDialog()
         })
-    }
-    .width('100%')
+      if (this.viewModel.decisionSelectedId !== LAYA_MODEL_ID) {
+        Button('删除当前模型')
+          .attributeModifier(new ActionButtonStyle($r('app.color.button_danger_background'), $r('app.color.button_danger_text')))
+          .width('100%').enabled(this.controlsEnabled() && !this.viewModel.decisionImporting)
+          .onClick(() => this.viewModel.requestDeleteDecisionModel())
+      }
+      if (this.viewModel.decisionMessage.length > 0) {
+        Text(this.viewModel.decisionMessage).fontSize(12).fontColor($r('app.color.text_muted')).width('100%')
+      }
+    }.width('100%')
   }
 
   @Builder
@@ -1101,38 +1108,9 @@ export struct ModelTab {
             Column() {
               RerankerModels({ viewModel: this.viewModel, renderVersion: this.renderVersion, settings: true })
             }.width('100%').padding(12).backgroundColor($r('app.color.inset')).borderRadius($r('app.float.card_radius'))
-            Column() {
-              RerankerModels({ viewModel: this.viewModel, renderVersion: this.renderVersion, management: true })
-            }.width('100%').padding(12).backgroundColor($r('app.color.inset')).borderRadius($r('app.float.card_radius'))
           } else {
             this.DecisionRuntimeCard()
             this.DecisionGuideCard()
-            Column({ space: 10 }) {
-              this.SectionTitle('模型管理')
-              Text('可从模型广场下载决策模型，或导入 H2O-Lightning 的完整 MNN 模型目录。')
-                .fontSize(12).lineHeight(18).fontColor($r('app.color.text_muted')).width('100%')
-              Button('选择文件夹导入')
-                .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
-                .width('100%').enabled(this.controlsEnabled() && !this.viewModel.decisionImporting)
-                .onClick(() => this.viewModel.importDecisionModel(true))
-              Button(this.viewModel.decisionImporting ? '正在导入' : '选择压缩包导入')
-                .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
-                .width('100%').enabled(this.controlsEnabled() && !this.viewModel.decisionImporting)
-                .onClick(() => this.viewModel.importDecisionModel())
-              Button('扫描模型目录')
-                .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
-                .width('100%').enabled(this.controlsEnabled() && !this.viewModel.decisionImporting)
-                .onClick(() => this.viewModel.importDecisionModel(false, true))
-              if (this.viewModel.decisionSelectedId !== LAYA_MODEL_ID) {
-                Button('删除当前模型')
-                  .attributeModifier(new ActionButtonStyle($r('app.color.button_danger_background'), $r('app.color.button_danger_text')))
-                  .width('100%').enabled(this.controlsEnabled() && !this.viewModel.decisionImporting)
-                  .onClick(() => this.viewModel.requestDeleteDecisionModel())
-              }
-              if (this.viewModel.decisionMessage.length > 0) {
-                Text(this.viewModel.decisionMessage).fontSize(12).fontColor($r('app.color.text_muted')).width('100%')
-              }
-            }.width('100%').padding(12).backgroundColor($r('app.color.inset')).borderRadius($r('app.float.card_radius'))
           }
         }
         .width(this.contentWidth >= 800 ?

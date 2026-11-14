@@ -4,15 +4,9 @@ A reranking model scores candidate passages against a query so callers can selec
 
 ## Install and load
 
-Open **Models → Reranking models** and import a complete **Qwen3-Reranker MNN export** using the folder or ZIP importer. Ordinary chat models, original safetensors weights and GGUF files are not supported substitutes.
+Download Qwen3-Reranker from the Reranking Models category in the Model Gallery, then select and load it on the Model page. The loaded-model label identifies the resident reranker. Changing categories or selecting another entry does not load or unload models.
 
-Alternatively, push a complete directory into the app sandbox and choose **Scan pushed directories**:
-
-```sh
-hdc file send -b com.example.gemma4mnn Qwen3-Reranker-0.6B-MNN /data/storage/el2/base/haps/entry/files/rerank-models/Qwen3-Reranker-0.6B-MNN
-```
-
-Select a model and load it. Changing categories or selecting another entry does not load or unload models. The loaded-model label shows which reranker is resident. Release it before changing the reranker or its runtime settings. The chat model can remain loaded if the device has sufficient memory.
+Release the loaded reranker before switching to another. After changing runtime settings, select Reload to apply them. The chat model can remain loaded if the device has sufficient memory.
 
 ## Request
 

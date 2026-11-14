@@ -8,7 +8,6 @@ export struct RerankerModels {
   @ObjectLink viewModel: ChatViewModel
   @Prop renderVersion: number = 0
   @Prop settings: boolean = false
-  @Prop management: boolean = false
   @State private runtimeExpanded: boolean = false
 
   private controlsEnabled(): boolean {
@@ -94,29 +93,6 @@ export struct RerankerModels {
               .fontSize(12).lineHeight(18).fontColor($r('app.color.text_hint')).width('100%')
           }.width('100%').transition(TransitionEffect.OPACITY)
         }
-      } else if (this.management) {
-        Text('模型管理').fontSize(16).fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.text_title')).width('100%')
-        Text('可从模型广场下载，或导入 Qwen3-Reranker 的 MNN 导出目录。')
-          .fontSize(12).lineHeight(18).fontColor($r('app.color.text_muted')).width('100%')
-        Button('选择文件夹导入')
-          .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
-          .width('100%').enabled(this.controlsEnabled())
-          .onClick(() => this.viewModel.importReranker(true))
-        Button(this.viewModel.rerankImporting ? '正在导入' : '选择压缩包导入')
-          .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
-          .width('100%').enabled(this.controlsEnabled())
-          .onClick(() => this.viewModel.importReranker(false))
-        Button('扫描已推送目录')
-          .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
-          .width('100%').enabled(this.controlsEnabled())
-          .onClick(() => this.viewModel.importReranker(false, true))
-        Text('电脑推送路径：应用沙箱 files/rerank-models。导入或扫描只添加条目，不自动加载模型。')
-          .fontSize(12).lineHeight(18).fontColor($r('app.color.text_hint')).width('100%')
-        if (this.viewModel.rerankProfiles.length === 0 && this.viewModel.rerankMessage.length > 0) {
-          Text(this.viewModel.rerankMessage).fontSize(12).lineHeight(18)
-            .fontColor($r('app.color.text_secondary')).width('100%')
-        }
       } else {
         if (this.viewModel.rerankProfiles.length === 0) {
           Column({ space: 12 }) {
@@ -137,7 +113,7 @@ export struct RerankerModels {
               .width('100%').enabled(this.controlsEnabled() && !!this.viewModel.selectedReranker() && !this.viewModel.busy && !this.viewModel.modelLoading)
               .onClick(() => this.viewModel.loadRerankModel())
           } else {
-            Button('释放已加载模型')
+            Button('释放当前模型')
               .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
               .width('100%').enabled(this.controlsEnabled())
               .onClick(() => this.viewModel.releaseRerankModel())
