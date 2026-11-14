@@ -527,6 +527,14 @@ async function main() {
     assert.equal(laya.modelType, 'decision');
     assert.equal(modelInstallDirectory('/test', laya), '/test/laya-probe');
     assert.equal(catalogItemToProfile(laya), undefined);
+    const h2o = service.findMarketItem('h2o-lightning-4b-mnn-int8');
+    assert.equal(h2o.modelType, 'decision');
+    assert.equal(h2o.supportsImage, true);
+    assert.equal(modelInstallDirectory('/test', h2o), '/test/decision-models/H2O-Lightning-4B-MNN-INT8');
+    assert.equal(catalogItemToProfile(h2o), undefined);
+    assert.equal(h2o.totalBytes, h2o.files.reduce((sum, f) => sum + f.sizeBytes, 0));
+    assert(h2o.files.every(f => f.url.includes('/resolve/20f037453f0f9138fec5adf29892bf1352547e95/')));
+
     assert(service.items().some(item => item.modelType === 'rerank'));
     const reloaded = new ModelCatalogService(); await reloaded.load('/test');
     assert(reloaded.items().some(item => item.modelType === 'rerank'));

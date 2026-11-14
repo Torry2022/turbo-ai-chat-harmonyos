@@ -1,3 +1,4 @@
+import { LAYA_MODEL_DIRECTORY } from '../models/LayaModelConfig'
 import {
   BuiltinModelDownloadSpec,
   BuiltinModelFileSpec,
@@ -359,5 +360,7 @@ function requireCondition(condition: boolean, message: string): void {
 }
 
 export function modelInstallDirectory(filesDir: string, spec: BuiltinModelDownloadSpec): string {
-  return `${filesDir}/${spec.modelType === 'rerank' ? 'rerank-models/' : ''}${spec.directoryName}`
+  const root = spec.modelType === 'rerank' ? 'rerank-models/' :
+    spec.modelType === 'decision' && spec.directoryName !== LAYA_MODEL_DIRECTORY ? 'decision-models/' : ''
+  return `${filesDir}/${root}${spec.directoryName}`
 }

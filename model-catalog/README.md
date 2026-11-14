@@ -1,6 +1,6 @@
 # 在线模型广场目录
 
-模型广场按对话、决策和重排分类。对话模型读取 MNN 官方广场 `https://meta.alicdn.com/data/mnn/apis/model_market.json`，重排模型查询魔搭 MNN 组织的 Qwen3-Reranker 仓库，决策模型沿用 Laya 下载配置。各分类共用现有下载流程，安装后在对应模型列表中手动加载。
+模型广场按对话、决策和重排分类。对话模型读取 MNN 官方广场 `https://meta.alicdn.com/data/mnn/apis/model_market.json`，重排模型查询魔搭 MNN 组织的 Qwen3-Reranker 仓库，决策模型提供 Laya 和 H2O-Lightning 的固定版本下载。各分类共用现有下载流程，安装后在对应模型列表中手动加载。
 
 本目录作为补充来源，保留预置条目和兼容性配置。补充目录分为两条兼容通道。升级 MNN 的新版 App 读取 `catalog-v2.json`；使用 MNN 3.6.0 的旧版 App 继续读取 `catalog.json`。App 始终保留安装包内置目录；在线文件只需要声明新增模型、需要覆盖的既有条目，以及需要下架的非预置条目。
 
@@ -174,4 +174,4 @@ GitHub Actions 中的 **Scan MNN catalog candidates** 会在每月 1 日自动�
 
 候选扫描用于维护补充目录和安排兼容性测试，不决定官方广场的在线条目。需要固定运行参数或补充兼容性要求的模型，可在真机验证后通过 `model_catalog.py add` 加入补充目录。
 
-官方条目在开始下载时才解析文件清单，读取同一提交的 `config.json` 和 `llm_config.json` 并执行目录预检。预检通过后固定提交用于下载和续传。重排模型安装在 `rerank-models/` 下，Laya 沿用 `laya-probe/`，不会注册为对话模型。官方目录的 `min_app_version` 是 MNN Chat 的版本要求，不用于比较本 App 的版本。能力标签沿用官方名称，如“对话”“图像理解”“深度思考”；“深度思考”标签表示目录声明的能力；是否显示开关由模型的实际模板决定。
+官方条目在开始下载时才解析文件清单，读取同一提交的 `config.json` 和 `llm_config.json` 并执行目录预检。预检通过后固定提交用于下载和续传。重排模型安装在 `rerank-models/` 下，H2O-Lightning 安装在 `decision-models/` 下，Laya 沿用 `laya-probe/`，不会注册为对话模型。官方目录的 `min_app_version` 是 MNN Chat 的版本要求，不用于比较本 App 的版本。能力标签沿用官方名称，如“对话”“图像理解”“深度思考”；“深度思考”标签表示目录声明的能力；是否显示开关由模型的实际模板决定。

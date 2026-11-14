@@ -316,7 +316,7 @@ PC 最大化：
 
 在模型页的“决策模型”分类选择并加载模型，再通过 `/v1/decisions` 调用。同一时间加载一款决策模型，切换前先释放当前模型。聊天、决策和重排模型分别管理，API 服务保持开启。
 
-Laya 可从模型广场下载。H2O-Lightning 支持导入完整的 MNN 模型目录或 ZIP，也可将目录推送到应用文件目录下的 `decision-models/`，然后点击“扫描模型目录”。H2O 模型包的 `config.json` 须包含 `"decision_engine": "h2o-lightning"` 和 `"decision_contract": "h2o-lightning-v1.4.2"`，并配齐主干、词嵌入、分词器和视觉模型。权重单独安装。
+Laya 和 H2O-Lightning 均可从模型广场的“决策模型”分类下载，安装后在模型页选择并加载。H2O-Lightning 支持通过完整的 MNN 模型目录或 ZIP 导入，也可将目录推送到应用文件目录下的 `decision-models/`，然后点击“扫描模型目录”。H2O 模型包的 `config.json` 须包含 `"decision_engine": "h2o-lightning"` 和 `"decision_contract": "h2o-lightning-v1.4.2"`，并配齐主干、词嵌入、分词器和视觉模型。权重单独安装。
 
 `POST /v1/decisions` 支持 `choice`、`score` 和 `boolean` 任务。省略 `model` 时使用已加载的决策模型，也可填写 `GET /v1/models` 返回的模型 ID。H2O-Lightning 还支持通过可选的 `image` 字段传入 PNG、JPEG 或 WebP 的 Base64 数据 URI，在试用窗口中可直接添加图片。整个请求体上限为 1 MiB。返回的候选概率保留各模型的计算规则及数值精度。H2O 响应的 `metadata.input_tokens` 提供实际输入词元数，包含提示词模板和选项。`metadata.cpu_threads` 返回运行时校验的实际 CPU 线程数。H2O 加载时读取模型 `config.json` 的 `thread_num`，省略时使用 4，支持 1 至 16 的整数。评分结果为各等级按概率加权的期望值。服务页“调用说明”提供请求示例。
 

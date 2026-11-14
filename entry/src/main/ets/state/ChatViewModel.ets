@@ -2476,6 +2476,12 @@ export class ChatViewModel {
           this.rerankSelectedId = profiles.find((profile: ModelProfile) => profile.catalogItemId === installedItem.id)?.id ?? this.rerankSelectedId
           this.rerankMessage = ''
         }
+        if (installedItem.modelType === 'decision' && installedItem.directoryName !== LAYA_MODEL_DIRECTORY) {
+          this.decisionProfiles = await this.decisionImport.registerCatalogModel(this.filesDir, installedItem)
+          this.decisionSelectedId = this.decisionProfiles.find((profile: ModelProfile) =>
+            profile.directoryName === installedItem.directoryName)?.id ?? this.decisionSelectedId
+          this.decisionMessage = ''
+        }
         if (installedItem.modelType === 'decision') this.refreshDecisionReady()
       }
       this.builtinModelInstalling = false

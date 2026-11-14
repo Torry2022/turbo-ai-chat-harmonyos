@@ -1034,7 +1034,7 @@ export struct ModelTab {
             this.DecisionGuideCard()
             Column({ space: 10 }) {
               this.SectionTitle('模型管理')
-              Text('可从模型广场下载 Laya，或导入 H2O-Lightning 的完整 MNN 模型目录。')
+              Text('可从模型广场下载决策模型，或导入 H2O-Lightning 的完整 MNN 模型目录。')
                 .fontSize(12).lineHeight(18).fontColor($r('app.color.text_muted')).width('100%')
               Button('选择文件夹导入')
                 .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))

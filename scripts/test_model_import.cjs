@@ -165,6 +165,23 @@ async function check(name, run, reranker = false, decision = false) {
     await assert.rejects(t.service.registerCatalogModel('/app', { ...item, modelType: 'chat' }), /分类/);
     await assert.rejects(t.service.registerCatalogModel('/app', { ...item, directoryName: '../bad' }), /目录/);
   }, true);
+  await check('downloaded decision models register once and retain image support', async t => {
+    t.fs.readText = async () => JSON.stringify({decision_engine: 'h2o-lightning', decision_contract: 'h2o-lightning-v1.4.2'});
+    let profiles = [];
+    t.service.loadImportedProfiles = async () => profiles;
+    const item = { id: 'h2o-lightning-4b-mnn-int8', modelType: 'decision', directoryName: 'H2O-Lightning-4B-MNN-INT8',
+      displayName: 'H2O-Lightning-4B-MNN-INT8', shortName: 'H2O-Lightning-4B', description: '决策', supportsImage: true, files: [] };
+    profiles = await t.service.registerCatalogModel('/app', item);
+    assert.equal(profiles.length, 1);
+    assert.equal(profiles[0].configPath, '/app/decision-models/H2O-Lightning-4B-MNN-INT8/config.json');
+    assert.equal(profiles[0].supportsImage, true);
+    assert.equal(profiles[0].catalogItemId, item.id);
+    assert.equal((await t.service.registerCatalogModel('/app', item)).length, 1);
+    await assert.rejects(t.service.registerCatalogModel('/app', {...item, modelType: 'rerank'}), /分类/);
+    profiles = [];
+    t.fs.readText = async () => '{}';
+    await assert.rejects(t.service.registerCatalogModel('/app', item), /决策配置/);
+  }, false, true);
   await check('low space rejects before copying and does not save manifest', async t => {
     t.lowSpace();
     await assert.rejects(t.service.pickAndImport({ filesDir: '/app' }, [], true), /读取文件夹失败.*空间不足/);

@@ -12,6 +12,7 @@ import {
   RemoteModelCatalogManifest
 } from '../models/ModelCatalogTypes'
 import { LAYA_DOWNLOAD_SPEC } from '../models/LayaModelConfig'
+import { H2O_DOWNLOAD_SPEC } from '../models/H2oModelConfig'
 import { ModelProfile } from '../models/ModelProfile'
 import { ModelDescriptionManifest, descriptionRepo, parseModelDescriptions } from '../utils/modelDescriptions'
 import { OfficialCatalog, officialModelRepo, officialPackageCompatibilityMessage, parseOfficialModelCatalog, parseOfficialRerankerCatalog, parseOfficialRepoFiles, resolveOfficialCatalogItem } from '../utils/officialModelCatalog'
@@ -62,7 +63,7 @@ export class ModelCatalogService {
   items(): ModelCatalogItem[] {
     const official = this.officialItems.concat(this.rerankerItems).map((item: ModelCatalogItem) =>
       this.findItem(this.resolvedItems, item.id) ?? item)
-    return mergeCatalogItems(mergeCatalogItems(official, this.marketItems), [LAYA_DOWNLOAD_SPEC])
+    return mergeCatalogItems(mergeCatalogItems(official, this.marketItems), [LAYA_DOWNLOAD_SPEC, H2O_DOWNLOAD_SPEC])
       .map((item: ModelCatalogItem): ModelCatalogItem => {
         const description = this.descriptions[descriptionRepo(item.sourceUrl)]
         if (description === undefined) return item

@@ -252,16 +252,18 @@ export class ModelImportService {
   }
 
   async registerCatalogModel(filesDir: string, item: ModelCatalogItem): Promise<ModelProfile[]> {
-    if (!this.reranker || item.modelType !== 'rerank' || !this.isSafeImportedDirectoryName(item.directoryName)) {
+    if (!(this.reranker && item.modelType === 'rerank' || this.decision && item.modelType === 'decision') ||
+      !this.isSafeImportedDirectoryName(item.directoryName)) {
       throw new Error('模型分类或安装目录无效')
     }
     const profiles = await this.loadImportedProfiles(filesDir)
     const configPath = `${this.importRoot(filesDir)}/${item.directoryName}/config.json`
     if (profiles.some((profile: ModelProfile) => profile.configPath === configPath)) return profiles
-    await this.preflightService.requireCompatible(configPath, false, item.files, false)
+    if (this.decision) await this.requireDecisionPackage(configPath)
+    await this.preflightService.requireCompatible(configPath, item.supportsImage, item.files, false)
     profiles.push({ id: uniqueModelId(`catalog-${item.id}`, profiles), name: item.displayName,
       shortName: item.shortName, directoryName: item.directoryName, description: item.description,
-      supportsImage: false, systemPrompt: '', source: IMPORTED_MODEL_SOURCE, configPath,
+      supportsImage: item.supportsImage, systemPrompt: '', source: IMPORTED_MODEL_SOURCE, configPath,
       catalogItemId: item.id, downloadId: item.id, editable: false, removable: true })
     await this.saveImportedProfiles(filesDir, profiles)
     return profiles
