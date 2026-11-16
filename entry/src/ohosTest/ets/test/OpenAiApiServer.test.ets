@@ -31,6 +31,20 @@ export default function openAiApiServerTest(): void {
       expect(filter.output().answer).assertEqual('最终答案。')
     })
 
+    it('preservesLiteralMarkersAndWhitespaceAcrossChunks', 0, () => {
+      const text = '  示例 <|im_end|>。\n\n第一行  \n第二行。\n'
+      for (let split = 1; split < text.length; split++) {
+        const filter = new ApiReasoningStreamFilter()
+        let streamed = filter.append(text.substring(0, split)).answer
+        streamed += filter.append(text.substring(split)).answer
+        streamed += filter.complete(text).answer
+        expect(streamed).assertEqual(text)
+        expect(filter.output().answer).assertEqual(text)
+      }
+      expect(visibleAnswer('示例：`<think>原文</think>`', true))
+        .assertEqual('示例：`<think>原文</think>`')
+    })
+
     it('splitsThinkingFromNonStreamingAnswer', 0, () => {
       const output = splitApiOutput('<think>内部分析</think>对外回答。', true)
       expect(output.reasoning).assertEqual('内部分析')

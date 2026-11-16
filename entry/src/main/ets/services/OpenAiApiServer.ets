@@ -7,9 +7,13 @@ import util from '@ohos.util'
 import { ChatTurn, GenerationResult, GenerationSettings } from '../models/ChatTypes'
 import { MAX_GENERATION_TOKENS } from '../models/ModelProfile'
 import { RuntimeSample, StorageSample } from '../models/RuntimeStats'
-import { parseAssistantText, stripModelSpecialTokens } from '../utils/thinking'
+import { parseAssistantText } from '../utils/thinking'
 
 const MAX_REQUEST_BYTES: number = 1024 * 1024
+const MAX_CONNECTIONS: number = 16
+const REQUEST_READ_TIMEOUT_MS: number = 15000
+const SEND_TIMEOUT_MS: number = 30000
+const MAX_PENDING_SEND_BYTES: number = 4 * 1024 * 1024
 const SERVER_OWNER: string = 'turbo-ai-chat'
 const DECISION_MODEL_ID: string = LAYA_MODEL_ID
 
@@ -80,6 +84,11 @@ export interface ApiServerCallbacks {
 interface ApiContentPart {
   type?: string
   text?: string
+  image_url?: string | ApiImageUrl
+}
+
+interface ApiImageUrl {
+  url: string
 }
 
 interface ApiMessageInput {
@@ -91,10 +100,15 @@ interface ChatCompletionRequestBody {
   model?: string
   messages?: ApiMessageInput[]
   stream?: boolean
+  stream_options?: ChatStreamOptions
   max_tokens?: number
   max_completion_tokens?: number
   temperature?: number
   top_p?: number
+}
+
+interface ChatStreamOptions {
+  include_usage?: boolean
 }
 
 interface ResponsesRequestBody {
@@ -218,6 +232,7 @@ interface ChatCompletionStreamPayload {
   created: number
   model: string
   choices: ChatCompletionStreamChoice[]
+  usage?: TokenUsage | null
 }
 
 interface ChatCompletionMessage {
@@ -244,7 +259,7 @@ interface ChatCompletionPayload {
   created: number
   model: string
   choices: ChatCompletionChoice[]
-  usage: TokenUsage
+  usage?: TokenUsage
 }
 
 interface ResponseOutputContent {
@@ -278,13 +293,26 @@ interface ResponseUsage {
   total_tokens: number
 }
 
+interface ApiStreamErrorEnvelope {
+  error: ApiStreamError
+}
+
+interface ResponseGenerationError {
+  code: string
+  message: string
+}
+
+interface ResponseIncompleteDetails {
+  reason: string
+}
+
 interface ResponsePayload {
   id: string
   object: string
   created_at: number
   status: string
-  error: Object | null
-  incomplete_details: Object | null
+  error: ResponseGenerationError | null
+  incomplete_details: ResponseIncompleteDetails | null
   instructions: string | null
   model: string
   output: ResponseOutputItem[]
@@ -293,7 +321,7 @@ interface ResponsePayload {
   tools: Object[]
   tool_choice: string
   truncation: string
-  usage?: ResponseUsage
+  usage?: ResponseUsage | null
 }
 
 interface ResponseCreatedEvent {
@@ -362,40 +390,74 @@ class HttpConnectionState {
   buffer: string = ''
   handled: boolean = false
   closed: boolean = false
-  sendChain: Promise<void> = Promise.resolve()
+  receivedBytes: number = 0
+  private pending: string[] = []
+  private pendingBytes: number = 0
+  private sending: boolean = false
+  private ending: boolean = false
+  private readTimer: number = -1
+  private sendTimer: number = -1
+  private rejectSend?: (error: Error) => void
+  private onClosed: () => void
 
-  constructor(connectionValue: socket.TCPSocketConnection) {
+  constructor(connectionValue: socket.TCPSocketConnection, onClosed: () => void) {
     this.connection = connectionValue
+    this.onClosed = onClosed
+    this.readTimer = setTimeout(() => this.close(), REQUEST_READ_TIMEOUT_MS)
   }
 
   append(message: ArrayBuffer): void {
+    this.receivedBytes += message.byteLength
     this.buffer += this.decoder.decodeToString(new Uint8Array(message), { stream: true })
   }
 
+  finishRequest(): void {
+    this.handled = true
+    clearTimeout(this.readTimer)
+    this.readTimer = -1
+    this.buffer = ''
+  }
+
   send(data: string): void {
-    if (this.closed) {
+    if (this.closed || this.ending) return
+    const bytes = utf8Length(data)
+    if (this.pendingBytes + bytes > MAX_PENDING_SEND_BYTES) {
+      this.close()
       return
     }
-    this.sendChain = this.sendChain.then(() => {
-      if (this.closed) {
-        return Promise.resolve()
-      }
-      return this.connection.send({ data, encoding: 'utf-8' })
-    }).catch((_err: Error) => {
-      this.closed = true
-    })
+    this.pending.push(data)
+    this.pendingBytes += bytes
+    if (!this.sending) this.flush()
   }
 
   closeAfterSend(): void {
-    this.sendChain = this.sendChain.then(() => {
-      if (this.closed) {
-        return Promise.resolve()
+    this.ending = true
+    if (!this.sending) this.close()
+  }
+
+  private async flush(): Promise<void> {
+    this.sending = true
+    try {
+      while (!this.closed && this.pending.length > 0) {
+        const data = this.pending.shift() as string
+        await Promise.race([
+          this.connection.send({ data, encoding: 'utf-8' }),
+          new Promise<void>((_resolve, reject) => {
+            this.rejectSend = reject
+            this.sendTimer = setTimeout(() => reject(new Error('发送超时')), SEND_TIMEOUT_MS)
+          })
+        ])
+        clearTimeout(this.sendTimer)
+        this.sendTimer = -1
+        this.rejectSend = undefined
+        if (!this.closed) this.pendingBytes -= utf8Length(data)
       }
-      this.closed = true
-      return this.connection.close()
-    }).catch((_err: Error) => {
-      this.closed = true
-    })
+    } catch (_error) {
+      this.close()
+    } finally {
+      this.sending = false
+      if (this.ending) this.close()
+    }
   }
 
   close(): void {
@@ -403,8 +465,20 @@ class HttpConnectionState {
       return
     }
     this.closed = true
-    this.connection.close().catch((_err: Error) => {
-    })
+    clearTimeout(this.readTimer)
+    clearTimeout(this.sendTimer)
+    this.readTimer = -1
+    this.sendTimer = -1
+    this.rejectSend?.(new Error('连接已关闭'))
+    this.rejectSend = undefined
+    this.buffer = ''
+    this.pending = []
+    this.pendingBytes = 0
+    this.onClosed()
+    try {
+      this.connection.close().catch((_err: Error) => {})
+    } catch (_err) {
+    }
   }
 }
 
@@ -455,6 +529,7 @@ export class OpenAiApiServer {
   private connections: Map<number, HttpConnectionState> = new Map()
   private rerankConnection?: HttpConnectionState
   private activeClientId: number = -1
+  private activeConnection?: HttpConnectionState
   private activeRequestKind: 'chat' | 'decision' | '' = ''
   private running: boolean = false
   private lanAddress: string = ''
@@ -488,6 +563,10 @@ export class OpenAiApiServer {
     this.server = server
     try {
       server.on('connect', (client: socket.TCPSocketConnection) => {
+        if (this.server !== server) {
+          client.close().catch((_err: Error) => {})
+          return
+        }
         this.acceptClient(client)
       })
       server.on('error', (err: Error) => {
@@ -528,6 +607,7 @@ export class OpenAiApiServer {
     this.server = undefined
     this.running = false
     this.activeClientId = -1
+    this.activeConnection = undefined
     this.activeRequestKind = ''
     if (server !== undefined) {
       server.off('connect')
@@ -541,7 +621,18 @@ export class OpenAiApiServer {
   }
 
   private acceptClient(client: socket.TCPSocketConnection): void {
-    const state = new HttpConnectionState(client)
+    if (this.connections.size >= MAX_CONNECTIONS) {
+      client.close().catch((_err: Error) => {})
+      return
+    }
+    const state = new HttpConnectionState(client, () => {
+      if (this.connections.get(client.clientId) !== state) return
+      this.connections.delete(client.clientId)
+      if (this.rerankConnection === state) this.callbacks.cancelRerank()
+      if (this.activeConnection === state && this.activeRequestKind === 'chat') {
+        this.callbacks.stopGeneration()
+      }
+    })
     this.connections.set(client.clientId, state)
     try {
       client.on('message', (info: socket.SocketMessageInfo) => {
@@ -549,20 +640,10 @@ export class OpenAiApiServer {
         this.handleClientData(state, message)
       })
       client.on('close', () => {
-        state.closed = true
-        if (this.rerankConnection === state) this.callbacks.cancelRerank()
-        this.connections.delete(client.clientId)
-        if (this.activeClientId === client.clientId && this.activeRequestKind === 'chat') {
-          this.callbacks.stopGeneration()
-        }
+        state.close()
       })
       client.on('error', (_err: Error) => {
-        if (this.rerankConnection === state) this.callbacks.cancelRerank()
         state.close()
-        this.connections.delete(client.clientId)
-        if (this.activeClientId === client.clientId && this.activeRequestKind === 'chat') {
-          this.callbacks.stopGeneration()
-        }
       })
     } catch (_err) {
       state.close()
@@ -574,18 +655,18 @@ export class OpenAiApiServer {
     if (state.handled || state.closed) {
       return
     }
-    state.append(message)
-    if (utf8Length(state.buffer) > MAX_REQUEST_BYTES) {
-      state.handled = true
+    if (state.receivedBytes + message.byteLength > MAX_REQUEST_BYTES) {
+      state.finishRequest()
       this.callbacks.onLog('ERROR', '413 HTTP request · 请求内容超过 1 MB')
       this.sendError(state, 413, 'request_too_large', '请求内容超过 1 MB。')
       return
     }
+    state.append(message)
     let request: ParsedHttpRequest | undefined
     try {
       request = parseHttpRequest(state.buffer)
     } catch (err) {
-      state.handled = true
+      state.finishRequest()
       this.callbacks.onLog('ERROR', `400 HTTP request · ${errorMessage(err)}`)
       this.sendError(state, 400, 'invalid_request_error', errorMessage(err))
       return
@@ -593,7 +674,7 @@ export class OpenAiApiServer {
     if (request === undefined) {
       return
     }
-    state.handled = true
+    state.finishRequest()
     this.route(state, request)
   }
 
@@ -726,7 +807,9 @@ export class OpenAiApiServer {
 
   private handleChatCompletions(state: HttpConnectionState, bodyText: string): void {
     try {
-      const body = JSON.parse(bodyText.replace(/^\uFEFF/, '')) as ChatCompletionRequestBody
+      const value = JSON.parse(bodyText.replace(/^\uFEFF/, '')) as Object
+      validateApiGenerationOptions(value, false)
+      const body = value as ChatCompletionRequestBody
       const turns = parseMessages(body.messages)
       const request = this.buildGenerationRequest(
         turns,
@@ -734,7 +817,8 @@ export class OpenAiApiServer {
         body.temperature,
         body.top_p
       )
-      this.runGeneration(state, body.model ?? '', body.stream === true, false, request)
+      this.runGeneration(state, body.model ?? '', body.stream === true, false, request,
+        body.stream_options?.include_usage === true)
     } catch (err) {
       this.callbacks.onLog('ERROR', `400 POST /v1/chat/completions · ${errorMessage(err)}`)
       this.sendError(state, 400, 'invalid_request_error', errorMessage(err))
@@ -743,7 +827,9 @@ export class OpenAiApiServer {
 
   private handleResponses(state: HttpConnectionState, bodyText: string): void {
     try {
-      const body = JSON.parse(bodyText.replace(/^\uFEFF/, '')) as ResponsesRequestBody
+      const value = JSON.parse(bodyText.replace(/^\uFEFF/, '')) as Object
+      validateApiGenerationOptions(value, true)
+      const body = value as ResponsesRequestBody
       const turns = parseResponseInput(body.instructions ?? '', body.input)
       const request = this.buildGenerationRequest(
         turns,
@@ -784,6 +870,7 @@ export class OpenAiApiServer {
     const startedAt = Date.now()
     const clientId = state.connection.clientId
     this.activeClientId = clientId
+    this.activeConnection = state
     this.activeRequestKind = 'decision'
     this.callbacks.onRequestState('decision', true)
     Promise.resolve().then(() => this.callbacks.decide(request)).then((raw: string) => {
@@ -796,8 +883,9 @@ export class OpenAiApiServer {
       if (!state.closed) this.sendError(state, status, code, errorMessage(err))
       this.callbacks.onLog('ERROR', `${status} POST /v1/decisions · ${errorMessage(err)}`)
     }).finally(() => {
-      if (this.activeClientId === clientId && this.activeRequestKind === 'decision') {
+      if (this.activeConnection === state && this.activeRequestKind === 'decision') {
         this.activeClientId = -1
+        this.activeConnection = undefined
         this.activeRequestKind = ''
         this.callbacks.onRequestState('decision', false)
       }
@@ -810,6 +898,8 @@ export class OpenAiApiServer {
     requestedTemperature?: number,
     requestedTopP?: number
   ): ApiGenerationRequest {
+    const images = turns.filter((turn: ChatTurn) => (turn.imageUri ?? '').length > 0)
+    if (images.length > 1) throw new Error('当前每次请求支持一张图片。')
     const defaults = this.callbacks.currentSettings()
     const defaultMaxTokens = this.callbacks.currentMaxNewTokens()
     return {
@@ -833,7 +923,8 @@ export class OpenAiApiServer {
     requestedModel: string,
     streaming: boolean,
     responsesApi: boolean,
-    request: ApiGenerationRequest
+    request: ApiGenerationRequest,
+    includeUsage: boolean = false
   ): void {
     const apiPath = responsesApi ? '/v1/responses' : '/v1/chat/completions'
     if (!this.callbacks.isModelLoaded()) {
@@ -855,6 +946,7 @@ export class OpenAiApiServer {
 
     const startedAt = Date.now()
     this.activeClientId = state.connection.clientId
+    this.activeConnection = state
     this.activeRequestKind = 'chat'
     const created = Math.floor(Date.now() / 1000)
     const responseId = `resp_${created}_${state.connection.clientId}`
@@ -879,7 +971,7 @@ export class OpenAiApiServer {
       if (responsesApi) {
         this.sendResponsesStart(state, responsesContext)
       } else {
-        this.sendChatChunk(state, responseId, model.id, created, { reasoning: '', answer: '' }, 'assistant')
+        this.sendChatChunk(state, responseId, model.id, created, { reasoning: '', answer: '' }, 'assistant', undefined, includeUsage)
       }
     }
 
@@ -888,7 +980,9 @@ export class OpenAiApiServer {
       'INFO',
       `model=${model.id}, stream=${streaming}, maxTokens=${request.maxNewTokens}`
     )
+    let completed = false
     this.callbacks.generate(request, (chunk: string) => {
+      if (completed || state.closed) return
       const delta = filter.append(chunk)
       if (!streaming || (delta.reasoning.length <= 0 && delta.answer.length <= 0) || state.closed) {
         return
@@ -898,14 +992,18 @@ export class OpenAiApiServer {
       } else {
         if (delta.reasoning.length > 0) {
           this.sendChatChunk(
-            state, responseId, model.id, created, { reasoning: delta.reasoning, answer: '' }
+            state, responseId, model.id, created, { reasoning: delta.reasoning, answer: '' }, undefined, undefined, includeUsage
           )
         }
         if (delta.answer.length > 0) {
-          this.sendChatChunk(state, responseId, model.id, created, { reasoning: '', answer: delta.answer })
+          this.sendChatChunk(state, responseId, model.id, created, { reasoning: '', answer: delta.answer }, undefined, undefined, includeUsage)
         }
       }
     }).then((result: GenerationResult) => {
+      completed = true
+      if (!responsesApi && result.stopReason !== 'eos' && result.stopReason !== 'max_tokens') {
+        throw new Error(generationFailureMessage(result))
+      }
       const finalDelta = filter.complete(result.text)
       if (streaming && (finalDelta.reasoning.length > 0 || finalDelta.answer.length > 0) && !state.closed) {
         if (responsesApi) {
@@ -913,12 +1011,12 @@ export class OpenAiApiServer {
         } else {
           if (finalDelta.reasoning.length > 0) {
             this.sendChatChunk(
-              state, responseId, model.id, created, { reasoning: finalDelta.reasoning, answer: '' }
+              state, responseId, model.id, created, { reasoning: finalDelta.reasoning, answer: '' }, undefined, undefined, includeUsage
             )
           }
           if (finalDelta.answer.length > 0) {
             this.sendChatChunk(
-              state, responseId, model.id, created, { reasoning: '', answer: finalDelta.answer }
+              state, responseId, model.id, created, { reasoning: '', answer: finalDelta.answer }, undefined, undefined, includeUsage
             )
           }
         }
@@ -931,8 +1029,16 @@ export class OpenAiApiServer {
           } else {
             this.sendChatChunk(
               state, responseId, model.id, created, { reasoning: '', answer: '' }, undefined,
-              finishReason(result)
+              finishReason(result), includeUsage
             )
+            if (includeUsage) {
+              const counted = chatCompletionObject(responseId, model.id, created, output, result)
+              const usageChunk: ChatCompletionStreamPayload = {
+                id: responseId, object: 'chat.completion.chunk', created, model: model.id,
+                choices: [], usage: counted.usage ?? null
+              }
+              state.send(`data: ${JSON.stringify(usageChunk)}\n\n`)
+            }
             state.send('data: [DONE]\n\n')
             state.closeAfterSend()
           }
@@ -945,31 +1051,40 @@ export class OpenAiApiServer {
           this.sendJson(state, 200, chatCompletionObject(responseId, model.id, created, output, result))
         }
       }
-      this.activeClientId = -1
-      this.activeRequestKind = ''
+      if (this.activeConnection === state) {
+        this.activeClientId = -1
+        this.activeConnection = undefined
+        this.activeRequestKind = ''
+        this.callbacks.onRequestState('chat', false)
+      }
       const streamLabel = streaming ? ' (stream)' : ''
       this.callbacks.onLog(
         'RESP',
         `200 POST ${apiPath}${streamLabel} · ${Date.now() - startedAt} ms · ` +
           `${result.generatedTokens} tokens · ${output.answer.length} chars`
       )
-      this.callbacks.onRequestState('chat', false)
     }).catch((err: Error) => {
+      completed = true
+      const invalidImage = err.name === 'InvalidImageError'
       if (!state.closed) {
         if (streaming) {
           const payload: ApiStreamError = {
-            type: 'error', code: 'generation_failed', message: errorMessage(err), param: null
+            type: 'error', code: invalidImage ? 'invalid_request_error' : 'generation_failed', message: errorMessage(err), param: null
           }
-          state.send(`event: error\ndata: ${JSON.stringify(payload)}\n\n`)
+          const event: Object = responsesApi ? payload : { error: payload } as ApiStreamErrorEnvelope
+          state.send(`event: error\ndata: ${JSON.stringify(event)}\n\n`)
           state.closeAfterSend()
         } else {
-          this.sendError(state, 500, 'generation_failed', errorMessage(err))
+          this.sendError(state, invalidImage ? 400 : 500, invalidImage ? 'invalid_request_error' : 'generation_failed', errorMessage(err))
         }
       }
-      this.activeClientId = -1
-      this.activeRequestKind = ''
-      this.callbacks.onLog('ERROR', `500 POST ${apiPath} · ${errorMessage(err)}`)
-      this.callbacks.onRequestState('chat', false)
+      if (this.activeConnection === state) {
+        this.activeClientId = -1
+        this.activeConnection = undefined
+        this.activeRequestKind = ''
+        this.callbacks.onRequestState('chat', false)
+      }
+      this.callbacks.onLog('ERROR', `${invalidImage ? 400 : 500} POST ${apiPath} · ${errorMessage(err)}`)
     })
   }
 
@@ -980,7 +1095,8 @@ export class OpenAiApiServer {
     created: number,
     output: ApiReasoningOutput,
     role?: string,
-    finishReasonValue?: string
+    finishReasonValue?: string,
+    includeUsage: boolean = false
   ): void {
     const delta: ChatCompletionDelta = {}
     if (role !== undefined) {
@@ -1005,6 +1121,7 @@ export class OpenAiApiServer {
       model,
       choices: [choice]
     }
+    if (includeUsage) payload.usage = null
     state.send(`data: ${JSON.stringify(payload)}\n\n`)
   }
 
@@ -1049,7 +1166,7 @@ export class OpenAiApiServer {
     this.sendResponseEvent(state, 'response.content_part.added', partEvent)
   }
 
-  private finishResponsesReasoning(state: HttpConnectionState, context: ResponsesStreamContext): void {
+  private finishResponsesReasoning(state: HttpConnectionState, context: ResponsesStreamContext, status: string = 'completed'): void {
     if (!context.reasoningStarted || context.reasoningDone) {
       return
     }
@@ -1076,7 +1193,7 @@ export class OpenAiApiServer {
     const item: ResponseOutputItem = {
       id: context.reasoningId,
       type: 'reasoning',
-      status: 'completed',
+      status,
       content: [content],
       summary: []
     }
@@ -1156,12 +1273,15 @@ export class OpenAiApiServer {
     output: ApiReasoningOutput,
     result: GenerationResult
   ): void {
+    const response = responsesObject(
+      context.responseId, context.reasoningId, context.messageId, context.model, context.created, output, result
+    )
     context.reasoningText = output.reasoning
     context.answerText = output.answer
     if (output.reasoning.length > 0) {
       this.startResponsesReasoning(state, context)
     }
-    this.finishResponsesReasoning(state, context)
+    this.finishResponsesReasoning(state, context, parseAssistantText(result.text).thinkingClosed ? 'completed' : 'incomplete')
     this.startResponsesMessage(state, context)
     const outputIndex = context.reasoningStarted ? 1 : 0
     const content: ResponseOutputContent = { type: 'output_text', text: output.answer, annotations: [] }
@@ -1176,20 +1296,18 @@ export class OpenAiApiServer {
     }
     this.sendResponseEvent(state, 'response.content_part.done', contentDoneEvent)
     const item: ResponseOutputItem = {
-      id: context.messageId, type: 'message', status: 'completed', role: 'assistant', content: [content]
+      id: context.messageId, type: 'message', status: response.status === 'completed' ? 'completed' : 'incomplete',
+      role: 'assistant', content: [content]
     }
     const itemDoneEvent: ResponseOutputItemEvent = {
       type: 'response.output_item.done', output_index: outputIndex, item,
       sequence_number: context.sequenceNumber++
     }
     this.sendResponseEvent(state, 'response.output_item.done', itemDoneEvent)
-    const response = responsesObject(
-      context.responseId, context.reasoningId, context.messageId, context.model, context.created, output, result
-    )
     const completedEvent: ResponseCompletedEvent = {
-      type: 'response.completed', response, sequence_number: context.sequenceNumber++
+      type: `response.${response.status}`, response, sequence_number: context.sequenceNumber++
     }
-    this.sendResponseEvent(state, 'response.completed', completedEvent)
+    this.sendResponseEvent(state, completedEvent.type, completedEvent)
     state.closeAfterSend()
   }
 
@@ -1326,14 +1444,15 @@ export function formatApiDecision(request: PreparedApiDecision, raw: string, mod
 }
 
 export function splitApiOutput(rawText: string, finalValue: boolean): ApiReasoningOutput {
-  const normalized = stripModelSpecialTokens(rawText)
+  const normalized = rawText
   const trimmedStart = normalized.trimStart()
   if (!finalValue && trimmedStart.length > 0 && '<think>'.startsWith(trimmedStart)) {
     return { reasoning: '', answer: '' }
   }
   const openTag = '<think>'
   const closeTag = '</think>'
-  const openIndex = normalized.indexOf(openTag)
+  const prefixLength = normalized.length - trimmedStart.length
+  const openIndex = normalized.startsWith(openTag, prefixLength) ? prefixLength : -1
   if (openIndex >= 0) {
     const afterOpen = normalized.substring(openIndex + openTag.length)
     if (afterOpen.indexOf(closeTag) < 0) {
@@ -1349,7 +1468,7 @@ export function splitApiOutput(rawText: string, finalValue: boolean): ApiReasoni
   }
   return {
     reasoning: '',
-    answer: finalValue ? normalized.trim() : normalized.trimStart().trimEnd()
+    answer: normalized
   }
 }
 
@@ -1437,10 +1556,24 @@ function parseResponseInput(instructions: string, input?: string | ApiMessageInp
 function parseMessage(message: ApiMessageInput): ChatTurn {
   const role = normalizeRole(message.role ?? '')
   const content = contentText(message.content)
-  if (content.length <= 0) {
-    throw new Error('消息内容不能为空，第一版暂不支持图片或工具消息。')
+  let imageUri = ''
+  if (Array.isArray(message.content)) {
+    for (const part of message.content) {
+      if (part.type !== 'image_url' && part.type !== 'input_image') continue
+      if (role !== 'user') throw new Error('图片只能放在用户消息中。')
+      if (imageUri.length > 0) throw new Error('当前每次请求支持一张图片。')
+      const value = part.image_url
+      imageUri = typeof value === 'string' ? value : value?.url ?? ''
+      if (imageUri.length === 0) throw new Error('请提供图片地址或 Base64 图片。')
+      if (!/^https?:\/\//i.test(imageUri) && !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(imageUri)) {
+        throw new Error('请提供图片的 HTTP 地址或 PNG、JPEG、WebP Base64 数据。')
+      }
+    }
   }
-  return { role, content }
+  if (content.length <= 0) {
+    if (imageUri.length === 0) throw new Error('消息内容不能为空。')
+  }
+  return { role, content: content.length > 0 ? content : '请描述这张图片。', imageUri }
 }
 
 function normalizeRole(role: string): string {
@@ -1469,7 +1602,8 @@ function contentText(content?: string | ApiContentPart[]): string {
       }
       continue
     }
-    throw new Error('第一版 API 服务仅支持文本输入。')
+    if (part.type === 'image_url' || part.type === 'input_image') continue
+    throw new Error('消息包含不支持的内容类型。')
   }
   return texts.join('\n')
 }
@@ -1504,19 +1638,17 @@ function chatCompletionObject(
     message,
     finish_reason: finishReason(result)
   }
-  const usage: TokenUsage = {
-    prompt_tokens: 0,
-    completion_tokens: result.generatedTokens,
-    total_tokens: result.generatedTokens
+  const response: ChatCompletionPayload = {
+    id, object: 'chat.completion', created, model, choices: [choice]
   }
-  return {
-    id,
-    object: 'chat.completion',
-    created,
-    model,
-    choices: [choice],
-    usage
+  if (!result.generatedTokensEstimated && result.inputTokens !== undefined && Number.isSafeInteger(result.inputTokens) && result.inputTokens >= 0) {
+    response.usage = {
+      prompt_tokens: result.inputTokens,
+      completion_tokens: result.generatedTokens,
+      total_tokens: result.inputTokens + result.generatedTokens
+    }
   }
+  return response
 }
 
 function responseBase(
@@ -1553,6 +1685,9 @@ function responsesObject(
   output: ApiReasoningOutput,
   result: GenerationResult
 ): ResponsePayload {
+  const status = result.stopReason === 'eos' ? 'completed' :
+    result.stopReason === 'max_tokens' ? 'incomplete' : 'failed'
+  const itemStatus = status === 'completed' ? 'completed' : 'incomplete'
   const items: ResponseOutputItem[] = []
   if (output.reasoning.length > 0) {
     const reasoningContent: ResponseOutputContent = {
@@ -1562,7 +1697,7 @@ function responsesObject(
     items.push({
       id: reasoningId,
       type: 'reasoning',
-      status: 'completed',
+      status: parseAssistantText(result.text).thinkingClosed ? 'completed' : 'incomplete',
       content: [reasoningContent],
       summary: []
     })
@@ -1571,26 +1706,94 @@ function responsesObject(
   const item: ResponseOutputItem = {
     id: messageId,
     type: 'message',
-    status: 'completed',
+    status: itemStatus,
     role: 'assistant',
     content: [content]
   }
   items.push(item)
-  const response = responseBase(responseId, model, created, 'completed', items)
-  const inputDetails: ResponseInputTokenDetails = { cached_tokens: 0 }
-  const outputDetails: ResponseOutputTokenDetails = { reasoning_tokens: 0 }
-  response.usage = {
-    input_tokens: 0,
-    input_tokens_details: inputDetails,
-    output_tokens: result.generatedTokens,
-    output_tokens_details: outputDetails,
-    total_tokens: result.generatedTokens
+  const response = responseBase(responseId, model, created, status, items)
+  if (status === 'incomplete') response.incomplete_details = { reason: 'max_output_tokens' }
+  if (status === 'failed') response.error = { code: 'server_error', message: generationFailureMessage(result) }
+  response.usage = null
+  if (!result.generatedTokensEstimated && result.inputTokens !== undefined && Number.isSafeInteger(result.inputTokens) && result.inputTokens >= 0 &&
+    output.reasoning.length === 0) {
+    response.usage = {
+      input_tokens: result.inputTokens,
+      input_tokens_details: { cached_tokens: 0 },
+      output_tokens: result.generatedTokens,
+      output_tokens_details: { reasoning_tokens: 0 },
+      total_tokens: result.inputTokens + result.generatedTokens
+    }
   }
   return response
 }
 
+function generationFailureMessage(result: GenerationResult): string {
+  if (result.stopReason === 'user_stop') return '生成已取消，已停止返回回答。'
+  if (result.stopReason === 'timeout') return '生成超时，回答未正常完成。'
+  if (result.stopReason === 'internal_error') return '模型生成失败，回答未正常完成。'
+  return '模型未报告正常结束，回答未正常完成。'
+}
+
+interface ApiOutputFormat {
+  type?: string
+}
+
+interface ApiResponseTextOptions {
+  format?: ApiOutputFormat
+}
+
+function validateApiGenerationOptions(value: Object, responses: boolean): void {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error('请求体必须是 JSON 对象。')
+  const body = value as Record<string, Object>
+  if (!responses && body['stream_options'] !== undefined && body['stream_options'] !== null) {
+    const options = body['stream_options']
+    if (typeof options !== 'object' || Array.isArray(options)) throw new Error('stream_options 必须是 JSON 对象。')
+    const includeUsage = (options as ChatStreamOptions).include_usage
+    if (includeUsage !== undefined && typeof includeUsage !== 'boolean') throw new Error('include_usage 必须为布尔值。')
+    if (body['stream'] !== true) throw new Error('stream_options 仅适用于流式请求。')
+  }
+  const unsupported = responses ? ['previous_response_id', 'conversation', 'reasoning'] : ['stop', 'seed']
+  unsupported.forEach((name: string) => {
+    if (body[name] !== undefined && body[name] !== null) throw new Error(`当前接口不支持 ${name}。`)
+  })
+  for (const name of ['tools', 'functions']) {
+    const tools = body[name]
+    if (tools !== undefined && tools !== null && (!Array.isArray(tools) || tools.length > 0)) {
+      throw new Error(`当前接口不支持 ${name}，请移除工具调用配置。`)
+    }
+  }
+  for (const name of ['tool_choice', 'function_call']) {
+    if (body[name] !== undefined && body[name] !== null && body[name] !== 'none') {
+      throw new Error(`当前接口只支持 ${name}=none。`)
+    }
+  }
+  if (body['parallel_tool_calls'] === true) throw new Error('当前接口不支持并行工具调用。')
+  if (body['n'] !== undefined && body['n'] !== 1) throw new Error('当前接口只支持 n=1。')
+  if (body['store'] === true || body['background'] === true) throw new Error('当前接口不支持服务端保存或后台任务模式。')
+  const formats: Object[] = []
+  if (body['response_format'] !== undefined && body['response_format'] !== null) {
+    formats.push(body['response_format'])
+  }
+  if (responses && body['text'] !== undefined && body['text'] !== null) {
+    if (typeof body['text'] !== 'object' || Array.isArray(body['text'])) {
+      throw new Error('text 必须是 JSON 对象。')
+    }
+    const text = body['text'] as ApiResponseTextOptions
+    if (text.format !== undefined && text.format !== null) formats.push(text.format)
+  }
+  for (const value of formats) {
+    const format = value as ApiOutputFormat
+    if (typeof value !== 'object' || Array.isArray(value) || format.type !== 'text') {
+      throw new Error('当前接口只支持普通文本输出，不支持 JSON 模式或结构化输出。')
+    }
+  }
+}
+
 function finishReason(result: GenerationResult): string {
-  return result.stopReason === 'max_tokens' ? 'length' : 'stop'
+  if (result.stopReason === 'max_tokens') return 'length'
+  if (result.stopReason === 'eos') return 'stop'
+  throw new Error(generationFailureMessage(result))
 }
 
 function httpHeaders(statusCode: number, contentType: string, includeLength: boolean, contentLength: number = 0): string {

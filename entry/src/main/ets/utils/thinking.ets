@@ -17,30 +17,6 @@ function rememberAssistantText(content: string, parts: AssistantTextParts): Assi
   return parts
 }
 
-export function stripModelSpecialTokens(content: string): string {
-  let text = content
-    .replace(/<s>/g, '')
-    .replace(/<\/s>/g, '')
-    .replace(/<pad>/g, '')
-    .replace(/<unk>/g, '')
-    .replace(/<\|im_start\|>/g, '')
-    .replace(/<\|im_end\|>/g, '')
-    .replace(/<\|begin_of_sentence\|>/g, '')
-    .replace(/<\|end_of_sentence\|>/g, '')
-    .replace(/<\|User\|>/g, '')
-    .replace(/<\|Assistant\|>/g, '')
-    .replace(/<\|begin_of_text\|>/g, '')
-    .replace(/<\|end_of_text\|>/g, '')
-    .replace(/<bos>/g, '')
-    .replace(/<\|turn>/g, '')
-    .replace(/<turn\|>/g, '')
-
-  if (text.indexOf('<think>') < 0) {
-    text = text.replace(/<\/think>/g, '')
-  }
-  return text
-}
-
 export function parseAssistantText(content: string): AssistantTextParts {
   const cached = assistantTextCache.get(content)
   if (cached !== undefined) {

@@ -87,7 +87,7 @@ export struct ApiUsageDialog {
                 Text(this.mode === 'rerank' ?
                   '向 /v1/rerank 发送 POST 请求。query 为问题，documents 为候选文本数组，top_n 为可选的返回数量。结果按相关性降序排列，index 对应输入位置（从 0 开始）。需先在模型页加载重排模型。' : this.mode === 'decision' ?
                   '向 API 地址后的 /v1/decisions 发送 POST 请求，Content-Type 设为 application/json。需先在模型页安装并加载决策模型。省略 model 时使用已加载的决策模型。H2O-Lightning 可用 image 传入 PNG、JPEG 或 WebP 的 Base64 数据 URI，请求体上限 1 MiB。下方为选择题示例。' :
-                    '在 Cherry Studio 等客户端中选择 OpenAI 兼容服务，填入本页 API 地址和 API Key，通过 GET /v1/models 获取模型列表。聊天需先在模型页加载模型，支持 Chat Completions 和 Responses 请求。')
+                    '在 Cherry Studio 等客户端中选择 OpenAI 兼容服务，填入本页 API 地址和 API Key，通过 GET /v1/models 获取模型列表。聊天需先在模型页加载模型，支持 Chat Completions 和 Responses 请求。图片模型每次请求可接收一张图片，支持 Base64 图片或公网图片地址。多轮提问需携带原图与历史消息。')
                   .fontSize(13).lineHeight(21).fontColor($r('app.color.text_secondary')).width('100%')
                 if (this.mode !== 'chat' && this.mode !== 'overview' && this.mode !== 'log') {
                   Text(this.example)
