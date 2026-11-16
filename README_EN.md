@@ -68,7 +68,7 @@ The project can serve as a development and integration reference for local AI ap
 - Preserve generated content after stopping, timeout or output-limit termination so later questions can use it. Keep images in multi-turn context for follow-up questions about the original image.
 - Support image input and remote image URLs through the API, with stronger request validation, context budgeting and connection resource limits.
 - Reuse matching KV prefixes in active text conversations to reduce repeated prefill work. Preserve model-provided text and special markers, and account for context using the actual prepared input.
-- Strengthen file and response validation when resuming downloads, refresh and pin the Qwen3-0.6B package, and manage download and supported-device compute background tasks as needed.
+- Resolve the actual file list for unpinned model entries before downloading and pin the files to one commit. Reuse that manifest for retries and resume, validate files and responses, and manage download and supported-device compute background tasks as needed.
 - Scroll truncated history titles on mouse hover, and temporarily enable local diagnostic records through Settings for troubleshooting.
 
 **Decision models and runtime settings (v1.22.0)**

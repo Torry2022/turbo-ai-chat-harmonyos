@@ -55,6 +55,7 @@ export interface OfficialRepoFiles {
 
 const MODEL_SCOPE_ROOT: string = 'https://modelscope.cn/models/'
 const REPO_PATTERN: RegExp = /^MNN\/[A-Za-z0-9_.-]+$/
+const DOWNLOAD_REPO_PATTERN: RegExp = /^[A-Za-z0-9_-]+\/[A-Za-z0-9_.-]+$/
 const COMMIT_PATTERN: RegExp = /^[a-f0-9]{8,64}$/
 
 // These exports previously failed generation in this app; retain other official models.
@@ -133,7 +134,9 @@ export function parseOfficialModelCatalog(text: string, existing: ModelCatalogIt
 
 export function officialModelRepo(item: ModelCatalogItem): string {
   const repo = item.sourceUrl.startsWith(MODEL_SCOPE_ROOT) ? item.sourceUrl.substring(MODEL_SCOPE_ROOT.length) : ''
-  if (!REPO_PATTERN.test(repo)) throw new Error('官方模型的魔搭仓库地址无效')
+  if (!DOWNLOAD_REPO_PATTERN.test(repo) || repo.split('/').some((part: string) => part === '.' || part === '..')) {
+    throw new Error('模型的魔搭仓库地址无效')
+  }
   return repo
 }
 
@@ -143,7 +146,9 @@ function safePath(path: string): boolean {
 }
 
 export function parseOfficialRepoFiles(text: string, repo: string): OfficialRepoFiles {
-  if (!REPO_PATTERN.test(repo)) throw new Error('官方模型仓库名称无效')
+  if (!DOWNLOAD_REPO_PATTERN.test(repo) || repo.split('/').some((part: string) => part === '.' || part === '..')) {
+    throw new Error('模型仓库名称无效')
+  }
   const response = JSON.parse(text) as ModelScopeFilesResponse
   const data = response.Data
   if (response.Success !== true || !Array.isArray(data?.Files)) throw new Error('无法读取魔搭模型文件清单')
@@ -215,7 +220,7 @@ export function resolveOfficialCatalogItem(
     recommended: item.recommended, minAppVersionCode: item.minAppVersionCode, files, totalBytes, supportsImage,
     capabilities: supportsImage ? ['对话', '图像理解', ...catalogCapabilityLabels(item.capabilities).filter((value: string) => value !== '对话' && value !== '图像理解')] :
       catalogCapabilityLabels(item.capabilities).filter((value: string) => value !== '图像理解'),
-    runtime: item.modelType === 'rerank' ? undefined :
+    runtime: item.modelType === 'rerank' ? undefined : item.runtime ??
       { systemPrompt: '你是一个有帮助的助手。请使用简体中文回答。', contextMessageLimit: 6, generationDefaults: defaults } }
 }
 

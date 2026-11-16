@@ -19,6 +19,7 @@ import { OfficialCatalog, officialModelRepo, officialPackageCompatibilityMessage
 import {
   catalogItemToProfile,
   mergeCatalogItems,
+  isPinnedModelDownload,
   mergeRemoteModelCatalog,
   parseInstalledCatalog,
   parseRemoteModelCatalog,
@@ -61,10 +62,13 @@ export class ModelCatalogService {
   private source: string = '内置目录'
 
   items(): ModelCatalogItem[] {
-    const official = this.officialItems.concat(this.rerankerItems).map((item: ModelCatalogItem) =>
-      this.findItem(this.resolvedItems, item.id) ?? item)
+    const official = this.officialItems.concat(this.rerankerItems)
     return mergeCatalogItems(mergeCatalogItems(official, this.marketItems), [LAYA_DOWNLOAD_SPEC, H2O_DOWNLOAD_SPEC])
       .map((item: ModelCatalogItem): ModelCatalogItem => {
+        const resolved = this.findItem(this.resolvedItems, item.id)
+        if (resolved !== undefined && resolved.sourceUrl === item.sourceUrl && !isPinnedModelDownload(item)) {
+          item = resolved
+        }
         const description = this.descriptions[descriptionRepo(item.sourceUrl)]
         if (description === undefined) return item
         return { id: item.id, modelId: item.modelId, modelType: item.modelType,
@@ -281,7 +285,7 @@ export class ModelCatalogService {
   async resolveInstallItem(filesDir: string, id: string): Promise<ModelCatalogItem> {
     const item = this.findMarketItem(id) ?? this.findInstallItem(id)
     if (item === undefined) throw new Error('模型广场条目不存在')
-    if (item.files.length > 0 && officialPackageCompatibilityMessage(item, item.files).length <= 0) return item
+    if (isPinnedModelDownload(item) && officialPackageCompatibilityMessage(item, item.files).length <= 0) return item
     const repo = officialModelRepo(item)
     const text = await this.requestCatalog(
       `https://modelscope.cn/api/v1/models/${repo}/repo/files?Revision=master&Recursive=true`, 'application/json')

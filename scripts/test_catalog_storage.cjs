@@ -303,6 +303,72 @@ async function main() {
   const config = { llm_model: 'llm.mnn', llm_weight: 'llm.mnn.weight', temperature: 0.7, topP: 0.8, topK: 20, penalty: 1.1 };
   const llm = { jinja: { chat_template: 'a valid template' }, is_visual: false };
   const raw = JSON.stringify;
+  await check('only one complete immutable package can bypass repository resolution', async () => {
+    const { isPinnedModelDownload } = load(path.join(sourceRoot, 'utils/modelCatalog.ets'));
+    const item = MODEL_CATALOG_ITEMS.find(value => value.id === 'qwen3-0.6b');
+    assert(isPinnedModelDownload(item));
+    assert(!isPinnedModelDownload({ ...item, files: [] }));
+    const change = (index, url) => ({ ...item, files: item.files.map((file, i) => i === index ? { ...file, url } : file) });
+    assert(!isPinnedModelDownload(change(0, item.files[0].url.replace(/resolve\/[^/]+/, 'resolve/master'))));
+    assert(!isPinnedModelDownload(change(0, item.files[0].url.replace(/resolve\/[^/]+/, 'resolve/01234567'))));
+    assert(!isPinnedModelDownload(change(0, item.files[0].url.replace(/resolve\/[^/]+/, 'resolve/' + revision))));
+    assert(!isPinnedModelDownload(change(0, item.files[0].url.replace('MNN/', 'Other/'))));
+    assert(!isPinnedModelDownload(change(0, item.files[0].url + '?revision=master')));
+  });
+  await check('curated mutable packages resolve dependencies and persist the pinned package across restart', async () => {
+    const original = MODEL_CATALOG_ITEMS.find(value => value.id === 'minicpm5-1b');
+    assert(original);
+    const item = { ...original, runtime: { systemPrompt: 'Keep this instruction', contextMessageLimit: 4 } };
+    const repo = item.sourceUrl.split('/models/')[1];
+    const root = item.sourceUrl + '/resolve/' + revision;
+    const service = new ModelCatalogService();
+    service.marketItems = service.marketItems.map(value => value.id === item.id ? item : value);
+    const extra = { Type: 'blob', Path: 'tokenizer.mtok', Size: 30, Revision: revision };
+    urlResponses.set(`https://modelscope.cn/api/v1/models/${repo}/repo/files?Revision=master&Recursive=true`, response(listing([...blobs, extra])));
+    urlResponses.set(root + '/config.json', response({ ...config, tokenizer_file: 'tokenizer.mtok' }));
+    urlResponses.set(root + '/llm_config.json', response(llm));
+    const resolved = await service.resolveInstallItem('/test', item.id);
+    assert.equal(resolved.id, item.id);
+    assert.equal(resolved.directoryName, item.directoryName);
+    assert.equal(raw(resolved.runtime), raw(item.runtime));
+    assert.equal(resolved.files.find(file => file.relativePath === 'config.json').sizeBytes, 12);
+    assert(resolved.files.some(file => file.relativePath === 'tokenizer.mtok'));
+    assert(resolved.files.every(file => file.url.startsWith(root + '/')));
+    assert.equal(raw(service.findMarketItem(item.id)), raw(resolved));
+    const before = requests.length;
+    const reloaded = new ModelCatalogService(); await reloaded.load('/test');
+    assert.equal(raw(await reloaded.resolveInstallItem('/test', item.id)), raw(resolved));
+    assert.equal(requests.length, before);
+    await reloaded.recordInstalled('/test', resolved);
+    assert.equal(raw(reloaded.findInstallItem(item.id)), raw(resolved));
+  });
+  await check('mutable metadata errors cannot fall back to stale sizes and a later retry can resolve', async () => {
+    const item = MODEL_CATALOG_ITEMS.find(value => value.id === 'qwen3-1.7b');
+    const service = new ModelCatalogService();
+    const repo = item.sourceUrl.split('/models/')[1];
+    const url = `https://modelscope.cn/api/v1/models/${repo}/repo/files?Revision=master&Recursive=true`;
+    urlResponses.set(url, { responseCode: 503, result: '' });
+    await assert.rejects(service.resolveInstallItem('/test', item.id));
+    assert(!files.has('/test/model-catalog-official-files.json'));
+    assert.equal(raw(service.findMarketItem(item.id)), raw(item));
+    urlResponses.set(url, response(listing()));
+    const root = item.sourceUrl + '/resolve/' + revision;
+    urlResponses.set(root + '/config.json', response(config));
+    urlResponses.set(root + '/llm_config.json', response(llm));
+    assert.equal((await service.resolveInstallItem('/test', item.id)).files.length, 5);
+  });
+  await check('explicit pinned packages stay offline and override older cached resolutions', async () => {
+    const item = MODEL_CATALOG_ITEMS.find(value => value.id === 'qwen3-0.6b');
+    const service = new ModelCatalogService();
+    service.resolvedItems = [{ ...item, files: item.files.map(file => ({ ...file, url: file.url.replace(/resolve\/[^/]+/, 'resolve/' + revision) })) }];
+    assert.equal(raw(await service.resolveInstallItem('/test', item.id)), raw(item));
+    assert.equal(requests.length, 0);
+    const { LAYA_DOWNLOAD_SPEC } = load(path.join(sourceRoot, 'models/LayaModelConfig.ets'));
+    const { H2O_DOWNLOAD_SPEC } = load(path.join(sourceRoot, 'models/H2oModelConfig.ets'));
+    assert.equal(raw(await service.resolveInstallItem('/test', LAYA_DOWNLOAD_SPEC.id)), raw(LAYA_DOWNLOAD_SPEC));
+    assert.equal(raw(await service.resolveInstallItem('/test', H2O_DOWNLOAD_SPEC.id)), raw(H2O_DOWNLOAD_SPEC));
+    assert.equal(requests.length, 0);
+  });
   await check('official parser deduplicates curated repositories, ignores Android versions, and filters unsupported tasks', async () => {
     const entry = official().models[0];
     const models = [entry, entry, { ...entry, min_app_version: '999.0', sources: { ModelScope: 'MNN/Other-MNN' } },
@@ -501,8 +567,11 @@ async function main() {
     }).outputText;
     const { formatDownloadError, formatError } = load(path.join(sourceRoot, 'utils/formatters.ets'));
     const { calculateDownloadProgress } = load(path.join(sourceRoot, 'utils/downloadProgress.ets'));
-    const Subject = vm.runInNewContext(code + '\nSubject', { formatDownloadError, formatError, calculateDownloadProgress, setTimeout: () => 0 });
-    const item = parseOfficialModelCatalog(raw(official()), []).items[0];
+    const { isPinnedModelDownload } = load(path.join(sourceRoot, 'utils/modelCatalog.ets'));
+    const Subject = vm.runInNewContext(code + '\nSubject', { isPinnedModelDownload, formatDownloadError, formatError, calculateDownloadProgress, setTimeout: () => 0 });
+    const item = { ...parseOfficialModelCatalog(raw(official()), []).items[0], files: [{
+      relativePath: 'config.json', sizeBytes: 999,
+      url: 'https://modelscope.cn/models/MNN/Example-MNN/resolve/master/config.json' }] };
     let downloads = 0;
     const subject = new Subject();
     Object.assign(subject, { filesDir: '/test', notify: () => {}, setStatus: value => { subject.status = value; },

@@ -18,6 +18,17 @@ import {
   ModelProfile
 } from '../models/ModelProfile'
 
+export function isPinnedModelDownload(spec: BuiltinModelDownloadSpec): boolean {
+  if (spec.files.length === 0) return false
+  const prefix = `${spec.sourceUrl}/resolve/`
+  const firstUrl = spec.files[0].url
+  if (!firstUrl.startsWith(prefix)) return false
+  const revision = firstUrl.substring(prefix.length).split('/')[0]
+  if (!/^[a-f0-9]{40}$/i.test(revision)) return false
+  return spec.files.every((file: BuiltinModelFileSpec) =>
+    file.url === `${prefix}${revision}/${file.relativePath}`)
+}
+
 const CATALOG_SCHEMA_VERSION: number = 1
 const INSTALLED_CATALOG_SCHEMA_VERSION: number = 1
 const MODELSCOPE_BASE_URL: string = 'https://modelscope.cn/models'

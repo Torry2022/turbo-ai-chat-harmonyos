@@ -47,7 +47,7 @@ import { ImagePayloadService } from '../services/ImagePayloadService'
 import { BuiltinModelInstallService } from '../services/BuiltinModelInstallService'
 import { ModelImportService } from '../services/ModelImportService'
 import { ModelCatalogService } from '../services/ModelCatalogService'
-import { catalogCapabilityLabels, catalogCompatibilityMessage } from '../utils/modelCatalog'
+import { catalogCapabilityLabels, catalogCompatibilityMessage, isPinnedModelDownload } from '../utils/modelCatalog'
 import { NativeInferenceService } from '../services/NativeInferenceService'
 import { BackgroundTaskService } from '../services/BackgroundTaskService'
 import {
@@ -2710,9 +2710,9 @@ export class ChatViewModel {
     this.builtinModelInstallTotalBytes = spec.totalBytes
     this.builtinModelInstallModelName = spec.displayName
     this.builtinModelInstallSourceName = spec.sourceName
-    let resolvingFiles = spec.files.length === 0
+    let resolvingFiles = !isPinnedModelDownload(spec)
     const install = async (): Promise<void> => {
-      if (spec.files.length === 0) {
+      if (resolvingFiles) {
         this.builtinModelInstallMessage = '正在读取模型文件信息...'
         this.notify()
         spec = await this.modelCatalogService.resolveInstallItem(this.filesDir, spec.id)
@@ -2734,7 +2734,8 @@ export class ChatViewModel {
       this.notify()
 
       if (this.builtinModelInstallCancelRequested) throw new Error('下载已取消')
-      const supportsImage = this.modelCatalogService.findInstallItem(spec.id)?.supportsImage ?? false
+      const supportsImage = this.modelCatalogService.findMarketItem(spec.id)?.supportsImage ??
+        this.modelCatalogService.findInstallItem(spec.id)?.supportsImage ?? false
       await this.modelLifecycleService.installCatalogItem(context, spec, supportsImage, (progress: BuiltinModelInstallProgress) => {
         if (this.builtinModelInstallCancelRequested) {
           return
