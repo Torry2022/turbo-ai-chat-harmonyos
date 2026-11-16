@@ -9,6 +9,7 @@ import { decide, loadDecision, isDecisionLoaded, isDecisionReady, DecisionRuntim
 import { LAYA_MODEL_ID, LAYA_MODEL_DIRECTORY } from '../models/LayaModelConfig'
 import { ChatConversation, ChatConversationSummary, ChatHistorySearchResult, conversationTitle } from '../models/ChatHistoryTypes'
 import { ChatHistoryService } from '../services/ChatHistoryService'
+import { ChatDataService, PendingChatRestore } from '../services/ChatDataService'
 import { bundleManager, common } from '@kit.AbilityKit'
 import preferences from '@ohos.data.preferences'
 import cryptoFramework from '@ohos.security.cryptoFramework'
@@ -319,6 +320,9 @@ export class ChatViewModel {
   }
 
   diagnosticLoggingEnabled: boolean = false
+  private chatDataService: ChatDataService = new ChatDataService()
+  private pendingRestore?: PendingChatRestore
+  restoreConversationCount: number = 0
   private backgroundTasks: BackgroundTaskService = new BackgroundTaskService()
   private appForeground: boolean = true
   private lastContext?: ChatContextSnapshot
@@ -2012,6 +2016,74 @@ export class ChatViewModel {
       this.historyError = this.historyFailure('删除对话失败', error as Object)
     } finally {
       this.historyBusy = false
+      this.notify()
+    }
+  }
+
+  async exportChatData(all: boolean): Promise<void> {
+    if (!this.canManageConversations() || this.context === undefined) return
+    if (!all && this.activeConversationId.length === 0) return
+    this.historyBusy = true
+    this.notify()
+    try {
+      await this.flushHistory()
+      const saved = await this.chatDataService.exportData(this.context, this.historyService,
+        all ? undefined : this.activeConversationId)
+      if (saved) this.toastCallback(all ? '对话备份已保存' : '对话已导出')
+    } catch (error) {
+      console.error(`Chat export failed: ${formatError(error as Object)}`)
+      this.toastCallback('导出未完成，请检查存储空间和图片是否可读取后重试')
+    } finally {
+      this.historyBusy = false
+      this.notify()
+    }
+  }
+
+  async chooseChatBackup(): Promise<void> {
+    if (!this.canManageConversations() || this.context === undefined || this.pendingRestore !== undefined) return
+    this.historyBusy = true
+    this.notify()
+    try {
+      await this.flushHistory()
+      this.pendingRestore = await this.chatDataService.prepareRestore(this.context, this.historyService)
+      this.restoreConversationCount = this.pendingRestore?.archive.conversations.length ?? 0
+    } catch (error) {
+      console.error(`Chat backup validation failed: ${formatError(error as Object)}`)
+      this.toastCallback('无法读取此备份，请检查文件是否完整及存储空间是否充足')
+    } finally {
+      this.historyBusy = false
+      this.notify()
+    }
+  }
+
+  async cancelChatRestore(): Promise<void> {
+    if (this.historyBusy) return
+    const pending = this.pendingRestore
+    this.pendingRestore = undefined
+    this.restoreConversationCount = 0
+    this.notify()
+    if (pending !== undefined) {
+      try { await this.chatDataService.clearRestore(pending) }
+      catch (error) { console.warn(`Restore staging cleanup failed: ${formatError(error as Object)}`) }
+    }
+  }
+
+  async confirmChatRestore(): Promise<void> {
+    const pending = this.pendingRestore
+    if (pending === undefined || !this.canManageConversations()) return
+    this.historyBusy = true
+    this.notify()
+    try {
+      const count = await this.historyService.restoreArchive(pending.archive, pending.directory)
+      this.conversations = this.historyService.list()
+      if (this.historySearchText.trim()) this.updateHistorySearch(this.historySearchText)
+      this.toastCallback(`已恢复 ${count} 条对话`)
+    } catch (error) {
+      console.error(`Chat restore failed: ${formatError(error as Object)}`)
+      this.toastCallback('恢复未完成，请检查可用存储空间后重试')
+    } finally {
+      this.historyBusy = false
+      await this.cancelChatRestore()
       this.notify()
     }
   }

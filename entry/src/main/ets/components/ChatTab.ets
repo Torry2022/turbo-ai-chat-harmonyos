@@ -765,6 +765,12 @@ export struct ChatTab {
       }.backgroundColor(Color.Transparent).borderRadius(6)
         .enabled(this.viewModel.contextForCurrentConversation() !== undefined)
         .onClick(() => { this.inputController.stopEditing(); this.onViewContext() })
+      MenuItem() {
+        Text('导出对话').fontSize(14).fontColor($r('app.color.text_title')).width('100%')
+          .height(40).padding({ left: 10, right: 10 })
+      }.backgroundColor(Color.Transparent).borderRadius(6)
+        .enabled(this.viewModel.canManageConversations() && this.viewModel.activeConversationId.length > 0)
+        .onClick(() => { this.inputController.stopEditing(); this.viewModel.exportChatData(false) })
     }.width(176).borderRadius($r('app.float.button_radius')).backgroundColor($r('app.color.dialog'))
   }
 

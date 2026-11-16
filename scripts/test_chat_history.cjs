@@ -105,6 +105,59 @@ function conversation(id = 'c-test-1') {
   session.appendMessage('assistant', '<think>思考</think>回答一。', '', true);
   return { version: 1, id, title: '测试对话', createdAt: 1000, updatedAt: 2000, messages: session.messages };
 }
+add('chat backups preserve images and answer versions while restoring independent records', async () => {
+  const root = path.join(temporary, 'archive-roundtrip'); fs.mkdirSync(root);
+  const source = new ChatHistoryService(); await source.initialize(root);
+  const record = conversation();
+  const picture = path.join(root, 'test-image'); fs.writeFileSync(picture, 'synthetic image bytes');
+  record.messages.find(message => message.role === 'user').imageUri = picture;
+  const session = new ChatSession(); session.restore(record.messages); session.startAnswerVersion(record.messages.at(-1).id);
+  session.updateMessage(record.messages.at(-1).id, '另一个回答', true); session.markGeneration(record.messages.at(-1).id, 'complete', 'eos');
+  record.messages = session.messages;
+  await source.save(record);
+  const staging = path.join(root, 'backup'); fs.mkdirSync(staging);
+  const backup = await source.exportArchive(staging);
+  assert.equal(backup.conversations.length, 1);
+  assert.equal(backup.conversations[0].messages.find(message => message.role === 'user').imageUri,
+    `images/0-${record.messages.find(message => message.role === 'user').id}`);
+  const originalBytes = fs.readFileSync(path.join(root, 'chat-history', record.id, 'conversation.json'));
+  assert.equal(await source.restoreArchive(backup, staging), 1);
+  assert.equal(source.list().length, 2);
+  const restored = await source.load(source.list().find(item => item.id !== record.id).id);
+  assert.equal(JSON.stringify(restored.messages.at(-1).answerVersions),
+    JSON.stringify(record.messages.at(-1).answerVersions));
+  assert.equal(fs.readFileSync(restored.messages.find(message => message.role === 'user').imageUri, 'utf8'), 'synthetic image bytes');
+  assert.deepEqual(fs.readFileSync(path.join(root, 'chat-history', record.id, 'conversation.json')), originalBytes);
+  await source.remove(restored.id);
+  assert(fs.existsSync((await source.load(record.id)).messages.find(message => message.role === 'user').imageUri));
+});
+add('backup validation and failed restore cannot publish partial conversations', async () => {
+  const root = path.join(temporary, 'archive-rollback'); fs.mkdirSync(root);
+  const service = new ChatHistoryService(); await service.initialize(root); await service.save(conversation());
+  const staging = path.join(root, 'backup'); fs.mkdirSync(staging);
+  const backup = await service.exportArchive(staging);
+  const unsafe = JSON.parse(JSON.stringify(backup)); unsafe.conversations[0].messages[1].imageUri = '../outside';
+  assert.throws(() => service.validateArchive(JSON.stringify(unsafe)));
+  const duplicate = JSON.parse(JSON.stringify(backup)); duplicate.conversations.push(duplicate.conversations[0]);
+  assert.throws(() => service.validateArchive(JSON.stringify(duplicate)));
+  rejectRename = true;
+  await assert.rejects(service.restoreArchive(backup, staging));
+  assert.equal(JSON.stringify(service.list().map(item => item.id)), '["c-test-1"]');
+  assert(!fs.readdirSync(path.join(root, 'chat-history')).some(name => name.startsWith('c-restore-')));
+  const reopened = new ChatHistoryService(); await reopened.initialize(root);
+  assert.equal(JSON.stringify(reopened.list().map(item => item.id)), '["c-test-1"]');
+});
+add('restart rolls an interrupted restore back before rebuilding the history index', async () => {
+  const root = path.join(temporary, 'archive-interrupted'); fs.mkdirSync(root);
+  const service = new ChatHistoryService(); await service.initialize(root); await service.save(conversation());
+  const partialId = 'c-restore-interrupted';
+  fs.mkdirSync(path.join(root, 'chat-history', partialId));
+  fs.writeFileSync(path.join(root, 'chat-history', partialId, 'conversation.json'), JSON.stringify(conversation(partialId)));
+  fs.writeFileSync(path.join(root, 'chat-history/.restore-pending'), JSON.stringify([partialId]));
+  const reopened = new ChatHistoryService(); await reopened.initialize(root);
+  assert.equal(JSON.stringify(reopened.list().map(item => item.id)), '["c-test-1"]');
+  assert(!fs.existsSync(path.join(root, 'chat-history', partialId)));
+});
 add('context window comes from explicit model metadata and unknown values stay unknown', () => {
   assert.equal(declaredContextTokens('{"max_position_embeddings":8192}'), 8192);
   assert.equal(declaredContextTokens('{"context_length":4096}'), 4096);

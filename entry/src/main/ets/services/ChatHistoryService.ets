@@ -5,6 +5,7 @@ import { ChatConversation, ChatConversationSummary, ChatHistoryIndex, ChatHistor
 import { parseAssistantText } from '../utils/thinking'
 import { conversationTitleSignature } from './ConversationTitleService'
 import { MarkdownBlock, MarkdownSpan, parseInlineMarkdown, parseLightMarkdown } from '../utils/markdown'
+import { ChatArchive, parseChatArchive } from '../utils/chatArchive'
 
 export class ChatHistoryService {
   warning: string = ''
@@ -19,6 +20,7 @@ export class ChatHistoryService {
     this.root = `${filesDir}/chat-history`
     return this.enqueue(async (): Promise<ChatHistoryIndex> => {
       await this.ensureDirectory(this.root)
+      await this.recoverPendingRestore()
       this.summaries = []
       this.activeId = ''
       const indexPath = `${this.root}/index.json`
@@ -58,6 +60,103 @@ export class ChatHistoryService {
 
   list(): ChatConversationSummary[] {
     return this.summaries.slice().sort((a: ChatConversationSummary, b: ChatConversationSummary) => b.updatedAt - a.updatedAt)
+  }
+
+  exportArchive(directory: string, conversationId?: string): Promise<ChatArchive> {
+    return this.enqueue(async (): Promise<ChatArchive> => {
+      const records: ChatConversation[] = []
+      const summaries = conversationId === undefined ? this.list() : this.list().filter(
+        (item: ChatConversationSummary) => item.id === conversationId)
+      if (conversationId !== undefined && summaries.length === 0) throw new Error('该对话已不存在')
+      await this.ensureDirectory(`${directory}/images`)
+      for (let index = 0; index < summaries.length; index++) {
+        const record = JSON.parse(JSON.stringify(await this.readRecord(summaries[index].id))) as ChatConversation
+        for (const message of record.messages) {
+          if (!message.imageUri) continue
+          const relative = `images/${index}-${message.id}`
+          let source: fs.File | undefined = undefined
+          try {
+            source = fs.openSync(message.imageUri, fs.OpenMode.READ_ONLY)
+            await fs.copyFile(source.fd, `${directory}/${relative}`)
+          } catch (_) {
+            throw new Error('有图片暂时无法读取，请恢复图片后重试')
+          } finally {
+            if (source !== undefined) fs.closeSync(source)
+          }
+          message.imageUri = relative
+          message.imageUnavailable = false
+        }
+        records.push(record)
+      }
+      return { format: 'turbo-ai-chat-history', version: 1, createdAt: Date.now(), conversations: records }
+    })
+  }
+
+  validateArchive(text: string): ChatArchive {
+    const archive = parseChatArchive(text)
+    archive.conversations.forEach((record: ChatConversation) => this.parseRecord(JSON.stringify(record), record.id))
+    return archive
+  }
+
+  restoreArchive(archive: ChatArchive, directory: string): Promise<number> {
+    return this.enqueue(async (): Promise<number> => {
+      const records = this.validateArchive(JSON.stringify(archive)).conversations
+      for (const record of records) {
+        for (const message of record.messages) {
+          if (message.imageUri && !(await fs.stat(`${directory}/${message.imageUri}`)).isFile()) {
+            throw new Error('备份中的图片不完整')
+          }
+        }
+      }
+      await this.recoverPendingRestore()
+      const previous = this.summaries.slice()
+      const ids = records.map((_record: ChatConversation, index: number): string =>
+        `c-restore-${Date.now().toString(36)}-${index}-${Math.random().toString(36).substring(2, 10)}`)
+      if (ids.some((id: string) => this.summaries.some((item: ChatConversationSummary) => item.id === id))) {
+        throw new Error('未能创建对话，请重试')
+      }
+      for (const id of ids) {
+        if (await this.exists(this.directory(id))) throw new Error('未能创建对话，请重试')
+      }
+      await this.atomicWrite(`${this.root}/.restore-pending`, JSON.stringify(ids))
+      try {
+        for (let index = 0; index < records.length; index++) {
+          const record = records[index]
+          record.id = ids[index]
+          await this.ensureDirectory(this.directory(record.id))
+          for (const message of record.messages) {
+            if (!message.imageUri) continue
+            const target = `${this.directory(record.id)}/image-${message.id}`
+            await fs.copyFile(`${directory}/${message.imageUri}`, target)
+            message.imageUri = target
+            message.imageUnavailable = false
+          }
+          await this.atomicWrite(`${this.directory(record.id)}/conversation.json`, JSON.stringify(record))
+          this.upsertSummary(record)
+        }
+        await this.writeIndex()
+        await fs.unlink(`${this.root}/.restore-pending`)
+        return records.length
+      } catch (error) {
+        this.summaries = previous
+        await this.recoverPendingRestore()
+        await this.writeIndex()
+        throw error as Error
+      }
+    })
+  }
+
+  private async recoverPendingRestore(): Promise<void> {
+    const journal = `${this.root}/.restore-pending`
+    if (!await this.exists(journal)) return
+    const ids = JSON.parse(await fs.readText(journal)) as string[]
+    if (!Array.isArray(ids) || ids.some((id: string) => typeof id !== 'string' || !/^c-restore-[a-z0-9-]+$/.test(id))) {
+      throw new Error('上次恢复尚未完成，请保留应用数据并重试')
+    }
+    for (const id of ids) {
+      if (await this.exists(this.directory(id))) await this.removeDirectory(this.directory(id))
+    }
+    await fs.unlink(journal)
   }
 
   load(id: string): Promise<ChatConversation> {

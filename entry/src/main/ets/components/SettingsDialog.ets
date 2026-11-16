@@ -13,6 +13,10 @@ export struct SettingsDialog {
   @State private isClosePressed: boolean = false
   onClose: () => void = () => {}
 
+  aboutToDisappear(): void {
+    this.viewModel.cancelChatRestore()
+  }
+
   @Builder
   private ThemeButton(label: string, mode: ThemeMode, icon: Resource) {
     Button() {
@@ -109,8 +113,41 @@ export struct SettingsDialog {
             Button('清除并关闭记录')
               .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
               .width('100%').onClick(() => this.viewModel.setDiagnosticLogging(false))
+            Text('对话数据').fontSize(16).fontWeight(FontWeight.Bold)
+              .fontColor($r('app.color.text_title')).width('100%').margin({ top: 12 })
+            Text('备份包含对话、图片和回答版本。恢复后添加为独立对话。')
+              .fontSize(11).fontColor($r('app.color.text_model_hint')).width('100%')
+            if (this.viewModel.restoreConversationCount > 0) {
+              Text(`备份中有 ${this.viewModel.restoreConversationCount} 条对话，是否恢复？`)
+                .fontSize(14).fontColor($r('app.color.text_body')).width('100%')
+              Row({ space: 10 }) {
+                Button('取消', { type: ButtonType.Normal })
+                  .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
+                  .layoutWeight(1).enabled(!this.viewModel.historyBusy)
+                  .onClick(() => this.viewModel.cancelChatRestore())
+                Button('恢复', { type: ButtonType.Normal })
+                  .attributeModifier(new ActionButtonStyle($r('app.color.button_primary_background'), $r('app.color.button_primary_text')))
+                  .layoutWeight(1).enabled(this.viewModel.canManageConversations())
+                  .onClick(() => this.viewModel.confirmChatRestore())
+              }.width('100%')
+            } else {
+              Row({ space: 10 }) {
+                Button('保存备份', { type: ButtonType.Normal })
+                  .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
+                  .layoutWeight(1).enabled(this.viewModel.canManageConversations() && this.viewModel.conversations.length > 0)
+                  .onClick(() => this.viewModel.exportChatData(true))
+                Button('恢复备份', { type: ButtonType.Normal })
+                  .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
+                  .layoutWeight(1).enabled(this.viewModel.canManageConversations())
+                  .onClick(() => this.viewModel.chooseChatBackup())
+              }.width('100%')
+            }
+            if (this.viewModel.historyBusy) {
+              Text('正在处理对话数据…').fontSize(11).fontColor($r('app.color.text_model_hint')).width('100%')
+            }
           }
           .width('100%')
+          .animation({ duration: 220, curve: Curve.EaseInOut })
         }
         .width('100%')
         .constraintSize({ maxHeight: Math.max(40, this.availableHeight - 140) })
