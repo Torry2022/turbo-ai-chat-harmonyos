@@ -562,6 +562,27 @@ add('branch actions use saved assistant boundaries and preserve per-conversation
   assert.equal(view.canOpenBranchSource(), true);
   await view.openConversation(source); assert.equal(view.inputText, '原对话草稿');
 });
+add('foreground KV scopes survive turns but change when navigating or starting a new chat', async () => {
+  const view = await actionView('kv-scope');
+  view.session.lastQuestion().imageUri = '';
+  const requests = [];
+  view.generationWorkflow = { run: value => { requests.push(value); return Promise.resolve(finished()); } };
+  view.inputText = '第一轮'; await view.sendMessage(); await new Promise(done => setTimeout(done, 0));
+  const initialScope = requests[0].settings.kvCacheScope;
+  assert.ok(initialScope);
+  view.inputText = '后续轮次'; await view.sendMessage(); await new Promise(done => setTimeout(done, 0));
+  assert.equal(requests[1].settings.kvCacheScope, initialScope);
+  await view.flushHistory(); const sourceId = view.activeConversationId;
+  await view.beginNewConversation(); view.inputText = '新对话'; await view.sendMessage();
+  await new Promise(done => setTimeout(done, 0));
+  assert.notEqual(requests[2].settings.kvCacheScope, initialScope);
+  await view.openConversation(sourceId); view.inputText = '再次打开'; await view.sendMessage();
+  await new Promise(done => setTimeout(done, 0));
+  assert.notEqual(requests[3].settings.kvCacheScope, initialScope);
+  const image = path.join(temporary, 'kv-image'); fs.writeFileSync(image, 'fixture');
+  view.selectedImageUri = image; view.inputText = '图片轮次'; await view.sendMessage();
+  assert.equal(requests[4].settings.kvCacheScope, undefined);
+});
 function finished(answer = '新的回答。') {
   return { answer, includeInContext: true, status: '生成完成',
     result: { stopReason: 'eos', text: answer, generatedTokens: 3 },

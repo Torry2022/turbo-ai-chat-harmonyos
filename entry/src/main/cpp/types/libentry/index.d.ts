@@ -12,6 +12,7 @@ export interface GenerationResult {
   text: string;
   generatedTokens: number;
   inputTokens?: number;
+  reusedInputTokens?: number;
   generatedTokensEstimated?: boolean;
   nativeTiming?: NativeGenerationTiming;
   stopReason: GenerationStopReason;
@@ -24,6 +25,7 @@ export interface NativeGenerationTiming {
 }
 
 export interface GenerationSettings {
+  kvCacheScope?: string;
   thinkingEnabled?: boolean;
   temperature: number;
   topP: number;

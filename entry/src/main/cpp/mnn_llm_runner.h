@@ -16,6 +16,7 @@ class Llm;
 class MnnLlmRunner {
 public:
     struct SamplingConfig {
+        std::string kvCacheScope; // Only the foreground conversation opts into prefix reuse.
         int thinkingMode = -1; // -1 preserves the model default; 0/1 overrides this request.
         int maxNewTokens = 256;
         double temperature = 0.6;
@@ -43,6 +44,7 @@ public:
         std::string text;
         int generatedTokens = 0;
         int inputTokens = -1;
+        int reusedInputTokens = 0;
         bool generatedTokensEstimated = false;
         double prefillMs = -1;
         double decodeMs = -1;
@@ -97,6 +99,9 @@ private:
     mutable std::mutex mutex_;
     std::atomic_bool stopRequested_{false};
     std::unique_ptr<MNN::Transformer::Llm> llm_;
+    bool kvReuseSupported_ = false;
+    std::string kvCacheScope_;
+    std::vector<int> kvCachePromptTokens_;
     std::string preparedImagePrompt_;
     std::vector<int> preparedImageTokens_;
     ImageData preparedImage_;

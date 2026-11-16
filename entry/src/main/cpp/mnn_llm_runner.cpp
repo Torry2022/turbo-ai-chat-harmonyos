@@ -309,6 +309,8 @@ bool MnnLlmRunner::load(
     const SamplingConfig& sampling,
     std::string& error) {
     std::lock_guard<std::mutex> lock(mutex_);
+    kvCacheScope_.clear();
+    kvCachePromptTokens_.clear();
     preparedImagePrompt_.clear();
     preparedImageTokens_.clear();
     preparedImage_ = {};
@@ -342,6 +344,10 @@ bool MnnLlmRunner::load(
             std::to_string(threadNum) + ", actual " + std::to_string(actualThreads) + ")";
         return false;
     }
+    // Mode 10 is initialized differently for reusable KV in this MNN snapshot.
+    // Keep its existing runtime behavior and fall back to full prefill.
+    const std::regex noReuseMode(R"config("(?:attention_mode|quant_qkv)"\s*:\s*10\s*[,}])config");
+    kvReuseSupported_ = !std::regex_search(candidate->dump_config(), noReuseMode);
     llm_ = std::move(candidate);
     requestedThreads_.store(threadNum);
     actualCpuThreads_.store(actualThreads);
@@ -366,6 +372,7 @@ MnnLlmRunner::PreparedChatInput MnnLlmRunner::prepareChatInput(
     if (imageInput) {
         result.prompt = ImagePromptForTurns(llm_.get(), messages);
         if (image != nullptr && !result.prompt.empty()) {
+            kvCacheScope_.clear();
             ResetForGeneration(llm_.get());
             preparedImageTokens_ = llm_->tokenizer_encode(MakeImagePrompt(result.prompt, *image));
             result.inputTokens = static_cast<int>(preparedImageTokens_.size());
@@ -409,6 +416,7 @@ std::string MnnLlmRunner::generate(const std::string& prompt, const SamplingConf
 
     ScopedThinkingTemplate thinkingTemplate(llm_.get(), sampling.thinkingMode);
     stopRequested_.store(false);
+    kvCacheScope_.clear();
     ResetForGeneration(llm_.get());
     std::ostringstream output;
     llm_->response(prompt, &output, "", sampling.maxNewTokens);
@@ -437,6 +445,7 @@ MnnLlmRunner::GenerationResult MnnLlmRunner::generateStreaming(
 
     ScopedThinkingTemplate thinkingTemplate(llm_.get(), sampling.thinkingMode);
     stopRequested_.store(false);
+    kvCacheScope_.clear();
     ResetForGeneration(llm_.get());
     ChunkStreamBuffer buffer(onChunk, [this]() {
         return CancelGenerationIfRequested(llm_.get(), stopRequested_);
@@ -486,12 +495,37 @@ MnnLlmRunner::GenerationResult MnnLlmRunner::generateRawPromptStreaming(
     }
 
     stopRequested_.store(false);
-    ResetForGeneration(llm_.get());
     const std::vector<int> inputIds = llm_->tokenizer_encode(prompt);
     if (inputIds.empty()) {
         error = "tokenizer returned empty prompt";
         return {};
     }
+
+    // Reuse only tokens from the previous verified input prompt. Generated tokens
+    // can include a sampled-but-unexecuted terminator and are deliberately excluded.
+    size_t reused = 0;
+    auto* context = const_cast<MNN::Transformer::LlmContext*>(llm_->getContext());
+    if (kvReuseSupported_ && !sampling.kvCacheScope.empty() && sampling.kvCacheScope == kvCacheScope_ &&
+        llm_->getCurrentHistory() >= kvCachePromptTokens_.size() && context != nullptr &&
+        context->all_seq_len >= 0 && static_cast<size_t>(context->all_seq_len) == llm_->getCurrentHistory()) {
+        const size_t limit = std::min(kvCachePromptTokens_.size(), inputIds.size() - 1);
+        while (reused < limit && inputIds[reused] == kvCachePromptTokens_[reused]) ++reused;
+        if (reused > 0) {
+            llm_->set_config("{\"reuse_kv\":true}");
+            if (reused < llm_->getCurrentHistory()) llm_->eraseHistory(reused, 0);
+            if (context->all_seq_len != reused) reused = 0;
+            else {
+                // eraseHistory() trims executed KV entries. MNN's sampling history
+                // can additionally contain an unexecuted token, so align that
+                // history with the exact retained prefix before sampling again.
+                std::lock_guard<std::mutex> historyLock(context->mutex);
+                context->history_tokens.assign(inputIds.begin(), inputIds.begin() + reused);
+            }
+        }
+    }
+    kvCacheScope_.clear();
+    if (reused == 0) ResetForGeneration(llm_.get());
+    const std::vector<int> delta(inputIds.begin() + reused, inputIds.end());
 
     ChunkStreamBuffer buffer(onChunk, [this]() {
         return CancelGenerationIfRequested(llm_.get(), stopRequested_);
@@ -499,7 +533,7 @@ MnnLlmRunner::GenerationResult MnnLlmRunner::generateRawPromptStreaming(
     std::ostream output(&buffer);
     output.exceptions(std::ios::badbit | std::ios::failbit);
     try {
-        llm_->response(inputIds, &output, "", sampling.maxNewTokens);
+        llm_->response(delta, &output, "", sampling.maxNewTokens);
         output.flush();
     } catch (const std::ios_base::failure& ex) {
         if (!stopRequested_.load()) {
@@ -510,6 +544,14 @@ MnnLlmRunner::GenerationResult MnnLlmRunner::generateRawPromptStreaming(
     const std::string rawOutput = buffer.output();
     GenerationResult result = BuildGenerationResult(llm_.get(), rawOutput, sampling.maxNewTokens);
     const bool stopped = stopRequested_.load();
+    result.inputTokens = static_cast<int>(inputIds.size());
+    result.reusedInputTokens = static_cast<int>(reused);
+    if (kvReuseSupported_ && !sampling.kvCacheScope.empty() && !stopped &&
+        (result.stopReason == "eos" || result.stopReason == "max_tokens") &&
+        llm_->getCurrentHistory() >= inputIds.size()) {
+        kvCacheScope_ = sampling.kvCacheScope;
+        kvCachePromptTokens_ = inputIds;
+    }
     ApplyUserStop(result, stopped);
     stopRequested_.store(false);
     DumpRawPromptDebug(prompt, buffer.rawOutput(), sampling, result, llm_.get());
@@ -572,6 +614,7 @@ MnnLlmRunner::GenerationResult MnnLlmRunner::generateChatStreaming(
     }, AssistantOutputPrefix(llm_->apply_chat_template(chatMessages)));
     std::ostream output(&buffer);
     output.exceptions(std::ios::badbit | std::ios::failbit);
+    kvCacheScope_.clear();
     ResetForGeneration(llm_.get());
     try {
         if (cancellation == nullptr) {
@@ -665,6 +708,7 @@ MnnLlmRunner::GenerationResult MnnLlmRunner::generateImageChatStreaming(
     }, AssistantOutputPrefix(imagePrompt));
     std::ostream output(&buffer);
     output.exceptions(std::ios::badbit | std::ios::failbit);
+    kvCacheScope_.clear();
     ResetForGeneration(llm_.get());
     if (reusePrepared) {
         auto* context = const_cast<MNN::Transformer::LlmContext*>(llm_->getContext());
@@ -719,6 +763,9 @@ void MnnLlmRunner::reset() {
     preparedImagePrompt_.clear();
     preparedImageTokens_.clear();
     preparedImage_ = {};
+    kvCacheScope_.clear();
+    kvCachePromptTokens_ = {};
+    kvReuseSupported_ = false;
     llm_.reset();
     requestedThreads_.store(0);
     actualCpuThreads_.store(0);

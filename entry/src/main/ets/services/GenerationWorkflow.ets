@@ -133,6 +133,7 @@ export class GenerationWorkflow {
       result.generatedTokensEstimated ?? false
     )
     perfMetrics.inputTokens = result.inputTokens
+    perfMetrics.reusedInputTokens = result.reusedInputTokens
     perfMetrics.nativeTiming = result.nativeTiming
     return {
       answer,

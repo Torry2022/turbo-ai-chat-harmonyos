@@ -324,6 +324,7 @@ export class ChatViewModel {
   private pendingRestore?: PendingChatRestore
   restoreConversationCount: number = 0
   branchSourceAnchorId: number = 0
+  private chatKvScope: string = Math.random().toString(36).substring(2)
   private backgroundTasks: BackgroundTaskService = new BackgroundTaskService()
   private appForeground: boolean = true
   private lastContext?: ChatContextSnapshot
@@ -1945,6 +1946,7 @@ export class ChatViewModel {
     try {
       await this.flushHistory()
       const conversation = await this.historyService.load(id)
+      this.chatKvScope = Math.random().toString(36).substring(2)
       this.activeConversation = conversation
       this.activeConversationId = id
       this.session.restore(conversation.messages)
@@ -2174,6 +2176,7 @@ export class ChatViewModel {
     this.lastContext = undefined
     this.resumeChatAutoScroll()
     this.cancelSpeechRecognition(false)
+    this.chatKvScope = Math.random().toString(36).substring(2)
     this.activeConversation = undefined
     this.activeConversationId = ''
     this.session.newChat(this.loaded, this.currentModel().shortName)
@@ -2998,6 +3001,7 @@ export class ChatViewModel {
     this.refreshStats()
     this.notifyAndScroll()
 
+    settings.kvCacheScope = effectiveImage.length === 0 ? this.chatKvScope : undefined
     const assistantOutputPrefix = this.expectedAssistantOutputPrefixForCurrentModel()
     const generation = this.generationWorkflow.run({
       turns: chatTurns,

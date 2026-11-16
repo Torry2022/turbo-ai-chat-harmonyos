@@ -18,7 +18,7 @@ class DeferredChunkService extends NativeInferenceService {
       return Promise.reject(new Error('test failure'))
     }
     return Promise.resolve<GenerationResult>({ text: 'partial answer', generatedTokens: 2,
-      inputTokens: 17, nativeTiming: { prefillMs: 12.345, decodeMs: 23.456, visionMs: 0 },
+      inputTokens: 17, reusedInputTokens: 12, nativeTiming: { prefillMs: 12.345, decodeMs: 23.456, visionMs: 0 },
       generatedTokensEstimated: this.estimated, stopReason: 'eos' })
   }
 
@@ -55,6 +55,7 @@ export default function generationWorkflowTest(): void {
       expect(native.rawPrompt).assertEqual(input.preparedPrompt)
       expect(outcome.perfMetrics.ttft >= 50).assertTrue()
       expect(outcome.perfMetrics.inputTokens).assertEqual(17)
+      expect(outcome.perfMetrics.reusedInputTokens).assertEqual(12)
       expect(outcome.perfMetrics.nativeTiming?.prefillMs).assertEqual(12.345)
       expect(outcome.perfMetrics.nativeTiming?.decodeMs).assertEqual(23.456)
       expect(outcome.perfMetrics.nativeTiming?.visionMs).assertEqual(0)

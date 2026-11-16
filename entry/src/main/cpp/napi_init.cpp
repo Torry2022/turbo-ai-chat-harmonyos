@@ -229,6 +229,12 @@ MnnLlmRunner::SamplingConfig ReadSamplingConfig(
         napi_get_value_bool(env, thinking, &enabled);
         sampling.thinkingMode = enabled ? 1 : 0;
     }
+    napi_value cacheScope = nullptr;
+    napi_valuetype cacheScopeType = napi_undefined;
+    if (napi_get_named_property(env, args[settingsIndex], "kvCacheScope", &cacheScope) == napi_ok &&
+        napi_typeof(env, cacheScope, &cacheScopeType) == napi_ok && cacheScopeType == napi_string) {
+        sampling.kvCacheScope = ReadString(env, cacheScope);
+    }
     return sampling;
 }
 
@@ -242,6 +248,10 @@ napi_value MakeGenerationResult(napi_env env, const MnnLlmRunner::GenerationResu
     napi_value generatedTokens = nullptr;
     napi_create_int32(env, value.generatedTokens, &generatedTokens);
     napi_set_named_property(env, result, "generatedTokens", generatedTokens);
+
+    napi_value reusedInputTokens = nullptr;
+    napi_create_int32(env, value.reusedInputTokens, &reusedInputTokens);
+    napi_set_named_property(env, result, "reusedInputTokens", reusedInputTokens);
 
     if (value.generatedTokensEstimated) {
         napi_value estimated = nullptr;
