@@ -47,7 +47,7 @@ Turbo AI Chat runs models locally on HarmonyOS devices through a native inferenc
 - **Native architecture**: inference directly via HarmonyOS NDK, no Android compatibility layer overhead
 - **Easy model installation**: download preset models from ModelScope through the Model Gallery without separately accessing HuggingFace
 - **Reusable engineering**: MNN Runtime wrapper, streaming pipeline, Markdown rendering as integration references for other HarmonyOS AI apps
-- **Diagnostics**: inspect raw inference logs (`raw_output_debug.txt`) through hdc, including input messages or raw prompts, model output, and sampling parameters
+- **Diagnostics**: temporarily enable records in Settings to inspect the latest text request's input, answer, and sampling parameters through hdc (`raw_output_debug.txt`); disabled by default
 
   ```sh
   hdc shell "cat /data/app/el2/100/base/com.example.gemma4mnn/haps/entry/files/raw_output_debug.txt"
@@ -236,6 +236,8 @@ hdc install -r entry/build/default/outputs/default/entry-default-signed.hap
 
 The app and HAP do not include model weights. Open the app → Model tab → Model Gallery, or select Qwen3-4B-Instruct, MiniCPM5-1B, or Gemma-4-E2B-it and tap load. The app will guide you to download from ModelScope into the app sandbox.
 
+Interrupted downloads resume from verified blocks, with the unfinished block downloaded again. When the model source provides a SHA-256 checksum, the app verifies the completed file before installation. Unverified partial files from older app versions are downloaded again. Installed models remain available.
+
 | Model | Size | Capability |
 |------|------|------|
 | Qwen3-4B-Instruct | ~2.5 GB | Text |
@@ -251,8 +253,9 @@ With a physical keyboard, Enter sends from the chat input and Shift+Enter insert
 ## Features
 
 - Appearance: new installations follow the system. Choose Light, Dark, or System in Settings. Open Settings from the bottom of the sidebar in wide windows, or from the top-left logo menu in narrow windows. The selection is saved; both themes share the same layouts, logo, and launch artwork.
+- Diagnostic content recording is off by default. Enable it temporarily in Settings to save the latest text request's context, answer, and generation parameters locally. Disabling recording, deleting a conversation, or restarting the app clears the record. Settings also provides a manual clear action. Image, decision, and reranking requests do not record their content.
 - Adaptive navigation: bottom tabs in narrow windows and a sidebar in wider windows. On API 26 or later phones, the official immersive bar stays visible in Chat and hides or reappears while scrolling other pages.
-- The PC window title bar provides Chat, Settings, and Help menus for starting a new chat, opening appearance settings, and viewing keyboard shortcuts or the app version. Once opened, hover over another menu heading to switch menus, or press Esc to close. On phones and tablets, open Settings from the sidebar or logo menu.
+- The PC window title bar provides Chat, Settings, and Help menus for starting a new chat, opening app settings, and viewing keyboard shortcuts or the app version. Once opened, hover over another menu heading to switch menus, or press Esc to close. On phones and tablets, open Settings from the sidebar or logo menu.
 - Chat displays app CPU, app memory, and device temperature. Message width is limited on wide screens for readability.
 - The composer keeps the model name and loading state visible. Clicking it before a model is loaded opens the model page.
 - Message text supports partial copying: on API 26 or later, use touch handles or a mouse to select across paragraphs, lists, code blocks, and tables within one answer; older systems support selection within one text block. Selections copy visible text, the copy button in the bubble header preserves Markdown, and code-block buttons copy code only.
@@ -276,6 +279,7 @@ With a physical keyboard, Enter sends from the chat input and Shift+Enter insert
 - Image input: attach one image per message and preview or remove it before sending. Tap an image in a message to view it full-screen, with pinch zoom, double-tap zoom and panning.
 - Message actions: copy, edit, and regenerate icons appear in message bubble headers. User-message actions appear on hover or keyboard focus when using a mouse and remain visible for touch input. Long-press the text to select it. Regenerate the last answer using the currently loaded model and the original question and image. Earlier answers are retained and can be selected within the bubble; follow-up questions use the selected answer as context. You can also edit and resend any question directly in its bubble, replacing its answer and subsequent messages while preserving the composer draft.
 - Chat history: save conversations and images locally; create, resume, rename, delete, or clear chats. Search titles and message text, including earlier answer versions, then open a result at the matching message and version. Double-click the title at the top of the chat with a mouse to rename it. After the first reply in a new chat, the loaded model generates a title when idle. If naming fails, the existing title stays; manual names are preserved. Each reply retains its model and timestamp. Uninstalling or clearing app data removes history.
+- Conversation context: retain existing content when generation stops, times out, or reaches the output limit, and use the generated answer in follow-up questions. Use the menu beside the conversation title to inspect the messages used for the latest answer and the reasons for exclusions. When the model package declares a context limit, reserve room for the output using the actual input length and remove the oldest complete exchanges first.
 
 ## Screenshots
 
@@ -314,7 +318,37 @@ The Service tab shows operational logs for server lifecycle, request paths, mode
 
 Wide windows place service settings beside the API logs. Narrowing the window restores a single column without restarting an active server.
 
-The chat API accepts text input, serves the currently loaded chat model, and processes one generation request at a time. For models that emit `<think>`, `/v1/chat/completions` returns reasoning in `reasoning_content`, while `/v1/responses` returns a separate reasoning output item; the final answer remains in the regular text field. For now, `usage` accurately reports only the total generated-token count; exact input and reasoning breakdowns are not available. The server runs with the app and stops when the app exits; the device and client must be reachable on the same LAN.
+The server keeps at most 16 connections. Each request must be received within 15 seconds of connecting and must fit within 1 MiB. A send that stalls for 30 seconds, or more than 4 MiB of pending output, closes the connection and requests cancellation of its chat or reranking task. The receive deadline does not limit normal model inference time.
+
+On PCs and 2-in-1 devices, an active API service or model task requests a system background computation task and releases it when finished. The system displays a corresponding notification. In the background, the app also attempts to reduce power-saving restrictions on computation, restoring the default policy when the task ends or the app returns to the foreground. System scheduling can still make background inference substantially slower than foreground inference. Background computation on regular phones and tablets requires additional system authorization, so inference and API use currently require keeping the app in the foreground. Model downloads use an independent background data-transfer task, released when paused or finished. Switching away saves a conversation checkpoint and returning preserves the current state.
+
+Image conversations support follow-up questions about the same image. History is trimmed to the model's context capacity. Each request context supports one image. Start a new conversation when changing images. Images are saved with their original messages so conversations can be reopened and continued.
+
+The chat API accepts text and image input, serves the currently loaded chat model, and processes one generation request at a time. For models that emit `<think>`, `/v1/chat/completions` returns reasoning in `reasoning_content`, while `/v1/responses` returns a separate reasoning output item; the final answer remains in the regular text field. Non-streaming Chat Completions reports runtime-measured input and output token counts in `usage`. Streaming requests can set `stream_options.include_usage: true` to receive a final usage chunk. When counts are unavailable or output tokens are estimated, non-streaming Chat Completions omits `usage` and the streaming usage chunk reports null. Responses returns `usage: null` when its count breakdown is incomplete, including responses with reasoning output. The server runs with the app and stops when the app exits. The device and client must be reachable on the same LAN.
+
+With an image-capable model loaded, `/v1/chat/completions` accepts `text` and `image_url` parts in a user message's `content` array. `/v1/responses` uses `input_text` and `input_image`. Supply a PNG, JPEG or WebP Base64 Data URL, or a directly accessible public HTTP/HTTPS URL. Each request supports one image. Clients must include the original image and message history for follow-up questions. Remote images are limited to 10 MiB, a 30-second download and three redirects. Source images must not exceed 40 million pixels. The existing 1 MiB request-body limit still applies, so use a URL for larger images. Input token counts include both images and text. When the model configuration declares a context capacity, oversized API requests return an explicit error and the app trims older complete exchanges first. Capacity is reported as unknown when the model package does not declare it.
+
+Example user message
+
+```json
+{
+  "role": "user",
+  "content": [
+    { "type": "text", "text": "Summarize this image." },
+    { "type": "image_url", "image_url": { "url": "https://example.com/image.png" } }
+  ]
+}
+```
+
+At the output limit, Chat Completions returns `finish_reason: length`, while Responses returns `status: incomplete` with the `max_output_tokens` reason. Cancellation, timeout, and generation failure return explicit errors. Failed Responses streams end with `response.failed`.
+
+| Capability | Support |
+| --- | --- |
+| Text messages, streaming, output limits, temperature, Top-P | Supported |
+| Separate reasoning and answer output | Supported |
+| Tool calls, JSON mode, JSON Schema | Rejected with an explicit unsupported-feature error |
+| Responses history IDs, server-side conversations, background tasks and storage | Rejected with an explicit unsupported-feature error |
+| Custom stop sequences, seeds and multiple completions per request | Not currently supported |
 
 ### Runtime status
 
@@ -432,7 +466,7 @@ The current version runs local inference with the **MNN CPU backend**. GPU / NPU
 
 To build MNN yourself, use the pinned commit above with the repository's [PowerShell](scripts/build_mnn_ohos.ps1) or [Shell](scripts/build_mnn_ohos.sh) build script. Specify the source directory with the `-MnnRoot` parameter or the `MNN_ROOT` environment variable, respectively. Build version and patch details are recorded in `BUILD_INFO.json`.
 
-On-device LLM decoding includes token-by-token serial stages, and actual throughput can also be limited by memory bandwidth, cache contention, and system thermal control. In assistant messages, TTFT is the end-to-end time from request submission to the first complete UTF-8 output chunk. TPOT and tokens/s cover only the decode phase from the first output to completion and use the native generated-token count. Evaluate these metrics together with app CPU, app memory, and device temperature.
+On-device LLM decoding includes token-by-token serial stages, and actual throughput can also be limited by memory bandwidth, cache contention, and system thermal control. In assistant messages, TTFT is the end-to-end time from request submission to the first complete UTF-8 output chunk. TPOT and tokens/s use the interval from the first output callback to completion and the native output-token count. When token counts are estimated by re-tokenizing the output, the count and derived rates are marked as approximate. Evaluate these metrics together with app CPU, app memory, and device temperature.
 
 ## Architecture
 
