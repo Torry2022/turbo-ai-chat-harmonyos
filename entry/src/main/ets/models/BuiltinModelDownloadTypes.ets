@@ -3,6 +3,7 @@ export type CatalogModelType = 'chat' | 'decision' | 'rerank'
 export interface BuiltinModelFileSpec {
   relativePath: string
   sizeBytes: number
+  sha256?: string
   url: string
 }
 

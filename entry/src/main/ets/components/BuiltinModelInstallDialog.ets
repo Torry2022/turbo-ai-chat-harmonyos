@@ -91,7 +91,7 @@ export struct BuiltinModelInstallDialog {
         .scrollBar(BarState.Auto)
 
         Row({ space: 10 }) {
-          Button(this.viewModel.builtinModelInstalling ? '停止下载' : (this.viewModel.builtinModelInstallCanceled ? '关闭' : '稍后'))
+          Button(this.viewModel.builtinModelInstalling ? '暂停下载' : (this.viewModel.builtinModelInstallCanceled ? '关闭' : '稍后'))
             .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
             .layoutWeight(1)
             .onClick(() => {

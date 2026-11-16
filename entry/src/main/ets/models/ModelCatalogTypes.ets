@@ -12,6 +12,7 @@ export interface RemoteCatalogSource {
 export interface RemoteCatalogFile {
   relativePath: string
   sizeBytes: number
+  sha256?: string
 }
 
 export interface RemoteCatalogItem {

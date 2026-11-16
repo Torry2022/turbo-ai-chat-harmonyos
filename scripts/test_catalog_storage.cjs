@@ -399,6 +399,11 @@ async function main() {
     assert(service.findMarketItem('official-example-mnn'));
   });
   await check('official file resolution pins the full commit and rejects traversal, duplicates, and missing configs', async () => {
+    const hashed = listing(blobs.map(file => ({ ...file, Sha256: 'A'.repeat(64) })));
+    const hashedFiles = parseOfficialRepoFiles(raw(hashed), 'MNN/Example-MNN').files;
+    assert.ok(hashedFiles.every(file => file.sha256 === 'a'.repeat(64)));
+    const invalidHash = listing(blobs.map(file => ({ ...file, Sha256: 'bad' })));
+    assert.throws(() => parseOfficialRepoFiles(raw(invalidHash), 'MNN/Example-MNN'), /校验值/);
     const selected = parseOfficialRepoFiles(raw(listing([...blobs, { Type: 'blob', Path: 'README.md', Size: 5 }])), 'MNN/Example-MNN');
     assert.equal(selected.revision, revision);
     assert.equal(selected.files.length, 5);
@@ -481,9 +486,9 @@ async function main() {
     const code = ts.transpileModule(`class Subject { ${methods.map(node => node.getText(ast)).join('\n')} }`, {
       compilerOptions: { target: ts.ScriptTarget.ES2020 }
     }).outputText;
-    const { formatDownloadError } = load(path.join(sourceRoot, 'utils/formatters.ets'));
+    const { formatDownloadError, formatError } = load(path.join(sourceRoot, 'utils/formatters.ets'));
     const { calculateDownloadProgress } = load(path.join(sourceRoot, 'utils/downloadProgress.ets'));
-    const Subject = vm.runInNewContext(code + '\nSubject', { formatDownloadError, calculateDownloadProgress, setTimeout: () => 0 });
+    const Subject = vm.runInNewContext(code + '\nSubject', { formatDownloadError, formatError, calculateDownloadProgress, setTimeout: () => 0 });
     const item = parseOfficialModelCatalog(raw(official()), []).items[0];
     let downloads = 0;
     const subject = new Subject();
@@ -495,7 +500,7 @@ async function main() {
     });
     await subject.prepareAndStartBuiltinModelInstall({}, item); await new Promise(setImmediate);
     assert.equal(downloads, 0); assert.equal(subject.busy, false); assert.equal(subject.builtinModelInstalling, false);
-    assert(subject.builtinModelInstallError.includes('metadata unavailable'));
+    assert.equal(subject.builtinModelInstallError, '无法获取模型信息。下载未完成，请检查网络和可用存储空间后重试。');
     let resolve;
     subject.modelCatalogService.resolveInstallItem = () => new Promise(done => { resolve = done; });
     await subject.prepareAndStartBuiltinModelInstall({}, item);
@@ -503,6 +508,7 @@ async function main() {
     resolve({ ...item, files: blobs }); await new Promise(setImmediate);
     assert.equal(downloads, 0); assert.equal(subject.busy, false); assert.equal(subject.builtinModelInstalling, false);
     assert.equal(subject.builtinModelInstallCanceled, true);
+    assert.equal(subject.builtinModelInstallMessage, '下载已暂停，可继续下载。关闭窗口将清除未完成文件。');
   });
   await check('specialized catalogs stay out of conversation profiles and resolve rerankers without chat templates', async () => {
     const { parseOfficialRerankerCatalog } = load(path.join(sourceRoot, 'utils/officialModelCatalog.ets'));

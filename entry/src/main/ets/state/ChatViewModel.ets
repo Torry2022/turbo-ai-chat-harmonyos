@@ -2520,11 +2520,13 @@ export class ChatViewModel {
     this.builtinModelInstallTotalBytes = spec.totalBytes
     this.builtinModelInstallModelName = spec.displayName
     this.builtinModelInstallSourceName = spec.sourceName
+    let resolvingFiles = spec.files.length === 0
     const install = async (): Promise<void> => {
       if (spec.files.length === 0) {
         this.builtinModelInstallMessage = '正在读取模型文件信息...'
         this.notify()
         spec = await this.modelCatalogService.resolveInstallItem(this.filesDir, spec.id)
+        resolvingFiles = false
         this.builtinModelInstallTotalBytes = spec.totalBytes
       }
       let existingBytes = 0
@@ -2600,19 +2602,31 @@ export class ChatViewModel {
           this.notify()
         }
       }, 350)
-    }).catch((err: Error) => {
+    }).catch(async (err: Error) => {
       const canceled = this.builtinModelInstallCancelRequested
+      if (canceled) {
+        try {
+          const retained = await this.builtinModelInstallService.existingPartialDownloadBytes(this.filesDir, spec)
+          this.builtinModelInstallDownloadedBytes = retained
+          this.builtinModelInstallProgress = calculateDownloadProgress(retained, spec.totalBytes)
+        } catch (_) {
+          this.builtinModelInstallDownloadedBytes = 0
+          this.builtinModelInstallProgress = 0
+        }
+      }
       this.builtinModelInstalling = false
       this.busy = false
       this.builtinModelInstallCancelRequested = false
       if (canceled) {
         this.builtinModelInstallError = ''
         this.builtinModelInstallCanceled = true
-        this.builtinModelInstallMessage = `${spec.displayName} 下载已停止；继续下载会断点续传，关闭弹窗会清理未完成文件。`
-        this.setStatus(`${spec.displayName} 下载已停止`, 'warning')
+        this.builtinModelInstallMessage = '下载已暂停，可继续下载。关闭窗口将清除未完成文件。'
+        this.setStatus(`${spec.displayName} 下载已暂停`, 'warning')
       } else {
         this.builtinModelInstallCanceled = false
-        this.builtinModelInstallError = `安装失败：${formatDownloadError(err as Object)}`
+        console.error(`Model installation failed: ${formatError(err as Object)}`)
+        const stage = resolvingFiles ? '无法获取模型信息' : '安装未完成'
+        this.builtinModelInstallError = `${stage}。${formatDownloadError(err as Object)}`
         this.builtinModelInstallMessage = `${spec.displayName} 未安装完成，可以重试。`
         this.setStatus(this.builtinModelInstallError, 'neutral')
       }
@@ -2625,7 +2639,7 @@ export class ChatViewModel {
       return
     }
     this.builtinModelInstallCancelRequested = true
-    this.builtinModelInstallMessage = '正在停止下载，请稍候...'
+    this.builtinModelInstallMessage = '正在暂停下载，请稍候...'
     this.setStatus('正在停止模型下载...', 'neutral')
     this.builtinModelInstallService.cancelInstall()
     this.notify()

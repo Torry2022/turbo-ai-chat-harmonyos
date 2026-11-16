@@ -30,6 +30,7 @@ interface ModelScopeFile {
   Path: string
   Size: number
   Revision?: string
+  Sha256?: string
 }
 
 interface ModelScopeCommit {
@@ -165,8 +166,13 @@ export function parseOfficialRepoFiles(text: string, repo: string): OfficialRepo
       files.some((item: BuiltinModelFileSpec) => item.relativePath === file.Path)) {
       throw new Error('魔搭模型文件路径或大小无效')
     }
-    files.push({ relativePath: file.Path, sizeBytes: file.Size,
-      url: `${MODEL_SCOPE_ROOT}${repo}/resolve/${revision}/${file.Path}` })
+    const item: BuiltinModelFileSpec = { relativePath: file.Path, sizeBytes: file.Size,
+      url: `${MODEL_SCOPE_ROOT}${repo}/resolve/${revision}/${file.Path}` }
+    if (file.Sha256 !== undefined) {
+      if (!/^[a-f0-9]{64}$/i.test(file.Sha256)) throw new Error('魔搭模型文件校验值无效')
+      item.sha256 = file.Sha256.toLowerCase()
+    }
+    files.push(item)
   }
   if (!files.some((file: BuiltinModelFileSpec) => file.relativePath === 'config.json') ||
     !files.some((file: BuiltinModelFileSpec) => file.relativePath === 'llm_config.json')) {

@@ -210,6 +210,7 @@ function validateRemoteFiles(item: RemoteCatalogItem): void {
   for (let index = 0; index < item.files.length; index++) {
     const file = item.files[index]
     requireCondition(isSafeRelativePath(file.relativePath), `模型文件路径无效：${item.id}`)
+    requireCondition(file.sha256 === undefined || (typeof file.sha256 === 'string' && /^[a-f0-9]{64}$/i.test(file.sha256)), '模型文件校验值无效')
     requireCondition(Number.isInteger(file.sizeBytes) && file.sizeBytes > 0, `模型文件大小无效：${item.id}`)
     requireCondition(paths.indexOf(file.relativePath) < 0, `模型文件路径重复：${item.id}`)
     paths.push(file.relativePath)
@@ -254,6 +255,7 @@ function validateInstalledItem(item: ModelCatalogItem): void {
   for (let index = 0; index < item.files.length; index++) {
     const file = item.files[index]
     requireCondition(isSafeRelativePath(file.relativePath), `已安装模型文件路径无效：${item.id}`)
+    requireCondition(file.sha256 === undefined || (typeof file.sha256 === 'string' && /^[a-f0-9]{64}$/i.test(file.sha256)), '模型文件校验值无效')
     requireCondition(Number.isInteger(file.sizeBytes) && file.sizeBytes > 0, `已安装模型文件大小无效：${item.id}`)
     requireCondition(file.url.startsWith(`${MODELSCOPE_BASE_URL}/`), `已安装模型文件来源无效：${item.id}`)
   }
@@ -267,6 +269,7 @@ function toCatalogItem(remote: RemoteCatalogItem, bundled?: ModelCatalogItem): M
     return {
       relativePath: file.relativePath,
       sizeBytes: file.sizeBytes,
+      sha256: file.sha256,
       url: `${MODELSCOPE_BASE_URL}/${remote.source.repo}/resolve/${remote.source.revision}/${file.relativePath}`
     }
   })
