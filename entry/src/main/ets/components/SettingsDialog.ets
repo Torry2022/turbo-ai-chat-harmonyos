@@ -1,10 +1,12 @@
 import { ThemeMode, themeService } from '../services/ThemeService'
 import { ActionButtonStyle } from './ButtonStyles'
+import { ChatViewModel } from '../state/ChatViewModel'
 
 import { dialogFade, dialogScale } from './DialogMotion'
 
 @Component
 export struct SettingsDialog {
+  @ObjectLink viewModel: ChatViewModel
   @StorageLink('themeMode') private themeMode: ThemeMode = 'system'
   @Prop availableWidth: number = 360
   @Prop availableHeight: number = 640
@@ -88,6 +90,25 @@ export struct SettingsDialog {
               this.ThemeButton('跟随系统', 'system', $r('app.media.theme_system'))
             }
             .width('100%')
+            Row({ space: 12 }) {
+              Text('排查记录')
+                .fontSize(16)
+                .fontWeight(FontWeight.Bold)
+                .fontColor($r('app.color.text_title'))
+                .layoutWeight(1)
+              Toggle({ type: ToggleType.Switch, isOn: this.viewModel.diagnosticLoggingEnabled })
+                .height(22)
+                .selectedColor($r('app.color.status_good'))
+                .onChange((enabled: boolean) => this.viewModel.setDiagnosticLogging(enabled))
+            }
+            .width('100%').margin({ top: 12 })
+            Text('仅在排查问题时开启。记录最近一次文字对话的输入、回答和参数，保存在本机。关闭、重启或删除对话时会清除。')
+              .fontSize(11)
+              .fontColor($r('app.color.text_model_hint'))
+              .width('100%')
+            Button('清除并关闭记录')
+              .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
+              .width('100%').onClick(() => this.viewModel.setDiagnosticLogging(false))
           }
           .width('100%')
         }

@@ -46,6 +46,7 @@ import { ModelImportService } from '../services/ModelImportService'
 import { ModelCatalogService } from '../services/ModelCatalogService'
 import { catalogCapabilityLabels, catalogCompatibilityMessage } from '../utils/modelCatalog'
 import { NativeInferenceService } from '../services/NativeInferenceService'
+import { BackgroundTaskService } from '../services/BackgroundTaskService'
 import {
   ApiGenerationRequest,
   ApiRuntimeSnapshot,
@@ -315,7 +316,37 @@ export class ChatViewModel {
     this.toastCallback = callback
   }
 
+  diagnosticLoggingEnabled: boolean = false
+  private backgroundTasks: BackgroundTaskService = new BackgroundTaskService()
+  private appForeground: boolean = true
+
+  setDiagnosticLogging(enabled: boolean, showResult: boolean = true): void {
+    try {
+      const cleared = this.nativeService.setDiagnosticLogging(enabled)
+      this.diagnosticLoggingEnabled = enabled
+      if (!enabled && !cleared) {
+        if (showResult) this.toastCallback('记录已关闭，但文件未能清除，请重试')
+        console.warn('Diagnostic logging disabled, but the previous file could not be removed')
+      } else if (showResult) {
+        this.toastCallback(enabled ? '已开启排查记录，仅本次运行生效' : '已关闭并清除排查记录')
+      }
+    } catch (error) {
+      console.error(`Failed to update diagnostic logging: ${formatError(error as Object)}`)
+      if (showResult) this.toastCallback('诊断记录设置未完成，请重试')
+    }
+    this.notify()
+  }
+
   initialize(context: common.UIAbilityContext): void {
+    this.backgroundTasks.initialize(context)
+    this.backgroundTasks.onUnavailable = (kind: string) => {
+      this.toastCallback(kind === 'download' ? '后台下载暂不可用，请保持应用在前台' : '后台运行暂不可用，请保持应用在前台')
+      if (kind === 'compute' && this.apiServerRunning) {
+        this.apiServerStatus = 'API 服务运行中，请保持应用在前台'
+      }
+      this.notifyCallback()
+    }
+    this.setDiagnosticLogging(false, false)
     this.threadMax = this.nativeService.modelThreadInfo().maxThreads
     this.threadNum = Math.min(this.threadNum, this.threadMax)
     this.rerankThreads = Math.min(this.rerankThreads, this.threadMax)
@@ -399,11 +430,18 @@ export class ChatViewModel {
   }
 
   dispose(): void {
+    this.backgroundTasks.dispose()
+    if (this.generating) this.generationWorkflow.stop()
+    if (this.builtinModelInstalling) {
+      this.builtinModelInstallCancelRequested = true
+      this.builtinModelInstallService.cancelInstall()
+    }
     this.stopStreamDisplay()
     this.titleService.dispose()
     clearTimeout(this.historySearchTimer)
     this.historySearchSerial++
-    this.flushHistory().catch((error: Error) => console.error(`保存对话失败：${formatError(error as Object)}`))
+    this.backgroundTasks.saveBeforeSuspend(() => this.flushHistory())
+      .catch((error: Error) => console.error(`保存对话失败：${formatError(error as Object)}`))
     this.stopModelLoadTimer()
     this.speechRecognitionService.shutdown()
     this.resetSpeechRecognitionState()
@@ -921,6 +959,9 @@ export class ChatViewModel {
       this.apiServerAddress = address
       this.apiServerRunning = true
       this.apiServerStarting = false
+      if (!this.backgroundTasks.computeSupported) {
+        this.apiServerStatus = 'API 服务运行中，请保持应用在前台'
+      }
       this.notify()
     }).catch((err: Error) => {
       this.apiServerRunning = false
@@ -1816,6 +1857,21 @@ export class ChatViewModel {
     else this.titleService.resume()
   }
 
+  setAppForeground(active: boolean): void {
+    this.appForeground = active
+    this.backgroundTasks.setPerformanceState(active,
+      this.apiServerRunning || (this.busy && !this.builtinModelInstalling) || this.reranker.busy)
+    this.setConversationTitleActive(active)
+    if (active) {
+      this.backgroundTasks.refresh()
+      return
+    }
+    this.backgroundTasks.saveBeforeSuspend(() => this.flushHistory()).catch((error: Error) => {
+      this.historyError = this.historyFailure('保存对话失败', error)
+      console.error(`Background history save failed: ${formatError(error as Object)}`)
+    })
+  }
+
   private canGenerateConversationTitle(): boolean {
     return this.titleForeground && this.historyReady && !this.historyBusy && this.loaded &&
       !this.busy && !this.generating && !this.modelLoading && !this.modelScanning &&
@@ -1922,6 +1978,7 @@ export class ChatViewModel {
 
   async deleteConversation(id?: string): Promise<void> {
     if (!this.canManageConversations()) return
+    this.setDiagnosticLogging(false, false)
     this.titleService.forget(id)
     this.historyBusy = true
     try {
@@ -3372,6 +3429,12 @@ export class ChatViewModel {
   }
 
   private notify(): void {
+    this.backgroundTasks.setComputeActive(this.apiServerRunning ||
+      (this.busy && !this.builtinModelInstalling) || this.reranker.busy)
+    this.backgroundTasks.setPerformanceState(this.appForeground,
+      this.apiServerRunning || (this.busy && !this.builtinModelInstalling) || this.reranker.busy)
+    this.backgroundTasks.setDownloadActive(this.builtinModelInstalling,
+      this.builtinModelInstallProgress, this.builtinModelInstallModelName)
     this.titleService.resume()
     this.notifyCallback()
   }

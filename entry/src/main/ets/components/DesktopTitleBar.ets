@@ -77,7 +77,7 @@ export struct DesktopTitleBar {
       if (this.activeMenu === 0) {
         this.Action('新对话', 'desktop-new-chat', !this.busy, () => this.onNewChat())
       } else if (this.activeMenu === 1) {
-        this.Action('外观设置…', 'desktop-appearance', true, () => this.onSettings())
+        this.Action('应用设置…', 'desktop-appearance', true, () => this.onSettings())
       } else {
         this.Action('快捷键说明', 'desktop-shortcuts', true, () => this.onShortcuts())
         this.Action('关于 Turbo AI Chat', 'desktop-about', true, () => this.onAbout())

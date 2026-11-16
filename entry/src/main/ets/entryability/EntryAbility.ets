@@ -9,8 +9,17 @@ import { themeService } from '../services/ThemeService'
 
 export default class EntryAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
+    AppStorage.setOrCreate('appInForeground', true)
     themeService.initialize(this.context)
     hilog.info(0x0000, 'TurboAIChat', 'Ability created')
+  }
+
+  onForeground(): void {
+    AppStorage.setOrCreate('appInForeground', true)
+  }
+
+  onBackground(): void {
+    AppStorage.setOrCreate('appInForeground', false)
   }
 
   private configureWindow(windowStage: window.WindowStage): void {

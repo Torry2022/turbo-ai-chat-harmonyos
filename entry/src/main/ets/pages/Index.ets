@@ -33,6 +33,7 @@ import { ChatViewModel } from '../state/ChatViewModel'
 struct Index {
   @State private viewModel: ChatViewModel = new ChatViewModel()
   @State private showLaunch: boolean = true
+  @StorageLink('appInForeground') @Watch('onAppForegroundChanged') private appInForeground: boolean = true
   @State private launchOpacity: number = 1
   private launchExiting: boolean = false
   @State private activeTab: number = 0
@@ -193,6 +194,10 @@ struct Index {
 
   onPageShow(): void {
     this.viewModel.setConversationTitleActive(true)
+  }
+
+  private onAppForegroundChanged(): void {
+    this.viewModel.setAppForeground(this.appInForeground)
   }
 
   onPageHide(): void {
@@ -714,6 +719,7 @@ struct Index {
       }
       if (this.showSettings) {
         SettingsDialog({
+          viewModel: this.viewModel,
           availableWidth: this.windowWidth,
           availableHeight: this.windowHeight,
           onClose: () => { this.showSettings = false }

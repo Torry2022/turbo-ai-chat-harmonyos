@@ -17,6 +17,12 @@
         "name": "ohos.permission.INTERNET"
       },
       {
+        "name": "ohos.permission.KEEP_BACKGROUND_RUNNING"
+      },
+      {
+        "name": "ohos.permission.BACKGROUND_MANAGER_POWER_SAVE_MODE"
+      },
+      {
         "name": "ohos.permission.GET_NETWORK_INFO"
       },
       {
@@ -33,6 +39,7 @@
     "abilities": [
       {
         "name": "EntryAbility",
+        "backgroundModes": ["taskKeeping", "dataTransfer"],
         "srcEntry": "./ets/entryability/EntryAbility.ets",
         "description": "$string:EntryAbility_desc",
         "icon": "$media:app_icon",
