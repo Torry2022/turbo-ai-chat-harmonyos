@@ -39,11 +39,51 @@ export interface PerfMetrics {
   tpot: number
   tokensPerSec: number
   tokens: number
+  tokensEstimated?: boolean
+  inputTokens?: number
+  nativeTiming?: NativeGenerationTiming
+}
+
+export interface NativeGenerationTiming {
+  prefillMs: number
+  decodeMs: number
+  visionMs: number
 }
 
 export interface ChatTurn {
   role: string
   content: string
+  imageUri?: string
+}
+
+export interface ChatContextOmission {
+  messageId: number
+  role: string
+  content: string
+  reason: string
+}
+
+export interface ChatContextSelection {
+  turns: ChatTurn[]
+  omitted: ChatContextOmission[]
+  historyMessageIds: number[]
+}
+
+export interface ChatContextSnapshot extends ChatContextSelection {
+  conversationId: string
+  modelName: string
+  requestedOutputTokens: number
+  inputTokens?: number
+  imageInput: boolean
+  contextTokens: number
+  formattedPrompt: string
+  questionText?: string
+}
+
+export interface PreparedChatInput {
+  prompt: string
+  inputTokens: number
+  modelConfig: string
 }
 
 export interface ImagePayload {
@@ -57,6 +97,9 @@ export type GenerationStopReason = 'eos' | 'max_tokens' | 'user_stop' | 'timeout
 export interface GenerationResult {
   text: string
   generatedTokens: number
+  inputTokens?: number
+  generatedTokensEstimated?: boolean
+  nativeTiming?: NativeGenerationTiming
   stopReason: GenerationStopReason
 }
 

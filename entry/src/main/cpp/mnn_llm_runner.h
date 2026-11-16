@@ -30,6 +30,7 @@ public:
     struct ChatTurn {
         std::string role;
         std::string content;
+        bool hasImage = false;
     };
 
     struct ImageData {
@@ -41,13 +42,26 @@ public:
     struct GenerationResult {
         std::string text;
         int generatedTokens = 0;
+        int inputTokens = -1;
+        bool generatedTokensEstimated = false;
+        double prefillMs = -1;
+        double decodeMs = -1;
+        double visionMs = -1;
         std::string stopReason = "unknown";
+    };
+
+    struct PreparedChatInput {
+        std::string prompt;
+        int inputTokens = -1;
+        std::string modelConfig;
     };
 
     MnnLlmRunner();
     ~MnnLlmRunner();
 
     bool load(const std::string& configPath, int threadNum, const SamplingConfig& sampling, std::string& error);
+    PreparedChatInput prepareChatInput(const std::vector<ChatTurn>& messages, int thinkingMode,
+        bool imageInput, std::string& error, const ImageData* image = nullptr);
     std::string generate(const std::string& prompt, const SamplingConfig& sampling, std::string& error);
     GenerationResult generateStreaming(
         const std::string& prompt,
@@ -75,6 +89,7 @@ public:
     void requestStop();
     void reset();
     bool isLoaded() const;
+    static bool setDiagnosticLogging(bool enabled);
     int requestedThreads() const { return requestedThreads_.load(); }
     int actualCpuThreads() const { return actualCpuThreads_.load(); }
 
@@ -82,6 +97,11 @@ private:
     mutable std::mutex mutex_;
     std::atomic_bool stopRequested_{false};
     std::unique_ptr<MNN::Transformer::Llm> llm_;
+    std::string preparedImagePrompt_;
+    std::vector<int> preparedImageTokens_;
+    ImageData preparedImage_;
+    int preparedImageThinkingMode_ = -1;
+    double preparedVisionUs_ = 0;
     std::atomic<int> requestedThreads_{0};
     std::atomic<int> actualCpuThreads_{0};
 };

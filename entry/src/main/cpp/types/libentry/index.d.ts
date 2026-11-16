@@ -11,7 +11,16 @@ export type GenerationStopReason = 'eos' | 'max_tokens' | 'user_stop' | 'timeout
 export interface GenerationResult {
   text: string;
   generatedTokens: number;
+  inputTokens?: number;
+  generatedTokensEstimated?: boolean;
+  nativeTiming?: NativeGenerationTiming;
   stopReason: GenerationStopReason;
+}
+
+export interface NativeGenerationTiming {
+  prefillMs: number;
+  decodeMs: number;
+  visionMs: number;
 }
 
 export interface GenerationSettings {
@@ -21,6 +30,14 @@ export interface GenerationSettings {
   topK: number;
   repetitionPenalty: number;
 }
+
+export interface PreparedChatInput {
+  prompt: string;
+  inputTokens: number;
+  modelConfig: string;
+}
+
+export const prepareChatInput: (turns: ChatTurn[], settings: GenerationSettings, imageInput: boolean, pixels?: ArrayBuffer, width?: number, height?: number) => Promise<PreparedChatInput>;
 
 export const loadModel: (configPath: string, threadNum?: number, maxNewTokens?: number, settings?: GenerationSettings) => string;
 export const loadModelAsync: (configPath: string, threadNum?: number, maxNewTokens?: number, settings?: GenerationSettings) => Promise<string>;
@@ -47,6 +64,7 @@ export const generateChatStream: (
   backgroundTitle?: boolean
 ) => Promise<GenerationResult>;
 export const cancelTitleGeneration: () => void;
+export const setDiagnosticLogging: (enabled: boolean) => boolean;
 export const generateImageChatStream: (
   messages: ChatTurn[],
   rgbaPixels: ArrayBuffer,

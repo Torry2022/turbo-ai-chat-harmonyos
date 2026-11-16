@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cmath>
+#include <exception>
 #include <unistd.h>
 #include <string>
 #include <vector>
@@ -51,6 +52,17 @@ struct AsyncGenerateWork {
     std::string prompt;
     MnnLlmRunner::SamplingConfig sampling;
     std::string output;
+    std::string error;
+};
+
+struct PrepareChatWork {
+    napi_async_work work = nullptr;
+    napi_deferred deferred = nullptr;
+    std::vector<MnnLlmRunner::ChatTurn> messages;
+    int thinkingMode = -1;
+    bool imageInput = false;
+    MnnLlmRunner::ImageData image;
+    MnnLlmRunner::PreparedChatInput output;
     std::string error;
 };
 
@@ -231,6 +243,33 @@ napi_value MakeGenerationResult(napi_env env, const MnnLlmRunner::GenerationResu
     napi_create_int32(env, value.generatedTokens, &generatedTokens);
     napi_set_named_property(env, result, "generatedTokens", generatedTokens);
 
+    if (value.generatedTokensEstimated) {
+        napi_value estimated = nullptr;
+        napi_get_boolean(env, true, &estimated);
+        napi_set_named_property(env, result, "generatedTokensEstimated", estimated);
+    }
+
+    if (value.inputTokens >= 0) {
+        napi_value inputTokens = nullptr;
+        napi_create_int32(env, value.inputTokens, &inputTokens);
+        napi_set_named_property(env, result, "inputTokens", inputTokens);
+    }
+
+    if (value.prefillMs >= 0 && value.decodeMs >= 0 && value.visionMs >= 0) {
+        napi_value timing = nullptr;
+        napi_create_object(env, &timing);
+        napi_value prefill = nullptr;
+        napi_create_double(env, value.prefillMs, &prefill);
+        napi_set_named_property(env, timing, "prefillMs", prefill);
+        napi_value decode = nullptr;
+        napi_create_double(env, value.decodeMs, &decode);
+        napi_set_named_property(env, timing, "decodeMs", decode);
+        napi_value vision = nullptr;
+        napi_create_double(env, value.visionMs, &vision);
+        napi_set_named_property(env, timing, "visionMs", vision);
+        napi_set_named_property(env, result, "nativeTiming", timing);
+    }
+
     napi_value stopReason = MakeString(env, value.stopReason);
     napi_set_named_property(env, result, "stopReason", stopReason);
 
@@ -283,7 +322,17 @@ bool ReadChatMessages(napi_env env, napi_value value, std::vector<MnnLlmRunner::
         std::string role = ReadString(env, roleValue);
         std::string content = ReadString(env, contentValue);
         if (!role.empty() && !content.empty()) {
-            messages.push_back({role, content});
+            bool hasImage = false;
+            napi_value imageUri = nullptr;
+            bool hasImageUri = false;
+            napi_has_named_property(env, item, "imageUri", &hasImageUri);
+            if (hasImageUri) {
+                napi_get_named_property(env, item, "imageUri", &imageUri);
+                napi_valuetype imageType = napi_undefined;
+                napi_typeof(env, imageUri, &imageType);
+                hasImage = imageType == napi_string && !ReadString(env, imageUri).empty();
+            }
+            messages.push_back({role, content, hasImage});
         }
     }
 
@@ -292,6 +341,65 @@ bool ReadChatMessages(napi_env env, napi_value value, std::vector<MnnLlmRunner::
         return false;
     }
     return true;
+}
+
+bool ReadRgbaImage(napi_env env, napi_value bufferValue, int32_t width, int32_t height,
+    MnnLlmRunner::ImageData& image, std::string& error);
+
+napi_value PrepareChatInput(napi_env env, napi_callback_info info) {
+    size_t argc = 6;
+    napi_value args[6] = {nullptr};
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    auto work = std::make_unique<PrepareChatWork>();
+    if (argc == 0 || !ReadChatMessages(env, args[0], work->messages, work->error)) {
+        napi_throw_error(env, nullptr, "prepareChatInput requires chat messages");
+        return nullptr;
+    }
+    work->thinkingMode = ReadSamplingConfig(env, args, argc, argc, 0, 1).thinkingMode;
+    if (argc > 2) napi_get_value_bool(env, args[2], &work->imageInput);
+    if (work->imageInput && argc >= 6) {
+        int32_t width = 0;
+        int32_t height = 0;
+        napi_get_value_int32(env, args[4], &width);
+        napi_get_value_int32(env, args[5], &height);
+        if (!ReadRgbaImage(env, args[3], width, height, work->image, work->error)) {
+            napi_throw_error(env, nullptr, work->error.c_str());
+            return nullptr;
+        }
+    }
+    napi_value promise = nullptr;
+    napi_create_promise(env, &work->deferred, &promise);
+    napi_value name = MakeString(env, "mnnPrepareChatInput");
+    napi_create_async_work(env, nullptr, name,
+        [](napi_env, void* data) {
+            auto* work = static_cast<PrepareChatWork*>(data);
+            try {
+                work->output = g_runner.prepareChatInput(work->messages, work->thinkingMode,
+                    work->imageInput, work->error, work->image.rgb.empty() ? nullptr : &work->image);
+            } catch (const std::exception& error) {
+                work->error = error.what();
+            }
+        },
+        [](napi_env env, napi_status, void* data) {
+            auto* work = static_cast<PrepareChatWork*>(data);
+            if (!work->error.empty()) {
+                napi_reject_deferred(env, work->deferred, MakeString(env, work->error));
+            } else {
+                napi_value result = nullptr;
+                napi_create_object(env, &result);
+                napi_set_named_property(env, result, "prompt", MakeString(env, work->output.prompt));
+                napi_set_named_property(env, result, "modelConfig", MakeString(env, work->output.modelConfig));
+                napi_value tokens = nullptr;
+                napi_create_int32(env, work->output.inputTokens, &tokens);
+                napi_set_named_property(env, result, "inputTokens", tokens);
+                napi_resolve_deferred(env, work->deferred, result);
+            }
+            napi_delete_async_work(env, work->work);
+            delete work;
+        }, work.get(), &work->work);
+    napi_queue_async_work(env, work->work);
+    work.release();
+    return promise;
 }
 
 bool ReadRgbaImage(
@@ -926,6 +1034,20 @@ napi_value StopGeneration(napi_env env, napi_callback_info info) {
     return result;
 }
 
+napi_value SetDiagnosticLogging(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {nullptr};
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    bool enabled = false;
+    if (argc != 1 || napi_get_value_bool(env, args[0], &enabled) != napi_ok) {
+        napi_throw_type_error(env, nullptr, "Expected a boolean");
+        return nullptr;
+    }
+    napi_value result = nullptr;
+    napi_get_boolean(env, MnnLlmRunner::setDiagnosticLogging(enabled), &result);
+    return result;
+}
+
 napi_value IsLoaded(napi_env env, napi_callback_info info) {
     napi_value result = nullptr;
     napi_get_boolean(env, g_runner.isLoaded(), &result);
@@ -1143,11 +1265,13 @@ static napi_value Init(napi_env env, napi_value exports) {
         {"generateStream", nullptr, GenerateStream, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"generateRawPromptStream", nullptr, GenerateRawPromptStream, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"generateChatStream", nullptr, GenerateChatStream, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"prepareChatInput", nullptr, PrepareChatInput, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"generateImageChatStream", nullptr, GenerateImageChatStream, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"cancelTitleGeneration", nullptr, CancelTitleGeneration, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"stopGeneration", nullptr, StopGeneration, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"reset", nullptr, Reset, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"isLoaded", nullptr, IsLoaded, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"setDiagnosticLogging", nullptr, SetDiagnosticLogging, nullptr, nullptr, nullptr, napi_default, nullptr},
     };
     napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc);
     DefineH2oBindings(env, exports);

@@ -4,6 +4,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cerrno>
+#include <cstdio>
 #include <fstream>
 #include <functional>
 #include <ostream>
@@ -18,6 +20,10 @@ using MNN::Transformer::MultimodalPrompt;
 using MNN::Transformer::PromptImagePart;
 
 namespace {
+
+std::mutex diagnosticMutex;
+bool diagnosticLoggingEnabled = false;
+constexpr const char* diagnosticPath = "/data/storage/el2/base/haps/entry/files/raw_output_debug.txt";
 
 class ScopedThinkingTemplate {
 public:
@@ -50,6 +56,7 @@ void ResetForGeneration(Llm* llm) {
     if (context != nullptr && context->status == LlmStatus::USER_CANCEL) {
         context->status = LlmStatus::RUNNING;
     }
+    if (context != nullptr) context->prompt_len = 0;
 }
 
 bool CancelGenerationIfRequested(Llm* llm, const std::atomic_bool& requested) {
@@ -88,53 +95,6 @@ std::string MapStopReason(LlmStatus status) {
         default:
             return "unknown";
     }
-}
-
-void AddUniqueStopSequence(std::vector<std::string>& stopSequences, const std::string& stopSequence) {
-    if (stopSequence.empty()) {
-        return;
-    }
-    if (std::find(stopSequences.begin(), stopSequences.end(), stopSequence) != stopSequences.end()) {
-        return;
-    }
-    stopSequences.push_back(stopSequence);
-}
-
-std::vector<std::string> BuildStopSequences(const Llm* llm, const std::string& explicitEndWith) {
-    std::vector<std::string> stopSequences;
-    AddUniqueStopSequence(stopSequences, explicitEndWith);
-
-    const auto* context = llm == nullptr ? nullptr : llm->getContext();
-    if (context != nullptr) {
-        AddUniqueStopSequence(stopSequences, context->end_with);
-    }
-
-    AddUniqueStopSequence(stopSequences, "<turn|>");
-    AddUniqueStopSequence(stopSequences, "<|im_end|>");
-    AddUniqueStopSequence(stopSequences, "<|endoftext|>");
-    return stopSequences;
-}
-
-bool StripTrailingStopSequence(std::string& text, const std::string& stopSequence) {
-    if (text.empty() || stopSequence.empty()) {
-        return false;
-    }
-
-    size_t suffixEnd = text.size();
-    while (suffixEnd > 0 && std::isspace(static_cast<unsigned char>(text[suffixEnd - 1])) != 0) {
-        suffixEnd--;
-    }
-    if (suffixEnd < stopSequence.size()) {
-        return false;
-    }
-
-    const size_t stopStart = suffixEnd - stopSequence.size();
-    if (text.compare(stopStart, stopSequence.size(), stopSequence) != 0) {
-        return false;
-    }
-
-    text.erase(stopStart);
-    return true;
 }
 
 int TokenCount(Llm* llm, const std::string& text) {
@@ -200,12 +160,12 @@ std::string BuildGenerationConfig(const MnnLlmRunner::SamplingConfig& sampling) 
 void DumpRawPromptDebug(
     const std::string& prompt,
     const std::string& output,
-    const std::vector<int>& inputIds,
     const MnnLlmRunner::SamplingConfig& sampling,
     const MnnLlmRunner::GenerationResult& result,
     const Llm* llm) {
-    std::ofstream dump("/data/storage/el2/base/haps/entry/files/raw_output_debug.txt",
-                       std::ios::out | std::ios::trunc);
+    std::lock_guard<std::mutex> lock(diagnosticMutex);
+    if (!diagnosticLoggingEnabled) return;
+    std::ofstream dump(diagnosticPath, std::ios::out | std::ios::trunc);
     if (!dump.good()) {
         return;
     }
@@ -224,13 +184,44 @@ void DumpRawPromptDebug(
     dump << "context_status=" << (context == nullptr ? -1 : static_cast<int>(context->status)) << "\n";
     dump << "context_output_tokens="
          << (context == nullptr ? 0 : static_cast<int>(context->output_tokens.size())) << "\n";
-    dump << "input_prompt_tokens=" << inputIds.size() << "\n\n";
+    dump << "input_prompt_tokens=" << result.inputTokens << "\n\n";
 
     dump << "=== PROMPT ===\n" << prompt << "\n\n";
     dump << "=== RAW OUTPUT (" << output.size() << " chars, "
          << result.generatedTokens << " tokens, stop=" << result.stopReason << ") ===\n"
          << output << "\n";
     dump << "=== END ===\n";
+}
+
+MultimodalPrompt MakeImagePrompt(const std::string& text, const MnnLlmRunner::ImageData& image) {
+    auto tensor = MNN::Express::_Input({image.height, image.width, 3}, MNN::Express::NHWC, halide_type_of<uint8_t>());
+    auto* data = tensor->writeMap<uint8_t>();
+    if (data == nullptr) throw std::runtime_error("failed to map image tensor");
+    std::copy(image.rgb.begin(), image.rgb.end(), data);
+    MultimodalPrompt prompt;
+    prompt.prompt_template = text;
+    PromptImagePart part;
+    part.image_data = tensor;
+    part.width = 0;
+    part.height = 0;
+    prompt.images["image_0"] = part;
+    return prompt;
+}
+
+std::string ImagePromptForTurns(Llm* llm, const std::vector<MnnLlmRunner::ChatTurn>& messages) {
+    MNN::Transformer::ChatMessages turns;
+    bool hasImage = false;
+    for (const auto& message : messages) {
+        if (message.role.empty() || message.content.empty()) continue;
+        std::string content = message.content;
+        if (message.hasImage && message.role == "user") {
+            if (hasImage) return {};
+            content = "<img>image_0</img>\n" + content;
+            hasImage = true;
+        }
+        turns.emplace_back(message.role, content);
+    }
+    return hasImage ? llm->apply_chat_template(turns) : std::string();
 }
 
 int ResolveGeneratedTokens(Llm* llm, const std::string& text, int maxNewTokens, int removedStopTokens) {
@@ -257,25 +248,31 @@ int ResolveGeneratedTokens(Llm* llm, const std::string& text, int maxNewTokens, 
 MnnLlmRunner::GenerationResult BuildGenerationResult(
     Llm* llm,
     const std::string& text,
-    int maxNewTokens,
-    const std::string& explicitEndWith = "") {
+    int maxNewTokens) {
     MnnLlmRunner::GenerationResult result;
     result.text = text;
     const auto* context = llm == nullptr ? nullptr : llm->getContext();
     if (context == nullptr) {
+        result.generatedTokensEstimated = !result.text.empty();
         result.generatedTokens = TokenCount(llm, result.text);
         return result;
     }
 
     result.stopReason = MapStopReason(context->status);
-    int removedStopTokens = 0;
-    for (const auto& stopSequence : BuildStopSequences(llm, explicitEndWith)) {
-        while (StripTrailingStopSequence(result.text, stopSequence)) {
-            result.stopReason = "eos";
-            removedStopTokens += TokenCount(llm, stopSequence);
-        }
+    result.prefillMs = context->prefill_us / 1000.0;
+    result.decodeMs = context->decode_us / 1000.0;
+    result.visionMs = context->vision_us / 1000.0;
+    if (context->prompt_len > 0 && context->status != LlmStatus::INTERNAL_ERROR) {
+        result.inputTokens = context->prompt_len;
     }
+    // MNN records the terminating token but does not decode it as body text.
+    // response() receives an empty end_with, so there is no synthetic suffix to trim.
+    const int removedStopTokens = context->status == LlmStatus::NORMAL_FINISHED &&
+        !context->output_tokens.empty() && llm->is_stop(context->output_tokens.back()) ? 1 : 0;
 
+    const int measuredTokens = std::max(0, static_cast<int>(context->output_tokens.size()) - removedStopTokens);
+    result.generatedTokensEstimated = (context->output_tokens.empty() && !result.text.empty()) ||
+        (maxNewTokens > 0 && measuredTokens > maxNewTokens);
     result.generatedTokens = ResolveGeneratedTokens(llm, result.text, maxNewTokens, removedStopTokens);
     if (result.stopReason == "unknown") {
         // Some MNN builds leave the context in RUNNING after response() returns.
@@ -296,6 +293,13 @@ void ApplyUserStop(MnnLlmRunner::GenerationResult& result, bool stopped) {
 
 } // namespace
 
+bool MnnLlmRunner::setDiagnosticLogging(bool enabled) {
+    std::lock_guard<std::mutex> lock(diagnosticMutex);
+    diagnosticLoggingEnabled = enabled;
+    if (enabled) return true;
+    return std::remove(diagnosticPath) == 0 || errno == ENOENT;
+}
+
 MnnLlmRunner::MnnLlmRunner() = default;
 MnnLlmRunner::~MnnLlmRunner() = default;
 
@@ -305,6 +309,9 @@ bool MnnLlmRunner::load(
     const SamplingConfig& sampling,
     std::string& error) {
     std::lock_guard<std::mutex> lock(mutex_);
+    preparedImagePrompt_.clear();
+    preparedImageTokens_.clear();
+    preparedImage_ = {};
     error.clear();
     stopRequested_.store(false);
 
@@ -341,8 +348,54 @@ bool MnnLlmRunner::load(
     return true;
 }
 
+MnnLlmRunner::PreparedChatInput MnnLlmRunner::prepareChatInput(
+    const std::vector<ChatTurn>& messages, int thinkingMode, bool imageInput, std::string& error, const ImageData* image) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    preparedImagePrompt_.clear();
+    preparedImageTokens_.clear();
+    preparedImage_ = {};
+    error.clear();
+    stopRequested_.store(false);
+    PreparedChatInput result;
+    if (!llm_) {
+        error = "model is not loaded";
+        return result;
+    }
+    ScopedThinkingTemplate thinkingTemplate(llm_.get(), thinkingMode);
+    result.modelConfig = llm_->dump_config();
+    if (imageInput) {
+        result.prompt = ImagePromptForTurns(llm_.get(), messages);
+        if (image != nullptr && !result.prompt.empty()) {
+            ResetForGeneration(llm_.get());
+            preparedImageTokens_ = llm_->tokenizer_encode(MakeImagePrompt(result.prompt, *image));
+            result.inputTokens = static_cast<int>(preparedImageTokens_.size());
+            preparedImagePrompt_ = result.prompt;
+            preparedImage_ = *image;
+            preparedImageThinkingMode_ = thinkingMode;
+            preparedVisionUs_ = llm_->getContext()->vision_us;
+        }
+    } else {
+        MNN::Transformer::ChatMessages usable;
+        for (const auto& message : messages) {
+            if (!message.role.empty() && !message.content.empty()) usable.emplace_back(message.role, message.content);
+        }
+        if (!usable.empty()) result.prompt = llm_->apply_chat_template(usable);
+        if (!result.prompt.empty()) result.inputTokens = static_cast<int>(llm_->tokenizer_encode(result.prompt).size());
+    }
+    if (result.prompt.empty() || (!imageInput && result.inputTokens <= 0)) error = "model produced an empty input";
+    if (stopRequested_.load()) {
+        preparedImagePrompt_.clear();
+        preparedImageTokens_ = {};
+        preparedImage_ = {};
+    }
+    return result;
+}
+
 std::string MnnLlmRunner::generate(const std::string& prompt, const SamplingConfig& sampling, std::string& error) {
     std::lock_guard<std::mutex> lock(mutex_);
+    preparedImagePrompt_.clear();
+    preparedImageTokens_.clear();
+    preparedImage_ = {};
     error.clear();
 
     if (!llm_) {
@@ -358,7 +411,7 @@ std::string MnnLlmRunner::generate(const std::string& prompt, const SamplingConf
     stopRequested_.store(false);
     ResetForGeneration(llm_.get());
     std::ostringstream output;
-    llm_->response(prompt, &output, nullptr, sampling.maxNewTokens);
+    llm_->response(prompt, &output, "", sampling.maxNewTokens);
     return output.str();
 }
 
@@ -368,6 +421,9 @@ MnnLlmRunner::GenerationResult MnnLlmRunner::generateStreaming(
     const std::function<void(const std::string&)>& onChunk,
     std::string& error) {
     std::lock_guard<std::mutex> lock(mutex_);
+    preparedImagePrompt_.clear();
+    preparedImageTokens_.clear();
+    preparedImage_ = {};
     error.clear();
 
     if (!llm_) {
@@ -388,7 +444,7 @@ MnnLlmRunner::GenerationResult MnnLlmRunner::generateStreaming(
     std::ostream output(&buffer);
     output.exceptions(std::ios::badbit | std::ios::failbit);
     try {
-        llm_->response(prompt, &output, nullptr, sampling.maxNewTokens);
+        llm_->response(prompt, &output, "", sampling.maxNewTokens);
         output.flush();
     } catch (const std::ios_base::failure& ex) {
         if (!stopRequested_.load()) {
@@ -407,10 +463,13 @@ MnnLlmRunner::GenerationResult MnnLlmRunner::generateStreaming(
 MnnLlmRunner::GenerationResult MnnLlmRunner::generateRawPromptStreaming(
     const std::string& prompt,
     const SamplingConfig& sampling,
-    const std::string& endWith,
+    const std::string& /*endWith*/,
     const std::function<void(const std::string&)>& onChunk,
     std::string& error) {
     std::lock_guard<std::mutex> lock(mutex_);
+    preparedImagePrompt_.clear();
+    preparedImageTokens_.clear();
+    preparedImage_ = {};
     error.clear();
 
     if (!llm_) {
@@ -439,9 +498,8 @@ MnnLlmRunner::GenerationResult MnnLlmRunner::generateRawPromptStreaming(
     }, AssistantOutputPrefix(prompt));
     std::ostream output(&buffer);
     output.exceptions(std::ios::badbit | std::ios::failbit);
-    const char* endWithPtr = endWith.empty() ? nullptr : endWith.c_str();
     try {
-        llm_->response(inputIds, &output, endWithPtr, sampling.maxNewTokens);
+        llm_->response(inputIds, &output, "", sampling.maxNewTokens);
         output.flush();
     } catch (const std::ios_base::failure& ex) {
         if (!stopRequested_.load()) {
@@ -450,11 +508,11 @@ MnnLlmRunner::GenerationResult MnnLlmRunner::generateRawPromptStreaming(
         }
     }
     const std::string rawOutput = buffer.output();
-    GenerationResult result = BuildGenerationResult(llm_.get(), rawOutput, sampling.maxNewTokens, endWith);
+    GenerationResult result = BuildGenerationResult(llm_.get(), rawOutput, sampling.maxNewTokens);
     const bool stopped = stopRequested_.load();
     ApplyUserStop(result, stopped);
     stopRequested_.store(false);
-    DumpRawPromptDebug(prompt, buffer.rawOutput(), inputIds, sampling, result, llm_.get());
+    DumpRawPromptDebug(prompt, buffer.rawOutput(), sampling, result, llm_.get());
 
     return result;
 }
@@ -466,6 +524,9 @@ MnnLlmRunner::GenerationResult MnnLlmRunner::generateChatStreaming(
     std::string& error,
     const std::atomic_bool* cancellation) {
     std::lock_guard<std::mutex> lock(mutex_);
+    preparedImagePrompt_.clear();
+    preparedImageTokens_.clear();
+    preparedImage_ = {};
     error.clear();
     if (cancellation != nullptr && cancellation->load()) {
         GenerationResult cancelled;
@@ -514,7 +575,7 @@ MnnLlmRunner::GenerationResult MnnLlmRunner::generateChatStreaming(
     ResetForGeneration(llm_.get());
     try {
         if (cancellation == nullptr) {
-            llm_->response(chatMessages, &output, nullptr, sampling.maxNewTokens);
+            llm_->response(chatMessages, &output, "", sampling.maxNewTokens);
         } else {
             // Title-only prefill: use MNN's token/chunk API so cancellation can
             // be observed between chunks, before any output token is produced.
@@ -523,7 +584,7 @@ MnnLlmRunner::GenerationResult MnnLlmRunner::generateChatStreaming(
                 error = "title prompt contains no tokens";
                 return {};
             }
-            llm_->generate_init(&output, "\n");
+            llm_->generate_init(&output, "");
             constexpr size_t chunkSize = 32;
             for (size_t offset = 0; offset < tokens.size(); offset += chunkSize) {
                 if (CancelGenerationIfRequested(llm_.get(), *cancellation)) break;
@@ -548,10 +609,10 @@ MnnLlmRunner::GenerationResult MnnLlmRunner::generateChatStreaming(
     const bool stopped = stopRequested_.load() || (cancellation != nullptr && cancellation->load());
     ApplyUserStop(result, stopped);
     stopRequested_.store(false);
+    if (cancellation != nullptr) result.inputTokens = -1;
     if (cancellation == nullptr) DumpRawPromptDebug(
         debugPrompt.str(),
         buffer.rawOutput(),
-        llm_->tokenizer_encode(debugPrompt.str()),
         sampling,
         result,
         llm_.get());
@@ -585,53 +646,42 @@ MnnLlmRunner::GenerationResult MnnLlmRunner::generateImageChatStreaming(
     }
 
     ScopedThinkingTemplate thinkingTemplate(llm_.get(), sampling.thinkingMode);
-    std::string userContent;
-    for (auto it = messages.rbegin(); it != messages.rend(); ++it) {
-        if (it->role == "user" && !it->content.empty()) {
-            userContent = it->content;
-            break;
-        }
-    }
-    if (userContent.empty()) {
+    const std::string imagePrompt = ImagePromptForTurns(llm_.get(), messages);
+    if (imagePrompt.empty()) {
         error = "chat messages contain no user content";
         return {};
     }
 
-    auto imageVar = MNN::Express::_Input({image.height, image.width, 3}, MNN::Express::NHWC, halide_type_of<uint8_t>());
-    auto* imagePtr = imageVar->writeMap<uint8_t>();
-    if (imagePtr == nullptr) {
-        error = "failed to map image tensor";
-        return {};
-    }
-    std::copy(image.rgb.begin(), image.rgb.end(), imagePtr);
-
-    MultimodalPrompt prompt;
-    prompt.prompt_template = "<img>image_0</img>\n"
-                             "请始终使用简体中文回答。"
-                             "回答结尾请使用与回答语言匹配的句末标点。"
-                             "如果问题要求识别或提取图片中的文字，请只根据图片中可见内容回答，不要翻译成其他语言。"
-                             "不要使用 Markdown 列表；如果只能识别到部分内容，就只输出识别到的文字，不要输出空项目或占位符。\n"
-                             + userContent;
-    PromptImagePart imagePart;
-    imagePart.image_data = imageVar;
-    // Keep the visual input size from llm_config.json. MNN resizes the supplied
-    // image tensor internally; overriding it with the photo dimensions breaks
-    // models such as Qwen3-VL whose visual grid depends on the configured size.
-    imagePart.width = 0;
-    imagePart.height = 0;
-    prompt.images["image_0"] = imagePart;
+    const bool reusePrepared = imagePrompt == preparedImagePrompt_ &&
+        sampling.thinkingMode == preparedImageThinkingMode_ && image.width == preparedImage_.width &&
+        image.height == preparedImage_.height && image.rgb == preparedImage_.rgb && !preparedImageTokens_.empty();
+    auto inputIds = reusePrepared ? std::move(preparedImageTokens_) : std::vector<int>();
+    preparedImagePrompt_.clear();
+    preparedImage_ = {};
 
     stopRequested_.store(false);
     ChunkStreamBuffer buffer(onChunk, [this]() {
         return CancelGenerationIfRequested(llm_.get(), stopRequested_);
-    }, TemplatedOutputPrefix(llm_.get(), prompt.prompt_template));
+    }, AssistantOutputPrefix(imagePrompt));
     std::ostream output(&buffer);
     output.exceptions(std::ios::badbit | std::ios::failbit);
     ResetForGeneration(llm_.get());
+    if (reusePrepared) {
+        auto* context = const_cast<MNN::Transformer::LlmContext*>(llm_->getContext());
+        context->vision_us = preparedVisionUs_;
+    }
     const auto* contextBefore = llm_->getContext();
     const auto visionUsBefore = contextBefore == nullptr ? 0 : contextBefore->vision_us;
     try {
-        llm_->response(prompt, &output, nullptr, sampling.maxNewTokens);
+        // The full conversation is already templated. Encoding directly avoids
+        // wrapping it in another user turn through response(MultimodalPrompt).
+        if (!reusePrepared) inputIds = llm_->tokenizer_encode(MakeImagePrompt(imagePrompt, image));
+        if (stopRequested_.load()) {
+            GenerationResult stopped;
+            stopped.stopReason = "user_stop";
+            return stopped;
+        }
+        llm_->response(inputIds, &output, "", sampling.maxNewTokens);
         output.flush();
     } catch (const std::ios_base::failure& ex) {
         if (!stopRequested_.load()) {
@@ -642,7 +692,7 @@ MnnLlmRunner::GenerationResult MnnLlmRunner::generateImageChatStreaming(
     const auto* contextAfter = llm_->getContext();
     const auto visionUsAfter = contextAfter == nullptr ? 0 : contextAfter->vision_us;
     const bool stopped = stopRequested_.load();
-    if (!stopped && visionUsAfter <= visionUsBefore) {
+    if (!stopped && ((!reusePrepared && visionUsAfter <= visionUsBefore) || (reusePrepared && visionUsAfter <= 0))) {
         error = "MNN vision encoder did not run. Rebuild libMNN.so with LLM_SUPPORT_VISION=ON and MNN_BUILD_OPENCV=ON.";
         return {};
     }
@@ -655,11 +705,20 @@ MnnLlmRunner::GenerationResult MnnLlmRunner::generateImageChatStreaming(
 
 void MnnLlmRunner::requestStop() {
     stopRequested_.store(true);
+    std::unique_lock<std::mutex> lock(mutex_, std::try_to_lock);
+    if (lock.owns_lock()) {
+        preparedImagePrompt_.clear();
+        preparedImageTokens_ = {};
+        preparedImage_ = {};
+    }
 }
 
 void MnnLlmRunner::reset() {
     std::lock_guard<std::mutex> lock(mutex_);
     stopRequested_.store(false);
+    preparedImagePrompt_.clear();
+    preparedImageTokens_.clear();
+    preparedImage_ = {};
     llm_.reset();
     requestedThreads_.store(0);
     actualCpuThreads_.store(0);

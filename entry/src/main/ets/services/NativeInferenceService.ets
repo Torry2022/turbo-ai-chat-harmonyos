@@ -1,5 +1,5 @@
 import entry from 'libentry.so'
-import { ChatTurn, GenerationResult, GenerationSettings, ImagePayload } from '../models/ChatTypes'
+import { ChatTurn, GenerationResult, GenerationSettings, ImagePayload, PreparedChatInput } from '../models/ChatTypes'
 
 export interface ModelThreadWidth {
   requested: number
@@ -13,6 +13,10 @@ export interface NativeModelThreadInfo {
 }
 
 export class NativeInferenceService {
+  setDiagnosticLogging(enabled: boolean): boolean {
+    return entry.setDiagnosticLogging(enabled)
+  }
+
   modelThreadInfo(): NativeModelThreadInfo {
     return JSON.parse(entry.modelThreadInfo()) as NativeModelThreadInfo
   }
@@ -70,6 +74,11 @@ export class NativeInferenceService {
       entry.loadModelAsync(configPath, threadNum, maxNewTokens, settings)).then((_result: string) => {
       return entry.isLoaded() as boolean
     })
+  }
+
+  prepareChatInput(turns: ChatTurn[], settings: GenerationSettings, imageInput: boolean, image?: ImagePayload): Promise<PreparedChatInput> {
+    return this.foreground<PreparedChatInput>((): Promise<PreparedChatInput> =>
+      entry.prepareChatInput(turns, settings, imageInput, image?.pixels, image?.width, image?.height))
   }
 
   generateText(
