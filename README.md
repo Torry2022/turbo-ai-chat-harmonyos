@@ -8,7 +8,7 @@
 
 ![Turbo AI Chat hero](docs/images/hero.png)
 
-**Turbo AI Chat 是一个 HarmonyOS NEXT 原生端侧大模型聊天应用**，支持在鸿蒙设备上直接运行本地文本与多模态模型。项目基于 ArkTS、C++ N-API 和 MNN Runtime 构建，预置 Qwen3-4B-Instruct、MiniCPM5-1B 和 Gemma-4-E2B-it，并可通过模型广场或本地导入扩展兼容的 MNN 模型；同时提供流式对话、模型切换、图片理解、运行监控和局域网 OpenAI 兼容 API。
+**Turbo AI Chat 是一个 HarmonyOS NEXT 原生端侧大模型聊天应用**，支持在鸿蒙手机、平板和 PC 上直接运行本地文本与多模态模型。项目基于 ArkTS、C++ N-API 和 MNN Runtime 构建，预置 Qwen3-4B-Instruct、MiniCPM5-1B 和 Gemma-4-E2B-it，并可通过模型广场或本地导入扩展兼容的 MNN 模型；同时提供流式对话、模型切换、图片理解、运行监控和局域网 OpenAI 兼容 API。
 
 > 当前版本基于 MNN 开发快照 [`f0b6105c`](https://github.com/alibaba/MNN/commit/f0b6105c5c7f901b1531dd4c23afa8a00b454db3) 构建。自行编译运行库时，请使用下文提供的构建脚本。
 

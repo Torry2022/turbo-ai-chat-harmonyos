@@ -44,6 +44,7 @@ export struct LaunchScreen {
             .width('100%')
             .height('100%')
             .objectFit(ImageFit.Cover)
+            .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
             .scale({ x: this.landscape() ? 1 : 1.04, y: this.landscape() ? 1 : 1.04 })
             .translate({ y: this.landscape() ? 0 : '-2%' })
             .opacity(this.artOpacity)
@@ -72,11 +73,13 @@ export struct LaunchScreen {
         }
         .width('100%')
         .height('100%')
+        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
         .opacity(this.artReady ? 1 : 0)
       }
     }
     .width('100%')
     .height('100%')
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
     .backgroundColor(Color.Black)
     .clip(true)
     .blendMode(BlendMode.SRC_OVER, BlendApplyType.OFFSCREEN)

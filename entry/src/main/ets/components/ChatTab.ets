@@ -767,6 +767,7 @@ export struct ChatTab {
     Menu() {
       MenuItem() {
         Text('重命名').fontSize(14).fontColor($r('app.color.text_title')).width('100%')
+          .opacity(this.viewModel.canManageConversations() && this.viewModel.activeConversationId.length > 0 ? 1 : 0.4)
           .height(40).padding({ left: 10, right: 10 })
       }.backgroundColor(Color.Transparent).borderRadius(6)
         .enabled(this.viewModel.canManageConversations() && this.viewModel.activeConversationId.length > 0)
@@ -777,12 +778,14 @@ export struct ChatTab {
         })
       MenuItem() {
         Text('查看上下文').fontSize(14).fontColor($r('app.color.text_title')).width('100%')
+          .opacity(this.viewModel.contextForCurrentConversation() !== undefined ? 1 : 0.4)
           .height(40).padding({ left: 10, right: 10 })
       }.backgroundColor(Color.Transparent).borderRadius(6)
         .enabled(this.viewModel.contextForCurrentConversation() !== undefined)
         .onClick(() => { this.inputController.stopEditing(); this.onViewContext() })
       MenuItem() {
         Text('导出对话').fontSize(14).fontColor($r('app.color.text_title')).width('100%')
+          .opacity(this.viewModel.canManageConversations() && this.viewModel.activeConversationId.length > 0 ? 1 : 0.4)
           .height(40).padding({ left: 10, right: 10 })
       }.backgroundColor(Color.Transparent).borderRadius(6)
         .enabled(this.viewModel.canManageConversations() && this.viewModel.activeConversationId.length > 0)
