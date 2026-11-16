@@ -31,6 +31,7 @@ The project includes [MNN compatibility patches](third_party/mnn/patches/README.
 - [Native API](#native-api)
 - [Development checks](#development-checks)
 - [License](#license)
+- [Acknowledgments](#acknowledgments)
 
 ## Project Origin and Evolution
 
@@ -50,12 +51,25 @@ Turbo AI Chat runs models locally on HarmonyOS devices through a native inferenc
 - **Diagnostics**: temporarily enable records in Settings to inspect the latest text request's input, answer, and sampling parameters through hdc (`raw_output_debug.txt`); disabled by default
 
   ```sh
-  hdc shell "cat /data/app/el2/100/base/com.example.gemma4mnn/haps/entry/files/raw_output_debug.txt"
+  hdc shell "cat /data/app/el2/100/base/com.torry.turbochat/haps/entry/files/raw_output_debug.txt"
   ```
 
 The project can serve as a development and integration reference for local AI applications on HarmonyOS.
 
 ## Recent Highlights
+
+**Conversation tools and permanent app identity (v2.0.0)**
+
+- Use the permanent bundle name `com.torry.turbochat` while retaining the Turbo AI Chat name.
+- Export the current conversation as Markdown, or as a ZIP when it contains images.
+- Back up and restore conversation history, including images, all saved answer versions and branch origins.
+- Create an independent conversation from an assistant answer, retain its preceding history, and return to the source conversation through the branch link.
+- Inspect the context used for an answer and why messages were omitted. When the model declares a context limit, reserve space for the reply and trim older complete exchanges.
+- Preserve generated content after stopping, timeout or output-limit termination so later questions can use it. Keep images in multi-turn context for follow-up questions about the original image.
+- Support image input and remote image URLs through the API, with stronger request validation, context budgeting and connection resource limits.
+- Reuse matching KV prefixes in active text conversations to reduce repeated prefill work. Preserve model-provided text and special markers, and account for context using the actual prepared input.
+- Strengthen file and response validation when resuming downloads, refresh and pin the Qwen3-0.6B package, and manage download and supported-device compute background tasks as needed.
+- Scroll truncated history titles on mouse hover, and temporarily enable local diagnostic records through Settings for troubleshooting.
 
 **Decision models and runtime settings (v1.22.0)**
 
@@ -217,6 +231,8 @@ The project can serve as a development and integration reference for local AI ap
 | Network | In-app model-market installation downloads from ModelScope, so first-time model installation requires ModelScope access |
 
 ## Quick Start
+
+> Starting with v2.0.0, this build uses `com.torry.turbochat` and installs separately from the former `com.example.gemma4mnn` app. Its existing models, conversations and settings remain in the old app. This release starts with a fresh data directory.
 
 ### 1. Clone and build
 
@@ -402,9 +418,9 @@ Use the following commands to restore built-in model directories when in-app dow
 
 ```sh
 cd models
-hdc file send -b com.example.gemma4mnn gemma-4-E2B-it-MNN /data/storage/el2/base/haps/entry/files/
-hdc file send -b com.example.gemma4mnn MiniCPM5-1B-MNN /data/storage/el2/base/haps/entry/files/
-hdc file send -b com.example.gemma4mnn Qwen3-4B-Instruct-2507-MNN /data/storage/el2/base/haps/entry/files/
+hdc file send -b com.torry.turbochat gemma-4-E2B-it-MNN /data/storage/el2/base/haps/entry/files/
+hdc file send -b com.torry.turbochat MiniCPM5-1B-MNN /data/storage/el2/base/haps/entry/files/
+hdc file send -b com.torry.turbochat Qwen3-4B-Instruct-2507-MNN /data/storage/el2/base/haps/entry/files/
 ```
 
 > The `-b` flag specifies the bundle name and is required to write into the app sandbox.
@@ -419,13 +435,13 @@ To register a pushed model as an imported model:
 
    ```sh
    cd models
-   hdc file send -b com.example.gemma4mnn Qwen3-4B-Instruct-2507-MNN /data/storage/el2/base/haps/entry/files/model-imports/
+   hdc file send -b com.torry.turbochat Qwen3-4B-Instruct-2507-MNN /data/storage/el2/base/haps/entry/files/model-imports/
    ```
 
 4. Verify the directory on the device:
 
    ```sh
-   hdc shell "ls -la /data/app/el2/100/base/com.example.gemma4mnn/haps/entry/files/model-imports/Qwen3-4B-Instruct-2507-MNN"
+   hdc shell "ls -la /data/app/el2/100/base/com.torry.turbochat/haps/entry/files/model-imports/Qwen3-4B-Instruct-2507-MNN"
    ```
 
    The directory should contain `config.json`, `llm_config.json`, `llm.mnn`, `llm.mnn.weight`, and tokenizer files.
@@ -531,3 +547,7 @@ MNN Runtime and model weights follow their respective upstream licenses or model
 - [Qwen3-4B-Instruct-2507-MNN](https://modelscope.cn/models/MNN/Qwen3-4B-Instruct-2507-MNN)
 - [Gemma-4-E2B-it-MNN](https://modelscope.cn/models/MNN/Gemma-4-E2B-it-MNN)
 - [MiniCPM5-1B-MNN-BF16](https://modelscope.cn/models/TorryJi/MiniCPM5-1B-MNN-BF16)
+
+## Acknowledgments
+
+Thanks to Turbo1123 for open-sourcing the original Turbo AI Chat project, which provided the starting point for this application's continued development. [Original repository](https://github.com/Turbo1123/turbo-ai-chat-harmonyos)

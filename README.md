@@ -31,6 +31,7 @@
 - [原生接口](#原生接口)
 - [开发检查](#开发检查)
 - [许可证](#许可证)
+- [致谢](#致谢)
 
 ## 项目来源与演进
 
@@ -50,12 +51,25 @@ Turbo AI Chat 采用原生推理链路（ArkTS → N-API → MNN → CPU），�
 - **诊断记录**：在设置中临时开启后，可通过 hdc 查看最近一次文字请求的输入、回答和采样参数（`raw_output_debug.txt`）；默认关闭
 
   ```sh
-  hdc shell "cat /data/app/el2/100/base/com.example.gemma4mnn/haps/entry/files/raw_output_debug.txt"
+  hdc shell "cat /data/app/el2/100/base/com.torry.turbochat/haps/entry/files/raw_output_debug.txt"
   ```
 
 项目可作为鸿蒙本地 AI 应用的开发与集成参考。
 
 ## 近期重要改进
+
+**独立应用标识与对话数据能力（v2.0.0）**
+
+- 使用正式包名 `com.torry.turbochat`，保留 Turbo AI Chat 名称。
+- 导出当前对话，纯文本保存为 Markdown，含图片的对话保存为 ZIP。
+- 备份和恢复完整对话历史，保留图片、全部回答版本和分支来源。
+- 从助手回答创建独立对话分支，保留截至该回答的历史，并可返回原对话。
+- 查看回答实际携带的上下文及消息未被带入的原因；模型标明上下文上限时，为回答预留空间，按完整问答裁剪较早历史。
+- 停止、超时或达到输出上限时保存已生成内容，后续提问可继续参考；图片保留在多轮上下文中，支持追问原图细节。
+- API 支持图片输入和远程图片 URL，完善请求校验、上下文预算及连接资源限制。
+- 当前文字对话在前缀一致时复用 KV 缓存，减少后续回答的重复预填充；保留模型原始文本与特殊标记，按实际准备的输入计量上下文。
+- 加强下载续传的文件与响应校验，更新并固定 Qwen3-0.6B 模型包；按需管理下载及支持设备上的计算后台任务。
+- 鼠标悬停时滚动显示未展示完整的历史标题；设置中可临时开启本地诊断记录，便于排查问题。
 
 **决策模型与运行配置（v1.22.0）**
 
@@ -217,6 +231,8 @@ Turbo AI Chat 采用原生推理链路（ArkTS → N-API → MNN → CPU），�
 | 网络 | App 内模型广场从 ModelScope 下载模型，首次安装模型需要可访问 ModelScope 的网络环境 |
 
 ## 快速开始
+
+> 从 v2.0.0 起，本版使用包名 `com.torry.turbochat`，与旧包名 `com.example.gemma4mnn` 的应用分别安装。旧应用的模型、对话和设置仍保留在旧应用中；本版首次安装使用全新数据目录。
 
 ### 1. 克隆并构建
 
@@ -402,9 +418,9 @@ hdc install -r turbo-ai-chat-harmonyos-vX.Y.Z-signed.hap
 
 ```sh
 cd models
-hdc file send -b com.example.gemma4mnn gemma-4-E2B-it-MNN /data/storage/el2/base/haps/entry/files/
-hdc file send -b com.example.gemma4mnn MiniCPM5-1B-MNN /data/storage/el2/base/haps/entry/files/
-hdc file send -b com.example.gemma4mnn Qwen3-4B-Instruct-2507-MNN /data/storage/el2/base/haps/entry/files/
+hdc file send -b com.torry.turbochat gemma-4-E2B-it-MNN /data/storage/el2/base/haps/entry/files/
+hdc file send -b com.torry.turbochat MiniCPM5-1B-MNN /data/storage/el2/base/haps/entry/files/
+hdc file send -b com.torry.turbochat Qwen3-4B-Instruct-2507-MNN /data/storage/el2/base/haps/entry/files/
 ```
 
 > `-b` 指定 bundle 名称，是写入 App 沙箱的必需参数。
@@ -421,13 +437,13 @@ hdc file send -b com.example.gemma4mnn Qwen3-4B-Instruct-2507-MNN /data/storage/
 
    ```sh
    cd models
-   hdc file send -b com.example.gemma4mnn Qwen3-4B-Instruct-2507-MNN /data/storage/el2/base/haps/entry/files/model-imports/
+   hdc file send -b com.torry.turbochat Qwen3-4B-Instruct-2507-MNN /data/storage/el2/base/haps/entry/files/model-imports/
    ```
 
 4. 查看真机沙箱中的目录结构，确认关键文件完整：
 
    ```sh
-   hdc shell "ls -la /data/app/el2/100/base/com.example.gemma4mnn/haps/entry/files/model-imports/Qwen3-4B-Instruct-2507-MNN"
+   hdc shell "ls -la /data/app/el2/100/base/com.torry.turbochat/haps/entry/files/model-imports/Qwen3-4B-Instruct-2507-MNN"
    ```
 
    目录中应能看到 `config.json`、`llm_config.json`、`llm.mnn`、`llm.mnn.weight` 和 tokenizer 文件。
@@ -533,3 +549,7 @@ MNN Runtime 和模型权重遵循各自上游许可证或模型卡说明。本�
 - [Qwen3-4B-Instruct-2507-MNN](https://modelscope.cn/models/MNN/Qwen3-4B-Instruct-2507-MNN)
 - [Gemma-4-E2B-it-MNN](https://modelscope.cn/models/MNN/Gemma-4-E2B-it-MNN)
 - [MiniCPM5-1B-MNN-BF16](https://modelscope.cn/models/TorryJi/MiniCPM5-1B-MNN-BF16)
+
+## 致谢
+
+感谢 Turbo1123 开源最初的 Turbo AI Chat 工程，为本项目的后续开发提供了起点。[上游仓库](https://github.com/Turbo1123/turbo-ai-chat-harmonyos)

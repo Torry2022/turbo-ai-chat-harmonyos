@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MODEL_DIR="${1:-$ROOT_DIR/models/gemma-4-E2B-it-MNN}"
-BUNDLE="${BUNDLE:-com.example.gemma4mnn}"
+BUNDLE="${BUNDLE:-com.torry.turbochat}"
 USER_ID="${USER_ID:-100}"
 DEVICE_FILES_DIR="${DEVICE_FILES_DIR:-/data/app/el2/$USER_ID/base/$BUNDLE/haps/entry/files}"
 

@@ -45,5 +45,3 @@ The per-item input limit includes the model template, query and one passage. It 
 The server returns 503 when no reranker is loaded, 400 for invalid or oversized input, 409 while model tasks are busy, and 500 for scoring failures. Requests are not queued; callers decide when to retry.
 
 Disconnecting or stopping the server requests cancellation between candidate computations. The model remains protected until the native task finishes. API logs omit queries, candidate text and keys. Reranking does not write chat history.
-
-Both builds expose the same endpoint. The experimental knowledge base does not automatically invoke reranking.

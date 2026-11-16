@@ -105,7 +105,7 @@ ChatTab / ModelTab / MonitorTab          Cherry Studio 等局域网客户端
 
 本次核心代码整理更改了 `GemmaRunner`、CMake 工程名和 native 内部任务名，但没有修改 ArkTS 使用的 N-API 方法，因此现有 ArkTS 调用无需迁移。
 
-应用的 `bundleName` 仍为 `com.example.gemma4mnn`。HarmonyOS 使用它识别应用及其沙箱数据；如果现在修改，设备会将新版识别为另一个应用，原有数据也不会自动沿用，因此本次整理继续保留该名称。
+从 v2.0.0 起，应用使用包名 `com.torry.turbochat`。此前的 `com.example.gemma4mnn` 来自项目早期实现；新包名使用独立的数据目录，首次安装不会自动沿用旧应用的数据。
 
 ## English summary
 
