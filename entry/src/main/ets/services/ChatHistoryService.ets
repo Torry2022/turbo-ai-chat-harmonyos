@@ -1,7 +1,7 @@
 import fs from '@ohos.file.fs'
 import { util } from '@kit.ArkTS'
 import { ChatAnswerVersion, ChatMessage } from '../models/ChatTypes'
-import { ChatConversation, ChatConversationSummary, ChatHistoryIndex, ChatHistorySearchResult } from '../models/ChatHistoryTypes'
+import { ChatConversation, ChatConversationOrigin, ChatConversationSummary, ChatHistoryIndex, ChatHistorySearchResult } from '../models/ChatHistoryTypes'
 import { parseAssistantText } from '../utils/thinking'
 import { conversationTitleSignature } from './ConversationTitleService'
 import { MarkdownBlock, MarkdownSpan, parseInlineMarkdown, parseLightMarkdown } from '../utils/markdown'
@@ -62,7 +62,7 @@ export class ChatHistoryService {
     return this.summaries.slice().sort((a: ChatConversationSummary, b: ChatConversationSummary) => b.updatedAt - a.updatedAt)
   }
 
-  exportArchive(directory: string, conversationId?: string): Promise<ChatArchive> {
+  exportArchive(directory: string, conversationId?: string, throughMessageId?: number): Promise<ChatArchive> {
     return this.enqueue(async (): Promise<ChatArchive> => {
       const records: ChatConversation[] = []
       const summaries = conversationId === undefined ? this.list() : this.list().filter(
@@ -71,6 +71,12 @@ export class ChatHistoryService {
       await this.ensureDirectory(`${directory}/images`)
       for (let index = 0; index < summaries.length; index++) {
         const record = JSON.parse(JSON.stringify(await this.readRecord(summaries[index].id))) as ChatConversation
+        if (throughMessageId !== undefined) {
+          const end = record.messages.findIndex((message: ChatMessage) => message.id === throughMessageId &&
+            message.kind !== 'notice' && message.role === 'assistant')
+          if (end < 0) throw new Error('这条消息已不存在')
+          record.messages = record.messages.slice(0, end + 1)
+        }
         for (const message of record.messages) {
           if (!message.imageUri) continue
           const relative = `images/${index}-${message.id}`
@@ -99,7 +105,11 @@ export class ChatHistoryService {
   }
 
   restoreArchive(archive: ChatArchive, directory: string): Promise<number> {
-    return this.enqueue(async (): Promise<number> => {
+    return this.restoreRecords(archive, directory).then((records: ChatConversation[]): number => records.length)
+  }
+
+  restoreRecords(archive: ChatArchive, directory: string, branchOrigin?: ChatConversationOrigin): Promise<ChatConversation[]> {
+    return this.enqueue(async (): Promise<ChatConversation[]> => {
       const records = this.validateArchive(JSON.stringify(archive)).conversations
       for (const record of records) {
         for (const message of record.messages) {
@@ -120,9 +130,15 @@ export class ChatHistoryService {
       }
       await this.atomicWrite(`${this.root}/.restore-pending`, JSON.stringify(ids))
       try {
+        const importedIds: Map<string, string> = new Map()
+        records.forEach((record: ChatConversation, index: number) => importedIds.set(record.id, ids[index]))
         for (let index = 0; index < records.length; index++) {
           const record = records[index]
           record.id = ids[index]
+          if (branchOrigin !== undefined) record.origin = branchOrigin
+          else if (record.origin !== undefined) {
+            record.origin.conversationId = importedIds.get(record.origin.conversationId) ?? ''
+          }
           await this.ensureDirectory(this.directory(record.id))
           for (const message of record.messages) {
             if (!message.imageUri) continue
@@ -136,7 +152,7 @@ export class ChatHistoryService {
         }
         await this.writeIndex()
         await fs.unlink(`${this.root}/.restore-pending`)
-        return records.length
+        return records
       } catch (error) {
         this.summaries = previous
         await this.recoverPendingRestore()
@@ -386,6 +402,10 @@ export class ChatHistoryService {
     if (record.version !== 1 || record.id !== id || typeof record.title !== 'string' ||
       !Number.isFinite(record.createdAt) || !Number.isFinite(record.updatedAt) || !Array.isArray(record.messages)) {
       throw new Error('历史记录格式不兼容')
+    }
+    if (record.origin !== undefined && (typeof record.origin.title !== 'string' ||
+      typeof record.origin.conversationId !== 'string' || !Number.isSafeInteger(record.origin.messageId) || record.origin.messageId < 1)) {
+      throw new Error('对话来源信息无效')
     }
     record.messages.forEach((message: ChatMessage) => {
       if (!Number.isInteger(message.id) || message.id < 1 || typeof message.content !== 'string' ||

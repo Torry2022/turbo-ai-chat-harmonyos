@@ -535,6 +535,8 @@ export struct ChatTab {
               canSelectVersion: this.viewModel.canManageConversations(),
               onSelectVersion: (index: number) => this.viewModel.selectAnswerVersion(message.id, index),
               canEdit: this.viewModel.canEditQuestion(message.id),
+              canBranch: this.viewModel.canBranchFrom(message.id),
+              onBranch: () => { this.inputController.stopEditing(); this.viewModel.branchConversation(message.id) },
               confirmEdit: this.viewModel.needsEditQuestionConfirmation(message.id),
               onEdit: (text: string, skip: boolean) => this.viewModel.resendEditedQuestion(message.id, text, skip),
               highlighted: this.viewModel.highlightedMessageId === message.id,
@@ -544,6 +546,20 @@ export struct ChatTab {
                 this.viewModel.toggleMessageThinking(messageId)
               }
             })
+              }
+              if (message.id === this.viewModel.branchSourceAnchorId) {
+                Button({ type: ButtonType.Normal }) {
+                  Row({ space: 6 }) {
+                    Image($r('app.media.icon_message_branch')).width(14).height(14).fillColor($r('app.color.text_muted'))
+                    Text('接续自').fontSize(12).fontColor($r('app.color.text_muted'))
+                    Text(this.viewModel.branchSourceTitle()).fontSize(12)
+                      .fontColor(this.viewModel.canOpenBranchSource() ? $r('app.color.tag_blue_text') : $r('app.color.text_muted'))
+                      .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).flexShrink(1)
+                  }
+                }.height(32).padding({ left: 8, right: 8 }).backgroundColor(Color.Transparent)
+                  .borderRadius($r('app.float.button_radius')).hoverEffect(HoverEffect.Auto)
+                  .constraintSize({ maxWidth: '100%' }).enabled(this.viewModel.canOpenBranchSource())
+                  .onClick(() => this.viewModel.openBranchSource())
               }
             }.width('100%')
           }

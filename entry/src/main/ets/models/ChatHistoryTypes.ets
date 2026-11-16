@@ -1,5 +1,11 @@
 import { ChatMessage } from './ChatTypes'
 
+export interface ChatConversationOrigin {
+  conversationId: string
+  messageId: number
+  title: string
+}
+
 export interface ChatConversation {
   version: number
   id: string
@@ -8,6 +14,7 @@ export interface ChatConversation {
   createdAt: number
   updatedAt: number
   messages: ChatMessage[]
+  origin?: ChatConversationOrigin
 }
 
 export interface ChatConversationSummary {

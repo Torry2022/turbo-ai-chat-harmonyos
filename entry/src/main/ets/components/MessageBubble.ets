@@ -29,6 +29,8 @@ export struct MessageBubble {
   onSelectVersion: (index: number) => void = (_index: number) => {}
   @Prop canRegenerate: boolean = false
   @Prop canEdit: boolean = false
+  @Prop canBranch: boolean = false
+  onBranch: () => void = () => {}
   @State private failedImageUri: string = ''
   @State private editing: boolean = false
   @State private editText: string = ''
@@ -173,6 +175,12 @@ export struct MessageBubble {
         this.MessageAction($r('app.media.icon_message_regenerate'), '重新生成', () => {
           this.clearAnswerSelection()
           this.onRegenerate()
+        })
+      }
+      if (this.canBranch) {
+        this.MessageAction($r('app.media.icon_message_branch'), '新建分支', () => {
+          this.clearAnswerSelection()
+          this.onBranch()
         })
       }
     }

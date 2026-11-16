@@ -96,6 +96,7 @@ function add(name, run) { tests.push({ name, run }); }
 const ets = path.join(project, 'entry/src/main/ets');
 const { ChatSession } = load(path.join(ets, 'state/ChatSession.ets'));
 const { ChatHistoryService } = load(path.join(ets, 'services/ChatHistoryService.ets'));
+const { ChatDataService } = load(path.join(ets, 'services/ChatDataService.ets'));
 const { declaredContextTokens, prepareChatContext } = load(path.join(ets, 'utils/chatContext.ets'));
 const { conversationTitle, historyGroup } = load(path.join(ets, 'models/ChatHistoryTypes.ets'));
 function conversation(id = 'c-test-1') {
@@ -157,6 +158,64 @@ add('restart rolls an interrupted restore back before rebuilding the history ind
   const reopened = new ChatHistoryService(); await reopened.initialize(root);
   assert.equal(JSON.stringify(reopened.list().map(item => item.id)), '["c-test-1"]');
   assert(!fs.existsSync(path.join(root, 'chat-history', partialId)));
+});
+add('branches retain the selected reply and its versions with independent image ownership', async () => {
+  const root = path.join(temporary, 'branch-independence'); fs.mkdirSync(root);
+  const history = new ChatHistoryService(); await history.initialize(root);
+  const record = conversation();
+  const picture = path.join(root, 'fixture-image'); fs.writeFileSync(picture, 'synthetic branch image');
+  record.messages[0].imageUri = picture;
+  const session = new ChatSession(); session.restore(record.messages);
+  const answerId = record.messages.at(-1).id;
+  session.startAnswerVersion(answerId); session.updateMessage(answerId, '第二版', true); session.markGeneration(answerId, 'complete', 'eos');
+  session.selectAnswerVersion(answerId, 0);
+  session.appendMessage('user', '分支之后的问题'); session.appendMessage('assistant', '分支之后的回答');
+  record.messages = session.messages;
+  await history.save(record);
+  const before = fs.readFileSync(path.join(root, 'chat-history', record.id, 'conversation.json'));
+  const branch = await new ChatDataService().createBranch({ cacheDir: root }, history, record.id, answerId);
+  assert.notEqual(branch.id, record.id); assert.equal(branch.title, record.title + '（分支）');
+  assert.equal(branch.messages.length, 2); assert.equal(branch.messages.at(-1).answerVersions.length, 2);
+  assert.equal(branch.origin.conversationId, record.id); assert.equal(branch.origin.messageId, answerId);
+  assert.equal(branch.origin.title, record.title);
+  assert.equal(branch.messages.at(-1).answerVersionIndex, 0);
+  assert.deepEqual(fs.readFileSync(path.join(root, 'chat-history', record.id, 'conversation.json')), before);
+  const branchImage = branch.messages[0].imageUri;
+  await history.remove(record.id);
+  assert.equal(fs.readFileSync(branchImage, 'utf8'), 'synthetic branch image');
+  const reopened = new ChatHistoryService(); await reopened.initialize(root);
+  assert.equal((await reopened.load(branch.id)).messages.at(-1).answerVersionIndex, 0);
+});
+add('branch snapshots stop at the requested message and reject stale boundaries', async () => {
+  const root = path.join(temporary, 'branch-boundary'); fs.mkdirSync(root);
+  const history = new ChatHistoryService(); await history.initialize(root);
+  const record = conversation(); const end = record.messages.at(-1).id;
+  record.messages.push({ ...record.messages[0], id: 100, content: '后来的图片', imageUri: '/missing-later-image' });
+  // Store the later missing attachment as an existing record to exercise a historical boundary.
+  await history.save(conversation());
+  fs.writeFileSync(path.join(root, 'chat-history', record.id, 'conversation.json'), JSON.stringify(record));
+  const branch = await new ChatDataService().createBranch({ cacheDir: root }, history, record.id, end);
+  assert.equal(branch.messages.length, 2);
+  const count = history.list().length;
+  await assert.rejects(new ChatDataService().createBranch({ cacheDir: root }, history, record.id, record.messages[0].id));
+  await assert.rejects(new ChatDataService().createBranch({ cacheDir: root }, history, record.id, 999));
+  assert.equal(history.list().length, count);
+});
+add('restored branch origins follow new source IDs and keep names when the source is absent', async () => {
+  const root = path.join(temporary, 'branch-restore'); fs.mkdirSync(root);
+  const history = new ChatHistoryService(); await history.initialize(root);
+  const original = conversation(); await history.save(original);
+  const branch = await new ChatDataService().createBranch({ cacheDir: root }, history, original.id, original.messages.at(-1).id);
+  const staging = path.join(root, 'staging'); fs.mkdirSync(staging);
+  const archive = await history.exportArchive(staging);
+  const imported = await history.restoreRecords(archive, staging);
+  const importedBranch = imported.find(item => item.origin);
+  const importedOriginal = imported.find(item => !item.origin);
+  assert.equal(importedBranch.origin.conversationId, importedOriginal.id);
+  assert.equal(importedBranch.origin.title, original.title);
+  const single = await history.exportArchive(staging, branch.id);
+  const detached = (await history.restoreRecords(single, staging))[0];
+  assert.equal(detached.origin.conversationId, ''); assert.equal(detached.origin.title, original.title);
 });
 add('context window comes from explicit model metadata and unknown values stay unknown', () => {
   assert.equal(declaredContextTokens('{"max_position_embeddings":8192}'), 8192);
@@ -486,6 +545,23 @@ async function actionView(name) {
   view.currentContextMessageLimit = () => 6;
   return view;
 }
+add('branch actions use saved assistant boundaries and preserve per-conversation drafts', async () => {
+  const view = await actionView('branch-actions');
+  const cacheDir = path.join(temporary, 'branch-cache'); fs.mkdirSync(cacheDir);
+  view.context = { cacheDir }; view.toastCallback = () => {};
+  await view.flushHistory();
+  const source = view.activeConversationId;
+  const answerId = view.session.lastAnswer().id;
+  view.updateInputText('原对话草稿');
+  assert.equal(view.canBranchFrom(view.session.lastQuestion().id), false);
+  assert.equal(view.canBranchFrom(answerId), true);
+  view.historyBusy = true; assert.equal(view.canBranchFrom(answerId), false); view.historyBusy = false;
+  await view.branchConversation(answerId);
+  assert.notEqual(view.activeConversationId, source); assert.equal(view.inputText, '');
+  assert.equal(view.activeConversation.origin.messageId, answerId);
+  assert.equal(view.canOpenBranchSource(), true);
+  await view.openConversation(source); assert.equal(view.inputText, '原对话草稿');
+});
 function finished(answer = '新的回答。') {
   return { answer, includeInContext: true, status: '生成完成',
     result: { stopReason: 'eos', text: answer, generatedTokens: 3 },

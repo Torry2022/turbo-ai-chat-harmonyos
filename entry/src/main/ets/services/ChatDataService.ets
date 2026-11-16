@@ -6,6 +6,7 @@ import zlib from '@ohos.zlib'
 import util from '@ohos.util'
 import { ChatArchive, CHAT_ARCHIVE_MANIFEST_MAX_BYTES, conversationMarkdown } from '../utils/chatArchive'
 import { ChatMessage } from '../models/ChatTypes'
+import { ChatConversation, ChatConversationOrigin } from '../models/ChatHistoryTypes'
 import { inspectChatArchiveZip } from '../utils/chatArchiveZip'
 import { ChatHistoryService } from './ChatHistoryService'
 
@@ -128,6 +129,26 @@ export class ChatDataService {
 
   async clearRestore(pending: PendingChatRestore): Promise<void> {
     await this.removeDirectory(pending.workspace)
+  }
+
+  async createBranch(context: common.UIAbilityContext, history: ChatHistoryService,
+    conversationId: string, messageId: number): Promise<ChatConversation> {
+    const workspace = await this.workspace(context)
+    try {
+      const directory = `${workspace}/branch`
+      await fs.mkdir(directory)
+      const archive = await history.exportArchive(directory, conversationId, messageId)
+      const record = archive.conversations[0]
+      const origin: ChatConversationOrigin = { conversationId, messageId, title: record.title }
+      record.title = `${record.title}（分支）`
+      record.titleSource = 'manual'
+      record.createdAt = Date.now()
+      record.updatedAt = record.createdAt
+      const restored = await history.restoreRecords(archive, directory, origin)
+      return restored[0]
+    } finally {
+      await this.removeDirectory(workspace)
+    }
   }
 
   private async clearAbandoned(cacheDir: string): Promise<void> {

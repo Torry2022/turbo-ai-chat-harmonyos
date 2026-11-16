@@ -323,6 +323,7 @@ export class ChatViewModel {
   private chatDataService: ChatDataService = new ChatDataService()
   private pendingRestore?: PendingChatRestore
   restoreConversationCount: number = 0
+  branchSourceAnchorId: number = 0
   private backgroundTasks: BackgroundTaskService = new BackgroundTaskService()
   private appForeground: boolean = true
   private lastContext?: ChatContextSnapshot
@@ -2039,6 +2040,52 @@ export class ChatViewModel {
     }
   }
 
+  canBranchFrom(messageId: number): boolean {
+    return this.canManageConversations() && this.activeConversationId.length > 0 &&
+      this.session.messages.some((message: ChatMessage) => message.id === messageId &&
+        message.kind !== 'notice' && message.role === 'assistant' && message.content.trim().length > 0)
+  }
+
+  branchSourceTitle(): string {
+    const origin = this.activeConversation?.origin
+    if (origin === undefined) return ''
+    return this.conversations.find((item: ChatConversationSummary) => item.id === origin.conversationId)?.title ?? origin.title
+  }
+
+  canOpenBranchSource(): boolean {
+    const origin = this.activeConversation?.origin
+    return this.canManageConversations() && origin !== undefined &&
+      this.conversations.some((item: ChatConversationSummary) => item.id === origin.conversationId)
+  }
+
+  openBranchSource(): void {
+    const origin = this.activeConversation?.origin
+    if (origin !== undefined && this.canOpenBranchSource()) this.openConversation(origin.conversationId, origin.messageId)
+  }
+
+  async branchConversation(messageId: number): Promise<void> {
+    if (!this.canBranchFrom(messageId) || this.context === undefined) return
+    this.historyBusy = true
+    this.notify()
+    let created: ChatConversation | undefined = undefined
+    try {
+      await this.flushHistory()
+      created = await this.chatDataService.createBranch(this.context, this.historyService,
+        this.activeConversationId, messageId)
+      this.conversations = this.historyService.list()
+    } catch (error) {
+      console.error(`Conversation branch failed: ${formatError(error as Object)}`)
+      this.toastCallback('未能创建分支，请检查存储空间和图片后重试')
+    } finally {
+      this.historyBusy = false
+      this.notify()
+    }
+    if (created !== undefined && await this.openConversation(created.id)) {
+      this.lastContext = undefined
+      this.toastCallback('已在新对话中创建分支')
+    }
+  }
+
   async chooseChatBackup(): Promise<void> {
     if (!this.canManageConversations() || this.context === undefined || this.pendingRestore !== undefined) return
     this.historyBusy = true
@@ -3612,6 +3659,14 @@ export class ChatViewModel {
   }
 
   private notify(): void {
+    const origin = this.activeConversation?.origin
+    this.branchSourceAnchorId = 0
+    if (origin !== undefined) {
+      for (const message of this.messages) {
+        if (message.id <= origin.messageId) this.branchSourceAnchorId = message.id
+      }
+      if (this.branchSourceAnchorId === 0) this.branchSourceAnchorId = this.messages[0]?.id ?? 0
+    }
     this.backgroundTasks.setComputeActive(this.apiServerRunning ||
       (this.busy && !this.builtinModelInstalling) || this.reranker.busy)
     this.backgroundTasks.setPerformanceState(this.appForeground,
