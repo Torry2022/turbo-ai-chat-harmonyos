@@ -12,6 +12,7 @@ export struct ChatHistoryPanel {
   onClose: () => void = () => {}
   @State private editingId: string = ''
   @State private titleInput: string = ''
+  @State private hoveredId: string = ''
 
   private visibleItems(_renderVersion: number): ChatConversationSummary[] {
     return this.viewModel.historySearchText.trim().length > 0 ?
@@ -153,7 +154,9 @@ export struct ChatHistoryPanel {
                       Column({ space: 4 }) {
                         Text(item.title).fontSize(13).fontColor($r('app.color.text_body'))
                           .fontWeight(item.id === this.viewModel.activeConversationId ? FontWeight.Medium : FontWeight.Normal)
-                          .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+                          .maxLines(1).textOverflow({ overflow: this.hoveredId === item.id ? TextOverflow.MARQUEE : TextOverflow.Ellipsis })
+                          .marqueeOptions({ start: this.hoveredId === item.id, step: 2, loop: -1, delay: 700,
+                            fadeout: true, marqueeUpdatePolicy: MarqueeUpdatePolicy.PRESERVE_POSITION })
                           .width('100%').textAlign(TextAlign.Start)
                         Text(this.excerpt(item.id) || item.modelName).fontSize(this.excerpt(item.id) ? 12 : 10)
                           .fontColor($r('app.color.text_muted'))
@@ -169,12 +172,15 @@ export struct ChatHistoryPanel {
                       .hoverEffect(HoverEffect.Auto).accessibilityText(`管理对话 ${item.title}`)
                       .enabled(this.viewModel.canManageConversations())
                       .bindMenu([
-                        { value: '重命名', action: () => { this.editingId = item.id; this.titleInput = item.title } },
+                        { value: '重命名', action: () => { this.hoveredId = ''; this.editingId = item.id; this.titleInput = item.title } },
                         { value: '删除', action: () => this.confirmDelete(item) }
                       ])
                   }.width('100%').padding({ left: 8, right: 8, top: 9, bottom: 9 })
                     .backgroundColor(item.id === this.viewModel.activeConversationId ? $r('app.color.nav_selected_background') : Color.Transparent)
                     .borderRadius(8).hoverEffect(HoverEffect.Auto)
+                    .onHover((hover: boolean, event: HoverEvent) => {
+                      this.hoveredId = hover && event.source === SourceType.Mouse ? item.id : ''
+                    })
                 }
               }.width('100%')
             }
