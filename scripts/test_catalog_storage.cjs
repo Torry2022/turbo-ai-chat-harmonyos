@@ -99,6 +99,19 @@ async function check(name, test) {
   console.log('PASS', name);
 }
 async function main() {
+
+  await check('Qwen3-0.6B files use the audited sizes and one pinned revision', async () => {
+    const { MODEL_CATALOG_ITEMS } = load(path.join(sourceRoot, 'models/BuiltinModelDownloadTypes.ets'));
+    const item = MODEL_CATALOG_ITEMS.find((value) => value.id === 'qwen3-0.6b');
+    const expected = { 'config.json': 457, 'llm_config.json': 4865, 'tokenizer.txt': 3193569, 'tokenizer.mtok': 4111426,
+      'llm.mnn': 1285272, 'llm.mnn.weight': 413503970 };
+    assert.equal(item.files.length, Object.keys(expected).length);
+    for (const file of item.files) {
+      assert.equal(file.sizeBytes, expected[file.relativePath]);
+      assert(file.url.includes('/resolve/4c8d8df11dc7a78b2a3ad70e6282856c8b8c1b24/'));
+    }
+  });
+
   await check('download and model-load entry points reject incompatible models', async () => {
     const source = fs.readFileSync(path.join(sourceRoot, 'state/ChatViewModel.ets'), 'utf8');
     const ast = ts.createSourceFile('ChatViewModel.ts', source, ts.ScriptTarget.Latest, true);

@@ -65,8 +65,8 @@ export const MODEL_CATALOG_FILTER_ALL: string = '全部'
 
 const MODELSCOPE_BASE_URL: string = 'https://modelscope.cn/models'
 
-function modelScopeFileUrl(repo: string, relativePath: string): string {
-  return `${MODELSCOPE_BASE_URL}/${repo}/resolve/master/${relativePath}`
+function modelScopeFileUrl(repo: string, relativePath: string, revision: string): string {
+  return `${MODELSCOPE_BASE_URL}/${repo}/resolve/${revision}/${relativePath}`
 }
 
 function createSpec(
@@ -75,13 +75,14 @@ function createSpec(
   directoryName: string,
   displayName: string,
   repo: string,
-  files: BuiltinModelFileInput[]
+  files: BuiltinModelFileInput[],
+  revision: string = 'master'
 ): ModelCatalogItem {
   const resolvedFiles = files.map((file: BuiltinModelFileInput): BuiltinModelFileSpec => {
     return {
       relativePath: file.relativePath,
       sizeBytes: file.sizeBytes,
-      url: modelScopeFileUrl(repo, file.relativePath)
+      url: modelScopeFileUrl(repo, file.relativePath, revision)
     }
   })
   let totalBytes = 0
@@ -206,12 +207,14 @@ export const MODEL_CATALOG_ITEMS: ModelCatalogItem[] = [
     'Qwen3-0.6B',
     'MNN/Qwen3-0.6B-MNN',
     [
-      { relativePath: 'config.json', sizeBytes: 403 },
-      { relativePath: 'llm_config.json', sizeBytes: 4880 },
+      { relativePath: 'config.json', sizeBytes: 457 },
+      { relativePath: 'llm_config.json', sizeBytes: 4865 },
       { relativePath: 'tokenizer.txt', sizeBytes: 3193569 },
-      { relativePath: 'llm.mnn', sizeBytes: 461520 },
-      { relativePath: 'llm.mnn.weight', sizeBytes: 450810338 }
-    ]
+      { relativePath: 'tokenizer.mtok', sizeBytes: 4111426 },
+      { relativePath: 'llm.mnn', sizeBytes: 1285272 },
+      { relativePath: 'llm.mnn.weight', sizeBytes: 413503970 }
+    ],
+    '4c8d8df11dc7a78b2a3ad70e6282856c8b8c1b24'
   ), 'Qwen3-0.6B', '超轻量 Qwen3 文本模型，适合快速响应和低存储占用。', 'MNN', false, ['对话'], false),
   withCatalogMeta(createSpec(
     'qwen3-1.7b',
