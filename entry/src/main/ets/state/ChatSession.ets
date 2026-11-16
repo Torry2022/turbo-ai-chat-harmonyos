@@ -1,7 +1,13 @@
-import { ChatAnswerVersion, ChatMessage, ChatTurn, CONTEXT_MESSAGE_LIMIT, GenerationStopReason, PerfMetrics } from '../models/ChatTypes'
+import { ChatAnswerVersion, ChatContextOmission, ChatContextSelection, ChatMessage, ChatTurn, CONTEXT_MESSAGE_LIMIT, GenerationStopReason, PerfMetrics } from '../models/ChatTypes'
 import { nowTime } from '../utils/formatters'
 import { sanitizeAssistantText, sanitizeStreamingAssistantText } from '../utils/generationText'
-import { answerTextForContext, isLikelyIncompleteAssistantText } from '../utils/thinking'
+import { answerTextForContext, isLikelyIncompleteAssistantText, parseAssistantText } from '../utils/thinking'
+
+interface ChatContextPair {
+  question: ChatMessage
+  answer: ChatMessage
+  body: string
+}
 
 export class ChatSession {
   messages: ChatMessage[] = []
@@ -88,14 +94,16 @@ export class ChatSession {
     this.messages = messages.map((message: ChatMessage) => {
       if (message.generationState === 'generating') {
         message.generationState = 'interrupted'
-        message.includeInContext = false
+      }
+      if (message.role === 'assistant' && message.kind !== 'notice') {
+        message.includeInContext = this.contextAnswer(message).trim().length > 0
       }
       if (message.answerVersions) {
         message.answerVersions.forEach((version: ChatAnswerVersion) => {
           if (version.generationState === 'generating') {
             version.generationState = 'interrupted'
-            version.includeInContext = false
           }
+          version.includeInContext = this.contextAnswer(version).trim().length > 0
         })
         // The visible fields may contain a newer streaming checkpoint than its version snapshot.
         message.answerVersions[message.answerVersionIndex ?? 0] = this.answerSnapshot(message)
@@ -265,21 +273,7 @@ export class ChatSession {
   }
 
   composeChatTurns(systemPrompt: string, text: string, contextMessageLimit: number = CONTEXT_MESSAGE_LIMIT): ChatTurn[] {
-    const turns: ChatTurn[] = [{
-      role: 'system',
-      content: systemPrompt
-    }]
-    const roundedContextLimit = Math.max(0, Math.round(contextMessageLimit))
-    const safeContextLimit = roundedContextLimit - roundedContextLimit % 2
-    const contextTurns = safeContextLimit > 0 ? this.composeCompleteContextTurns().slice(-safeContextLimit) : []
-    contextTurns.forEach((turn: ChatTurn) => {
-      turns.push(turn)
-    })
-    turns.push({
-      role: 'user',
-      content: text
-    })
-    return turns
+    return this.composeContext(systemPrompt, text, contextMessageLimit).turns
   }
 
   sanitizeAssistantText(text: string, stripLeadingSeparator: boolean = false): string {
@@ -290,49 +284,79 @@ export class ChatSession {
     return sanitizeStreamingAssistantText(text, stripLeadingSeparator)
   }
 
-  private composeCompleteContextTurns(): ChatTurn[] {
-    const turns: ChatTurn[] = []
+  composeContext(systemPrompt: string, text: string, contextMessageLimit: number = CONTEXT_MESSAGE_LIMIT,
+    beforeQuestionId: number = 0): ChatContextSelection {
+    const pairs: ChatContextPair[] = []
+    const omitted: ChatContextOmission[] = []
     let pendingUser: ChatMessage | undefined = undefined
-
-    this.messages.forEach((message: ChatMessage) => {
-      if (!message.includeInContext || message.content.trim().length === 0) {
-        if (message.role === 'assistant') {
-          pendingUser = undefined
-        }
-        return
+    for (const message of this.messages) {
+      if (message.id === beforeQuestionId) break
+      if (message.kind === 'notice' || message.role === 'notice') {
+        omitted.push({ messageId: message.id, role: message.role, content: message.content, reason: '应用提示' })
+        continue
       }
-
       if (message.role === 'user') {
-        pendingUser = message
-        return
+        if (pendingUser !== undefined) {
+          omitted.push({ messageId: pendingUser.id, role: pendingUser.role, content: pendingUser.content,
+            reason: '没有对应的回答' })
+        }
+        pendingUser = message.includeInContext && message.content.trim().length > 0 ? message : undefined
+        if (pendingUser === undefined) omitted.push({ messageId: message.id, role: message.role,
+          content: message.content, reason: '问题为空或已排除' })
+        continue
       }
-
       if (message.role !== 'assistant' || pendingUser === undefined) {
-        return
+        omitted.push({ messageId: message.id, role: message.role, content: message.content,
+          reason: '没有对应的问题' })
+        continue
       }
-
-      if (message.stopReason !== 'eos' && isLikelyIncompleteAssistantText(message.content)) {
-        pendingUser = undefined
-        return
+      const body = this.contextAnswer(message)
+      if (body.trim().length > 0) {
+        pairs.push({ question: pendingUser, answer: message, body })
+      } else {
+        const parts = parseAssistantText(message.content)
+        const reason = message.stopReason === 'internal_error' ||
+          (message.generationState === 'failed' && message.stopReason !== 'timeout') ? '生成失败' :
+          (message.generationState === 'generating' ? '正在生成' :
+            (parts.hasThinking && parts.answer.trim().length === 0 ? '只生成了思考过程，尚未给出回答' :
+              (parts.answer.trim().length === 0 ? '尚未生成回答' : '回答已排除')))
+        omitted.push({ messageId: pendingUser.id, role: pendingUser.role, content: pendingUser.content, reason })
+        omitted.push({ messageId: message.id, role: message.role, content: message.content, reason })
       }
-
-      const userContent = pendingUser.content.trim()
-      const assistantContent = answerTextForContext(message.content).trim()
       pendingUser = undefined
-      if (userContent.length <= 0 || assistantContent.length <= 0) {
-        return
+    }
+    if (pendingUser !== undefined) omitted.push({ messageId: pendingUser.id, role: pendingUser.role,
+      content: pendingUser.content, reason: '没有对应的回答' })
+    const pairLimit = Math.floor(Math.max(0, Math.round(contextMessageLimit)) / 2)
+    const start = Math.max(0, pairs.length - pairLimit)
+    const turns: ChatTurn[] = []
+    const historyMessageIds: number[] = []
+    if (systemPrompt.length > 0) turns.push({ role: 'system', content: systemPrompt })
+    pairs.forEach((pair: ChatContextPair, index: number) => {
+      if (index >= start) {
+        turns.push({ role: 'user', content: pair.question.content, imageUri: pair.question.imageUri })
+        turns.push({ role: 'assistant', content: pair.body })
+        historyMessageIds.push(pair.question.id, pair.answer.id)
+      } else {
+        const reason = pairLimit === 0 ? '当前采用单轮对话' : '超过历史条数上限'
+        omitted.push({ messageId: pair.question.id, role: pair.question.role, content: pair.question.content, reason })
+        omitted.push({ messageId: pair.answer.id, role: pair.answer.role, content: pair.answer.content, reason })
       }
-
-      turns.push({
-        role: 'user',
-        content: userContent
-      })
-      turns.push({
-        role: 'assistant',
-        content: assistantContent
-      })
     })
+    turns.push({ role: 'user', content: text })
+    return { turns, omitted, historyMessageIds }
+  }
 
-    return turns
+  private contextAnswer(message: ChatMessage | ChatAnswerVersion): string {
+    if (message.generationState === 'generating') return ''
+    if (!message.includeInContext && (message.content === '（已停止生成）' || message.content === '（原生层返回空内容）')) return ''
+    if (message.stopReason === 'internal_error' || (message.generationState === 'failed' && message.stopReason !== 'timeout')) {
+      return ''
+    }
+    const interrupted = message.generationState === 'interrupted' || message.generationState === 'stopped' ||
+      message.stopReason === 'user_stop' || message.stopReason === 'max_tokens' || message.stopReason === 'timeout'
+    if (!message.includeInContext && !interrupted) return ''
+    if (!interrupted && message.stopReason !== 'eos' && isLikelyIncompleteAssistantText(message.content)) return ''
+    return answerTextForContext(message.content)
   }
 }

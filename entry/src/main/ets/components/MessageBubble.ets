@@ -9,6 +9,7 @@ import { deviceInfo, pasteboard } from '@kit.BasicServicesKit'
 import { common } from '@kit.AbilityKit'
 import { SelectionContainer, SelectionContainerAttribute, SelectionContainerController } from '@kit.ArkUI'
 import { MessageSelectionPart, joinMessageSelection } from '../utils/messageSelection'
+import { formatPerfMetrics } from '../utils/generationText'
 
 @Component
 export struct MessageBubble {
@@ -580,7 +581,11 @@ export struct MessageBubble {
           }
           if (this.answerText().length > 0 || !this.hasThinking()) {
             if (this.message.role === 'assistant') {
-              this.SelectableAnswer()
+              if (this.answerText().length === 0 && this.message.generationState !== 'generating') {
+                Text('尚未生成回答').fontSize(14).fontColor($r('app.color.text_muted')).width('100%')
+              } else {
+                this.SelectableAnswer()
+              }
             } else if (this.editing) {
               TextArea({ text: this.editText, controller: this.editController })
                 .id(`edit-question-${this.message.id}`)
@@ -632,7 +637,7 @@ export struct MessageBubble {
             }
           }
           if (this.message.role === 'assistant' && this.message.perfMetrics !== undefined) {
-            Text(`TTFT ${this.message.perfMetrics.ttft}ms · ${this.message.perfMetrics.tpot}ms/tok · ${this.message.perfMetrics.tokensPerSec} tok/s · ${this.message.perfMetrics.tokens} tokens`)
+            Text(formatPerfMetrics(this.message.perfMetrics))
               .fontSize(10)
               .fontColor($r('app.color.text_stats'))
               .textAlign(TextAlign.Center)

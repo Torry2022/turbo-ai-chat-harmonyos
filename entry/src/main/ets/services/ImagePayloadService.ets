@@ -3,6 +3,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit'
 import photoAccessHelper from '@ohos.file.photoAccessHelper'
 import fs from '@ohos.file.fs'
 import image from '@ohos.multimedia.image'
+import { API_IMAGE_MAX_BYTES } from './ApiImageDownload'
 import { ImagePayload, VISION_MAX_PIXELS } from '../models/ChatTypes'
 
 export class ImagePayloadService {
@@ -25,6 +26,7 @@ export class ImagePayloadService {
     let pixelMap: image.PixelMap | undefined = undefined
     try {
       if (uri.startsWith('data:image/')) {
+        if (uri.length > Math.ceil(API_IMAGE_MAX_BYTES / 3) * 4 + 64) throw new Error('图片文件过大')
         const separator = uri.indexOf(',')
         const bytes = new util.Base64Helper().decodeSync(uri.substring(separator + 1))
         source = image.createImageSource(bytes.buffer)
@@ -36,6 +38,10 @@ export class ImagePayloadService {
       const sourceWidth = sourceInfo.size.width
       const sourceHeight = sourceInfo.size.height
       const sourcePixels = sourceWidth * sourceHeight
+      if (uri.startsWith('data:image/') && (!['image/png', 'image/jpeg', 'image/webp'].includes(sourceInfo.mimeType) ||
+        sourceWidth <= 0 || sourceHeight <= 0 || sourcePixels > 40000000)) {
+        throw new Error('图片格式或尺寸不受支持')
+      }
       const scale = sourcePixels > VISION_MAX_PIXELS ? Math.sqrt(VISION_MAX_PIXELS / sourcePixels) : 1
       const targetWidth = Math.max(1, Math.round(sourceWidth * scale))
       const targetHeight = Math.max(1, Math.round(sourceHeight * scale))

@@ -1,21 +1,12 @@
 import { GenerationResult, PerfMetrics } from '../models/ChatTypes'
-import { isLikelyIncompleteAssistantText, stripModelSpecialTokens, trimLikelyIncompleteTrailingFragment } from './thinking'
+import { answerTextForContext, isLikelyIncompleteAssistantText } from './thinking'
 
 export function sanitizeAssistantText(text: string, stripLeadingSeparator: boolean = false): string {
-  const normalizedText = stripModelSpecialTokens(text)
-  const lines = normalizedText
-    .split('\n')
-    .map((line: string) => line.trimEnd())
-    .filter((line: string) => {
-      const trimmed = line.trim()
-      return trimmed.length > 0 && !/^[*\-•]+\s*$/.test(trimmed)
-    })
-  const cleanedText = lines.join('\n').trim()
-  return stripLeadingSeparator ? stripLeadingAssistantSeparator(cleanedText) : cleanedText
+  return stripLeadingSeparator ? stripLeadingAssistantSeparator(text) : text
 }
 
 export function sanitizeStreamingAssistantText(text: string, stripLeadingSeparator: boolean = false): string {
-  return sanitizeAssistantText(text, stripLeadingSeparator).replace(/^\uFFFD+/, '').trimStart()
+  return sanitizeAssistantText(text, stripLeadingSeparator)
 }
 
 export function applyAssistantOutputPrefix(text: string, prefix: string): string {
@@ -34,30 +25,19 @@ export function finalAssistantAnswer(
   assistantOutputPrefix: string = '',
   stripLeadingSeparator: boolean = false
 ): string {
-  const cleanedText = trimLikelyIncompleteTrailingFragment(sanitizeAssistantText(
+  return sanitizeAssistantText(
     applyAssistantOutputPrefix(result.text, assistantOutputPrefix),
     stripLeadingSeparator
-  ))
-  if (cleanedText.length > 0) {
-    return cleanedText
-  }
-  return result.stopReason === 'user_stop' ? '（已停止生成）' : '（原生层返回空内容）'
+  )
 }
 
 export function shouldIncludeAssistantInContext(answer: string, result: GenerationResult): boolean {
-  if (answer.trim().length <= 0) {
+  if (result.text.trim().length <= 0 || answerTextForContext(answer).trim().length <= 0) {
     return false
   }
-  if (result.stopReason === 'eos') {
-    return true
-  }
-  if (result.stopReason === 'max_tokens' ||
-    result.stopReason === 'user_stop' ||
-    result.stopReason === 'timeout' ||
-    result.stopReason === 'internal_error') {
-    return false
-  }
-  return !isLikelyIncompleteAssistantText(answer)
+  if (result.stopReason === 'internal_error') return false
+  return result.stopReason === 'eos' || result.stopReason === 'max_tokens' ||
+    result.stopReason === 'user_stop' || result.stopReason === 'timeout' || !isLikelyIncompleteAssistantText(answer)
 }
 
 export function formatGenerationStatus(
@@ -65,7 +45,8 @@ export function formatGenerationStatus(
   includeInContext: boolean,
   result: GenerationResult
 ): string {
-  const tokenText = result.generatedTokens > 0 ? `，${result.generatedTokens} tokens` : ''
+  const tokenText = result.generatedTokens > 0 ?
+    `，${result.generatedTokensEstimated ? '约 ' : ''}${result.generatedTokens} tokens` : ''
   if (result.stopReason === 'max_tokens') {
     return `生成完成（${answer.length} 字符${tokenText}，达到最大输出）`
   }
@@ -88,7 +69,8 @@ export function calculatePerfMetrics(
   generationStartedAt: number,
   firstChunkAt: number,
   generationFinishedAt: number,
-  generatedTokens: number
+  generatedTokens: number,
+  tokensEstimated: boolean = false
 ): PerfMetrics {
   const safeTokens = Math.max(0, generatedTokens)
   const decodedTokenIntervals = Math.max(0, safeTokens - 1)
@@ -98,8 +80,15 @@ export function calculatePerfMetrics(
     tpot: decodedTokenIntervals > 0 ? Math.round(decodeDuration / decodedTokenIntervals * 100) / 100 : 0,
     tokensPerSec: decodedTokenIntervals > 0 && decodeDuration > 0 ?
       Math.round(decodedTokenIntervals / (decodeDuration / 1000) * 10) / 10 : 0,
-    tokens: safeTokens
+    tokens: safeTokens,
+    tokensEstimated
   }
+}
+
+export function formatPerfMetrics(metrics: PerfMetrics): string {
+  const approximate = metrics.tokensEstimated ? '约 ' : ''
+  return `TTFT ${metrics.ttft}ms · ${approximate}${metrics.tpot}ms/tok · ` +
+    `${approximate}${metrics.tokensPerSec} tok/s · ${approximate}${metrics.tokens} tokens`
 }
 
 function stripLeadingAssistantSeparator(text: string): string {

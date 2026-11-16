@@ -17,13 +17,6 @@ function rememberAssistantText(content: string, parts: AssistantTextParts): Assi
   return parts
 }
 
-function stripThinkTags(text: string): string {
-  return text
-    .replace(/<think>/g, '')
-    .replace(/<\/think>/g, '')
-    .trim()
-}
-
 export function stripModelSpecialTokens(content: string): string {
   let text = content
     .replace(/<s>/g, '')
@@ -57,15 +50,17 @@ export function parseAssistantText(content: string): AssistantTextParts {
 }
 
 function parseAssistantTextUncached(content: string): AssistantTextParts {
-  const normalizedContent = stripModelSpecialTokens(content)
+  const normalizedContent = content
   const openTag = '<think>'
   const closeTag = '</think>'
-  const openIndex = normalizedContent.indexOf(openTag)
+  // A thinking block is a response prefix. Tags in prose and code are literal text.
+  const prefixLength = normalizedContent.length - normalizedContent.trimStart().length
+  const openIndex = normalizedContent.startsWith(openTag, prefixLength) ? prefixLength : -1
   if (openIndex < 0) {
     return {
       hasThinking: false,
       thinking: '',
-      answer: normalizedContent.trim(),
+      answer: normalizedContent,
       thinkingClosed: false
     }
   }
@@ -83,18 +78,12 @@ function parseAssistantTextUncached(content: string): AssistantTextParts {
   }
 
   const thinking = afterOpen.substring(0, closeIndex).trim()
-  const afterClose = stripThinkTags(afterOpen.substring(closeIndex + closeTag.length))
-  let answer = stripThinkTags(before)
-  if (answer.length > 0 && afterClose.length > 0) {
-    answer = `${answer}\n${afterClose}`
-  } else if (afterClose.length > 0) {
-    answer = afterClose
-  }
+  const answer = afterOpen.substring(closeIndex + closeTag.length)
   if (thinking.length <= 0) {
     return {
       hasThinking: false,
       thinking: '',
-      answer: answer.trim(),
+      answer,
       thinkingClosed: false
     }
   }
@@ -102,7 +91,7 @@ function parseAssistantTextUncached(content: string): AssistantTextParts {
   return {
     hasThinking: true,
     thinking,
-    answer: answer.trim(),
+    answer,
     thinkingClosed: true
   }
 }
@@ -110,37 +99,9 @@ function parseAssistantTextUncached(content: string): AssistantTextParts {
 export function answerTextForContext(content: string): string {
   const parts = parseAssistantText(content)
   if (!parts.hasThinking) {
-    return stripModelSpecialTokens(content).trim()
+    return content
   }
-  return parts.answer.trim()
-}
-
-export function trimLikelyIncompleteTrailingFragment(content: string): string {
-  const text = content.trim()
-  if (text.length <= 0 || /[。！？!?\.…」』”'")）】》]$/.test(text)) {
-    return text
-  }
-
-  const lines = text.split('\n')
-  if (lines.length <= 1) {
-    return text
-  }
-
-  const lastLine = lines[lines.length - 1].trim()
-  const previousText = lines.slice(0, lines.length - 1).join('\n').trim()
-  if (previousText.length <= 0 || lastLine.length <= 0) {
-    return text
-  }
-
-  if (lastLine.length <= 2 && /[\u4e00-\u9fff]+/.test(lastLine) && /[。！？!?\.…」』”'")）】》]$/.test(previousText)) {
-    return previousText
-  }
-
-  if (lastLine.length <= 4 && /^[，、；：,;:\-—]+[\u4e00-\u9fff]*$/.test(lastLine)) {
-    return previousText
-  }
-
-  return text
+  return parts.answer
 }
 
 export function isLikelyIncompleteAssistantText(content: string): boolean {

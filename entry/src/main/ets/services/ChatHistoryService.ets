@@ -69,52 +69,64 @@ export class ChatHistoryService {
     })
   }
 
-  search(query: string): Promise<ChatHistorySearchResult[]> {
+  async search(query: string, isCurrent: () => boolean = () => true): Promise<ChatHistorySearchResult[]> {
     const needle = query.trim().replace(/\s+/g, ' ').toLowerCase()
-    return this.enqueue(async (): Promise<ChatHistorySearchResult[]> => {
-      if (needle.length === 0) return []
-      const results: ChatHistorySearchResult[] = []
-      for (const summary of this.list()) {
-        try {
-          const record = await this.readRecord(summary.id)
-          let match: ChatHistorySearchResult | undefined = undefined
-          for (const message of record.messages) {
-            if (message.kind === 'notice' || (message.role !== 'user' && message.role !== 'assistant')) continue
-            const versions = message.answerVersions
-            const currentIndex = message.answerVersionIndex ?? 0
-            // Search the visible text first; its streaming checkpoint may be newer than the snapshot.
-            for (let index = -1; index < (versions?.length ?? 0); index++) {
-              if (index === currentIndex) continue
-              const content = index < 0 ? message.content : versions![index].content
-              const text = this.searchText(message, content)
-              const position = text.toLowerCase().indexOf(needle)
-              if (position < 0) continue
-              const start = Math.max(0, position - 18)
-              const end = Math.min(text.length, Math.max(start + 90, position + needle.length))
-              const prefix = index >= 0 ? `第 ${index + 1} 版：` : ''
-              match = {
-                id: summary.id, title: summary.title, createdAt: summary.createdAt, updatedAt: summary.updatedAt,
-                modelName: summary.modelName, messageId: message.id,
-                answerVersionIndex: versions === undefined ? undefined : index < 0 ? currentIndex : index,
-                excerpt: `${prefix}${start > 0 ? '…' : ''}${text.substring(start, end)}${end < text.length ? '…' : ''}`
-              }
-              break
-            }
-            if (match !== undefined) break
-          }
-          if (match !== undefined) results.push(match)
-          else if (record.title.toLowerCase().indexOf(needle) >= 0) {
-            results.push({
+    if (needle.length === 0 || !isCurrent()) return []
+    const results: ChatHistorySearchResult[] = []
+    const summaries = await this.enqueue(async (): Promise<ChatConversationSummary[]> => this.list())
+    let lastYield = Date.now()
+    for (let recordIndex = 0; recordIndex < summaries.length; recordIndex++) {
+      if (!isCurrent()) return []
+      const summary = summaries[recordIndex]
+      try {
+        const record = await this.enqueue(async (): Promise<ChatConversation | undefined> => {
+          if (!isCurrent() || this.retiredIds.has(summary.id)) return undefined
+          return this.readRecord(summary.id)
+        })
+        if (!isCurrent()) return []
+        if (record === undefined) continue
+        let match: ChatHistorySearchResult | undefined = undefined
+        for (const message of record.messages) {
+          if (message.kind === 'notice' || (message.role !== 'user' && message.role !== 'assistant')) continue
+          const versions = message.answerVersions
+          const currentIndex = message.answerVersionIndex ?? 0
+          // Search the visible text first; its streaming checkpoint may be newer than the snapshot.
+          for (let index = -1; index < (versions?.length ?? 0); index++) {
+            if (index === currentIndex) continue
+            const content = index < 0 ? message.content : versions![index].content
+            const text = this.searchText(message, content)
+            const position = text.toLowerCase().indexOf(needle)
+            if (position < 0) continue
+            const start = Math.max(0, position - 18)
+            const end = Math.min(text.length, Math.max(start + 90, position + needle.length))
+            const prefix = index >= 0 ? `第 ${index + 1} 版：` : ''
+            match = {
               id: summary.id, title: summary.title, createdAt: summary.createdAt, updatedAt: summary.updatedAt,
-              modelName: summary.modelName, excerpt: ''
-            })
+              modelName: summary.modelName, messageId: message.id,
+              answerVersionIndex: versions === undefined ? undefined : index < 0 ? currentIndex : index,
+              excerpt: `${prefix}${start > 0 ? '…' : ''}${text.substring(start, end)}${end < text.length ? '…' : ''}`
+            }
+            break
           }
-        } catch (_) {
-          // A damaged record must not prevent searching the remaining conversations.
+          if (match !== undefined) break
         }
+        if (match !== undefined) results.push(match)
+        else if (record.title.toLowerCase().indexOf(needle) >= 0) {
+          results.push({
+            id: summary.id, title: summary.title, createdAt: summary.createdAt, updatedAt: summary.updatedAt,
+            modelName: summary.modelName, excerpt: ''
+          })
+        }
+      } catch (_) {
+        // A damaged record must not prevent searching the remaining conversations.
       }
-      return results
-    })
+      // Allow input and rendering between batches even when file reads complete immediately.
+      if (Date.now() - lastYield >= 8) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 0))
+        lastYield = Date.now()
+      }
+    }
+    return isCurrent() ? results.filter((result: ChatHistorySearchResult) => !this.retiredIds.has(result.id)) : []
   }
 
   private searchText(message: ChatMessage, content: string): string {

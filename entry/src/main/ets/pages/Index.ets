@@ -15,6 +15,8 @@ import { PhoneTabs } from '../components/PhoneTabs'
 import { BottomTabs } from '../components/BottomTabs'
 import { BuiltinModelInstallDialog } from '../components/BuiltinModelInstallDialog'
 import { ChatTab } from '../components/ChatTab'
+import { ChatContextDialog } from '../components/ChatContextDialog'
+import { ChatContextSnapshot } from '../models/ChatTypes'
 import { ChatHistoryPanel } from '../components/ChatHistoryPanel'
 import { ChatRunTicker } from '../components/ChatRunTicker'
 import { DeleteModelDialog } from '../components/DeleteImportedModelDialog'
@@ -44,6 +46,7 @@ struct Index {
   @State @Watch('onSettingsChanged') private helpDialog: string = ''
   @State @Watch('onSettingsChanged') private showDecision: boolean = false
   @State @Watch('onSettingsChanged') private apiUsageMode: string = ''
+  @State @Watch('onSettingsChanged') private shownContext: ChatContextSnapshot | undefined = undefined
   @State private apiUsageExample: string = ''
   @State private dialogExitBlocking: boolean = false
   @State private stateVersion: number = 0
@@ -106,6 +109,10 @@ struct Index {
 
   onBackPress(): boolean {
     if (this.dialogExitBlocking) return true
+    if (this.shownContext !== undefined) {
+      this.shownContext = undefined
+      return true
+    }
     if (this.apiUsageMode.length > 0) {
       this.apiUsageMode = ''
       return true
@@ -216,6 +223,7 @@ struct Index {
   }
 
   private modalFocusId(): string {
+    if (this.shownContext !== undefined) return 'chat-context-dialog'
     if (this.apiUsageMode.length > 0) return 'api-usage-dialog'
     if (this.showDecision) return 'decision-dialog'
     if (this.helpDialog.length > 0) return 'desktop-help-dialog'
@@ -299,6 +307,10 @@ struct Index {
   private handleKey(event: KeyEvent): boolean {
     if (this.dialogExitBlocking) return true
     if (event.keyCode === KeyCode.KEYCODE_ESCAPE && event.type === KeyType.Down) {
+      if (this.shownContext !== undefined) {
+        this.shownContext = undefined
+        return true
+      }
       if (this.apiUsageMode.length > 0) {
         this.apiUsageMode = ''
         return true
@@ -325,7 +337,7 @@ struct Index {
       this.newChatKeyHeld = false
       return false
     }
-    if (this.apiUsageMode.length > 0 || this.showDecision || this.helpDialog.length > 0 || this.showSettings || this.activeTab !== 0 || !event.getModifierKeyState?.(['ctrl']) ||
+    if (this.shownContext !== undefined || this.apiUsageMode.length > 0 || this.showDecision || this.helpDialog.length > 0 || this.showSettings || this.activeTab !== 0 || !event.getModifierKeyState?.(['ctrl']) ||
       this.viewModel.showModelLoadDialog || this.viewModel.showBuiltinModelInstallDialog ||
       this.viewModel.showModelMarketDialog || this.viewModel.showDeleteModelDialog) {
       return false
@@ -426,10 +438,11 @@ struct Index {
           this.changeTab(1)
           this.showToast('请先加载模型', 1800)
         },
+        onViewContext: () => { this.shownContext = this.viewModel.contextForCurrentConversation() },
         viewModel: this.viewModel,
         renderVersion: this.stateVersion,
         active: this.activeTab === 0,
-        dialogVisible: this.apiUsageMode.length > 0 || this.showDecision || this.helpDialog.length > 0 || this.dialogExitBlocking || this.showSettings || this.viewModel.showModelLoadDialog || this.viewModel.showBuiltinModelInstallDialog ||
+        dialogVisible: this.shownContext !== undefined || this.apiUsageMode.length > 0 || this.showDecision || this.helpDialog.length > 0 || this.dialogExitBlocking || this.showSettings || this.viewModel.showModelLoadDialog || this.viewModel.showBuiltinModelInstallDialog ||
           this.viewModel.showModelMarketDialog || this.viewModel.showDeleteModelDialog
       })
       .padding({ left: this.usePhoneTabs() || this.windowWidth >= 840 ? 0 : this.pagePadding(), right: this.usePhoneTabs() ? 0 : this.pagePadding() })
@@ -772,6 +785,17 @@ struct Index {
         .id('desktop-help-dialog')
         .focusable(true)
         .onAppear(() => this.updateModalFocus(true))
+      }
+      if (this.shownContext !== undefined) {
+        ChatContextDialog({
+          snapshot: this.shownContext,
+          availableWidth: this.windowWidth,
+          availableHeight: this.windowHeight,
+          onClose: () => { this.shownContext = undefined }
+        })
+          .id('chat-context-dialog')
+          .focusable(true)
+          .onAppear(() => this.updateModalFocus(true))
       }
       if (this.dialogExitBlocking) {
         Column()

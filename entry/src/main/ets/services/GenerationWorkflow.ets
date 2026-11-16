@@ -19,10 +19,13 @@ import { NativeInferenceService } from './NativeInferenceService'
 export interface GenerationWorkflowRequest {
   turns: ChatTurn[]
   imageUri: string
+  imagePayload?: ImagePayload
   maxNewTokens: number
   settings: GenerationSettings
   assistantOutputPrefix: string
   stripLeadingAssistantSeparator: boolean
+  preparedPrompt?: string
+  requestedAt?: number
 }
 
 export interface GenerationStreamUpdate {
@@ -57,7 +60,7 @@ export class GenerationWorkflow {
     request: GenerationWorkflowRequest,
     callbacks: GenerationWorkflowCallbacks
   ): Promise<GenerationWorkflowResult> {
-    const generationStartedAt = Date.now()
+    const generationStartedAt = request.requestedAt ?? Date.now()
     let firstChunkAt = 0
     let streamedText = ''
     let streamFinished = false
@@ -83,7 +86,7 @@ export class GenerationWorkflow {
     try {
       if (request.imageUri.length > 0) {
         callbacks.onStatus('正在读取图片...')
-        const payload: ImagePayload = await this.imageService.buildImagePayload(request.imageUri)
+        const payload: ImagePayload = request.imagePayload ?? await this.imageService.buildImagePayload(request.imageUri)
         if (callbacks.isStopRequested()) {
           result = {
             text: streamedText,
@@ -100,6 +103,9 @@ export class GenerationWorkflow {
             onChunk
           )
         }
+      } else if (request.preparedPrompt !== undefined) {
+        result = await this.nativeService.generateRawPrompt(request.preparedPrompt, request.maxNewTokens,
+          '', request.settings, onChunk)
       } else {
         result = await this.nativeService.generateText(
           request.turns,
@@ -123,8 +129,11 @@ export class GenerationWorkflow {
       generationStartedAt,
       firstChunkAt,
       Date.now(),
-      result.generatedTokens
+      result.generatedTokens,
+      result.generatedTokensEstimated ?? false
     )
+    perfMetrics.inputTokens = result.inputTokens
+    perfMetrics.nativeTiming = result.nativeTiming
     return {
       answer,
       includeInContext,

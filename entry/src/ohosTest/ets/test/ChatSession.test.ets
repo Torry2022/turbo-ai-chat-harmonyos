@@ -67,7 +67,7 @@ export default function chatSessionTest(): void {
       expect(turns[3].content).assertEqual('问题三')
     })
 
-    it('excludesStoppedAndFailedAnswersFromContext', 0, () => {
+    it('keepsStoppedContentAndExcludesFailedAnswersFromContext', 0, () => {
       const session = new ChatSession()
       session.appendMessage('user', '问题一')
       const stopped = session.appendMessage('assistant', '未完成回答')
@@ -78,8 +78,26 @@ export default function chatSessionTest(): void {
       session.updateMessage(failed, '部分回答', false)
       session.markGeneration(failed, 'failed')
       const turns = session.composeChatTurns('系统提示', '问题三', 6)
-      expect(turns.length).assertEqual(2)
-      expect(turns[1].content).assertEqual('问题三')
+      expect(turns.length).assertEqual(4)
+      expect(turns[1].content).assertEqual('问题一')
+      expect(turns[2].content).assertEqual('未完成回答')
+      expect(turns[3].content).assertEqual('问题三')
+    })
+
+    it('restoresLegacyStoppedAndTimedOutBodyWithoutAddingThinkingOrTrimmingCode', 0, () => {
+      for (const reason of ['user_stop', 'max_tokens', 'timeout'] as const) {
+        const session = new ChatSession()
+        session.appendMessage('user', '保留代码缩进')
+        const id = session.appendMessage('assistant', '<think>推理</think>    code  \n')
+        session.updateMessage(id, '<think>推理</think>    code  \n', false)
+        session.markGeneration(id, reason === 'user_stop' ? 'stopped' :
+          (reason === 'timeout' ? 'failed' : 'complete'), reason)
+        const restored = new ChatSession()
+        restored.restore(session.messages)
+        const turns = restored.composeChatTurns('系统提示', '继续', 6)
+        expect(turns.length).assertEqual(4)
+        expect(turns[2].content).assertEqual('    code  \n')
+      }
     })
   })
 }

@@ -29,6 +29,7 @@ export struct ChatTab {
   @Prop inputExpanded: boolean = false
   onInputExpandedChange: (expanded: boolean) => void = (_expanded: boolean) => {}
   onRequestModel: () => void = () => {}
+  onViewContext: () => void = () => {}
   onCompactHistoryChange: (open: boolean) => void = (_open: boolean) => {}
   @State private historyWidth: number = 0
   @State private historyOpen: boolean = false
@@ -494,6 +495,16 @@ export struct ChatTab {
               this.renamingId = this.viewModel.activeConversationId
             }))
         }
+        if (this.renamingId.length === 0) {
+          Button({ type: ButtonType.Normal }) {
+            Text('⋯').fontSize(21).fontColor($r('app.color.text_muted'))
+          }.width(28).height(30).padding(0).borderRadius(6).backgroundColor(Color.Transparent)
+            .hoverEffect(HoverEffect.Auto).accessibilityText('对话选项').id('conversation-options')
+            .bindMenu(this.ConversationMenu, {
+              backgroundColor: $r('app.color.dialog'), backgroundBlurStyle: BlurStyle.NONE,
+              borderRadius: $r('app.float.button_radius'), outlineColor: $r('app.color.border'), outlineWidth: 1
+            })
+        }
       }.width('100%').height(34)
       if (this.viewModel.historyError.length > 0) {
         Row({ space: 8 }) {
@@ -733,6 +744,28 @@ export struct ChatTab {
     .layoutWeight(1)
     .width('100%')
     .constraintSize({ maxWidth: 900 })
+  }
+
+  @Builder
+  private ConversationMenu() {
+    Menu() {
+      MenuItem() {
+        Text('重命名').fontSize(14).fontColor($r('app.color.text_title')).width('100%')
+          .height(40).padding({ left: 10, right: 10 })
+      }.backgroundColor(Color.Transparent).borderRadius(6)
+        .enabled(this.viewModel.canManageConversations() && this.viewModel.activeConversationId.length > 0)
+        .onClick(() => {
+          this.inputController.stopEditing()
+          this.conversationTitleInput = this.viewModel.currentConversationTitle(this.renderVersion)
+          this.renamingId = this.viewModel.activeConversationId
+        })
+      MenuItem() {
+        Text('查看上下文').fontSize(14).fontColor($r('app.color.text_title')).width('100%')
+          .height(40).padding({ left: 10, right: 10 })
+      }.backgroundColor(Color.Transparent).borderRadius(6)
+        .enabled(this.viewModel.contextForCurrentConversation() !== undefined)
+        .onClick(() => { this.inputController.stopEditing(); this.onViewContext() })
+    }.width(176).borderRadius($r('app.float.button_radius')).backgroundColor($r('app.color.dialog'))
   }
 
   build() {

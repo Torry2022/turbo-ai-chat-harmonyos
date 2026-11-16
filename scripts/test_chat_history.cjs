@@ -75,6 +75,11 @@ function load(filename) {
         put: async (key, value) => values.set(key, value), flush: async () => {} };
     } };
     if (name === '@ohos/hypium') return hypium;
+    if (name === 'libentry.so') return { __esModule: true, default: new Proxy(sdkStub, {
+      get: (_target, key) => key === 'prepareChatInput' ?
+        async turns => ({ prompt: JSON.stringify(turns), inputTokens: 17, modelConfig: '{}' }) :
+        key === 'then' ? undefined : sdkStub
+    }) };
     if (name === '@kit.ArkTS') return { buffer: Buffer, util: { TextEncoder: class {
       encodeInto(value) { return new TextEncoder().encode(value); }
     } } };
@@ -91,6 +96,7 @@ function add(name, run) { tests.push({ name, run }); }
 const ets = path.join(project, 'entry/src/main/ets');
 const { ChatSession } = load(path.join(ets, 'state/ChatSession.ets'));
 const { ChatHistoryService } = load(path.join(ets, 'services/ChatHistoryService.ets'));
+const { declaredContextTokens, prepareChatContext } = load(path.join(ets, 'utils/chatContext.ets'));
 const { conversationTitle, historyGroup } = load(path.join(ets, 'models/ChatHistoryTypes.ets'));
 function conversation(id = 'c-test-1') {
   const session = new ChatSession();
@@ -99,6 +105,103 @@ function conversation(id = 'c-test-1') {
   session.appendMessage('assistant', '<think>思考</think>回答一。', '', true);
   return { version: 1, id, title: '测试对话', createdAt: 1000, updatedAt: 2000, messages: session.messages };
 }
+add('context window comes from explicit model metadata and unknown values stay unknown', () => {
+  assert.equal(declaredContextTokens('{"max_position_embeddings":8192}'), 8192);
+  assert.equal(declaredContextTokens('{"context_length":4096}'), 4096);
+  assert.equal(declaredContextTokens('{"max_position_embeddings":256,"text_config":{"max_position_embeddings":16384}}'), 16384);
+  for (const text of ['{}', 'null', '{"max_all_tokens":2048}', '{"max_position_embeddings":"8192"}',
+    '{"max_position_embeddings":0}', '{"max_position_embeddings":1.5}', '{"max_position_embeddings":1e30}', 'bad']) {
+    assert.equal(declaredContextTokens(text), 0, text);
+  }
+});
+add('context inspection reports the selected pairs, omitted causes and exact untrimmed body', () => {
+  const session = new ChatSession();
+  const q1 = session.appendMessage('user', '第一问');
+  const a1 = session.appendMessage('assistant', '第一答。');
+  const q2 = session.appendMessage('user', '第二问');
+  const a2 = session.appendMessage('assistant', '失败。');
+  session.markGeneration(a2, 'failed', 'internal_error');
+  const q3 = session.appendMessage('user', '第三问');
+  const a3 = session.appendMessage('assistant', '<think>推理</think>    code  \n');
+  session.markGeneration(a3, 'stopped', 'user_stop');
+  const plan = session.composeContext('system', '继续', 2);
+  assert.deepEqual(Array.from(plan.turns, x => x.content), ['system', '第三问', '    code  \n', '继续']);
+  assert.deepEqual(Array.from(plan.historyMessageIds), [q3, a3]);
+  for (const id of [q1, a1]) assert.equal(plan.omitted.find(x => x.messageId === id).reason, '超过历史条数上限');
+  for (const id of [q2, a2]) assert.equal(plan.omitted.find(x => x.messageId === id).reason, '生成失败');
+  assert.ok(session.composeContext('', '问题', 0).omitted.some(x => x.reason === '当前采用单轮对话'));
+});
+add('token budgeting removes oldest whole pairs and measures the exact final template again', async () => {
+  const session = new ChatSession();
+  for (const text of ['甲', '乙', '丙']) {
+    session.appendMessage('user', text);
+    const id = session.appendMessage('assistant', text + '。');
+    session.markGeneration(id, 'complete', 'eos');
+  }
+  const original = JSON.stringify(session.messages);
+  const plan = session.composeContext('system', '本次问题', 6);
+  const measured = [];
+  const result = await prepareChatContext(plan, session.messages, 20, false, async turns => {
+    measured.push(JSON.stringify(turns));
+    return { prompt: 'templated:' + JSON.stringify(turns), inputTokens: turns.length * 10,
+      modelConfig: '{"max_position_embeddings":60}' };
+  });
+  assert.equal(result.exceedsContext, false);
+  assert.equal(result.input.inputTokens, 40);
+  assert.equal(measured.length, 3);
+  assert.equal(result.input.prompt, 'templated:' + measured.at(-1));
+  assert.deepEqual(Array.from(result.selection.turns, x => x.content), ['system', '丙', '丙。', '本次问题']);
+  assert.equal(result.selection.omitted.filter(x => x.reason === '为本次问题和输出预留空间').length, 4);
+  assert.equal(JSON.stringify(session.messages), original);
+});
+add('oversized current questions are preserved and unknown or visual budgets are explicit', async () => {
+  const session = new ChatSession();
+  session.appendMessage('user', '历史问题');
+  const id = session.appendMessage('assistant', '历史回答。');
+  session.markGeneration(id, 'complete', 'eos');
+  const original = JSON.stringify(session.messages);
+  for (const [image, config] of [[false, '{}'], [false, '{"max_position_embeddings":5}'],
+    [true, '{"max_position_embeddings":5}']]) {
+    const plan = session.composeContext('system', '必须原样保留的本次问题', 6);
+    const before = JSON.stringify(plan.turns);
+    let calls = 0;
+    const result = await prepareChatContext(plan, session.messages, 10, image, async turns => {
+      calls++;
+      return { prompt: JSON.stringify(turns), inputTokens: image ? -1 : 100, modelConfig: config };
+    });
+    assert.equal(result.exceedsContext, !image && config !== '{}');
+    assert.equal(result.selection.turns.at(-1).content, '必须原样保留的本次问题');
+    if (image || config === '{}') assert.equal(JSON.stringify(plan.turns), before);
+    if (image) {
+      assert.equal(result.input.inputTokens, -1);
+      assert.equal(plan.historyMessageIds.length, 2);
+      assert.equal(plan.omitted.length, 0);
+    }
+    assert.equal(calls, !image && config !== '{}' ? 2 : 1);
+  }
+  assert.equal(JSON.stringify(session.messages), original);
+});
+add('visual budgets count actual encoded input and remove whole image turns together', async () => {
+  const session = new ChatSession();
+  session.appendMessage('user', 'image question', 'file://image');
+  const answer = session.appendMessage('assistant', 'image answer');
+  session.markGeneration(answer, 'complete', 'eos');
+  const selection = session.composeContext('system', 'follow-up', 6);
+  let calls = 0;
+  const prepared = await prepareChatContext(selection, session.messages, 10, true, async turns => {
+    calls++;
+    return { prompt: JSON.stringify(turns), inputTokens: turns.some(turn => turn.imageUri) ? 95 : 12,
+      modelConfig: '{"max_position_embeddings":100}' };
+  });
+  assert.equal(calls, 2);
+  assert.equal(prepared.exceedsContext, false);
+  assert.equal(prepared.input.inputTokens, 12);
+  assert.equal(prepared.selection.turns.some(turn => turn.imageUri), false);
+  const oversized = await prepareChatContext({ turns: [{ role: 'user', content: 'large', imageUri: 'file://image' }],
+    historyMessageIds: [], omitted: [] }, [], 10, true, async () => ({ prompt: 'actual', inputTokens: 101,
+      modelConfig: '{"max_position_embeddings":100}' }));
+  assert.equal(oversized.exceedsContext, true);
+});
 add('cross-model context and message metadata survive every update', () => {
   const session = new ChatSession();
   session.prepareModel('a', '模型甲');
@@ -125,14 +228,14 @@ add('cross-model context and message metadata survive every update', () => {
   assert.equal(turns[1].content, '旧问题');
   assert.equal(turns[2].content, '旧回答。');
 });
-add('interrupted restoration excludes incomplete context and recovers IDs', () => {
+add('interrupted restoration keeps visible context and recovers IDs', () => {
   const session = new ChatSession();
   const messages = conversation().messages;
   messages[1].generationState = 'generating';
   session.restore(messages);
   assert.equal(session.messages[1].generationState, 'interrupted');
-  assert.equal(session.messages[1].includeInContext, false);
-  assert.equal(session.composeChatTurns('system', 'new', 6).length, 2);
+  assert.equal(session.messages[1].includeInContext, true);
+  assert.equal(session.composeChatTurns('system', 'new', 6).length, 4);
   assert.equal(session.appendMessage('user', 'next'), 3);
 });
 add('titles and calendar groups respect unicode and local days', () => {
@@ -207,6 +310,7 @@ add('clear removes damaged records; a corrupt index cannot resurrect deletion', 
 add('history actions preserve loaded model and reject busy transitions', async () => {
   const { ChatViewModel } = load(path.join(ets, 'state/ChatViewModel.ets'));
   const view = new ChatViewModel();
+  view.imageService = { buildImagePayload: async () => ({ pixels: new ArrayBuffer(4), width: 1, height: 1 }) };
   view.notify = view.notifyAndScroll = view.notifyAndMaybeScroll = () => {};
   view.historyReady = true;
   view.loaded = true;
@@ -260,6 +364,7 @@ add('history actions preserve loaded model and reject busy transitions', async (
 add('conversation drafts survive navigation and model switches', async () => {
   const { ChatViewModel } = load(path.join(ets, 'state/ChatViewModel.ets'));
   const view = new ChatViewModel();
+  view.imageService = { buildImagePayload: async () => ({ pixels: new ArrayBuffer(4), width: 1, height: 1 }) };
   view.notify = view.notifyAndScroll = view.notifyAndMaybeScroll = () => {};
   view.historyReady = true;
   await view.historyService.initialize(path.join(temporary, 'drafts'));
@@ -282,6 +387,7 @@ add('conversation drafts survive navigation and model switches', async () => {
 add('generation failures retain streamed text and failed state', async () => {
   const { ChatViewModel } = load(path.join(ets, 'state/ChatViewModel.ets'));
   const view = new ChatViewModel();
+  view.imageService = { buildImagePayload: async () => ({ pixels: new ArrayBuffer(4), width: 1, height: 1 }) };
   view.notify = view.notifyAndScroll = view.notifyAndMaybeScroll = () => {};
   view.historyReady = true;
   view.loaded = true;
@@ -310,6 +416,7 @@ add('generation failures retain streamed text and failed state', async () => {
 async function actionView(name) {
   const { ChatViewModel } = load(path.join(ets, 'state/ChatViewModel.ets'));
   const view = new ChatViewModel();
+  view.imageService = { buildImagePayload: async () => ({ pixels: new ArrayBuffer(4), width: 1, height: 1 }) };
   view.notify = view.notifyAndScroll = view.notifyAndMaybeScroll = view.refreshStats = () => {};
   view.historyReady = view.loaded = true;
   await view.historyService.initialize(path.join(temporary, name));
@@ -322,7 +429,7 @@ async function actionView(name) {
   const answer = view.session.appendMessage('assistant', '最后的旧回答。');
   view.session.markGeneration(answer, 'complete');
   view.messages = view.session.messages;
-  view.currentModel = () => ({ id: 'new-model', shortName: '新模型', supportsImage: true, systemPrompt: 'system' });
+  view.currentModel = () => ({ id: 'new-model', name: '新模型', shortName: '新模型', supportsImage: true, systemPrompt: 'system' });
   view.currentContextMessageLimit = () => 6;
   return view;
 }
@@ -331,6 +438,142 @@ function finished(answer = '新的回答。') {
     result: { stopReason: 'eos', text: answer, generatedTokens: 3 },
     perfMetrics: { ttft: 1, tpot: 2, tokensPerSec: 3, tokens: 3 } };
 }
+add('context exclusion distinguishes thinking-only output from an empty reply', () => {
+  const session = new ChatSession();
+  session.prepareModel('model', '模型');
+  session.appendMessage('user', '思考未完的问题');
+  const thinking = session.appendMessage('assistant', '<think>只生成了一部分思考', '', true);
+  session.markGeneration(thinking, 'complete', 'max_tokens');
+  session.appendMessage('user', '空回答的问题');
+  const empty = session.appendMessage('assistant', '', '', true);
+  session.markGeneration(empty, 'stopped', 'user_stop');
+  const selection = session.composeContext('', '下一问', 6);
+  assert.equal(selection.omitted.find(item => item.messageId === thinking).reason, '只生成了思考过程，尚未给出回答');
+  assert.equal(selection.omitted.find(item => item.messageId === empty).reason, '尚未生成回答');
+});
+add('empty native output remains empty and legacy placeholders never become model context', () => {
+  const { finalAssistantAnswer, shouldIncludeAssistantInContext } = load(path.join(ets, 'utils/generationText.ets'));
+  for (const reason of ['eos', 'user_stop', 'timeout', 'internal_error', 'max_tokens']) {
+    const result = { text: '', generatedTokens: 0, stopReason: reason };
+    assert.equal(finalAssistantAnswer(result), '');
+    assert.equal(shouldIncludeAssistantInContext(finalAssistantAnswer(result), result), false);
+  }
+  const session = new ChatSession();
+  session.restore([{ id: 1, role: 'user', content: '旧问题', imageUri: '', includeInContext: true },
+    { id: 2, role: 'assistant', content: '（已停止生成）', imageUri: '', includeInContext: false,
+      generationState: 'stopped', stopReason: 'user_stop' }]);
+  assert.equal(session.composeChatTurns('', '新问题', 6).length, 1);
+  assert.equal(session.lastAnswer().includeInContext, false);
+  assert.equal(finalAssistantAnswer({ text: '  \n', generatedTokens: 1, stopReason: 'eos' }), '  \n');
+});
+add('context omission data source replaces entries and releases listeners correctly', () => {
+  const source = fs.readFileSync(path.join(ets, 'components/ChatContextDialog.ets'), 'utf8');
+  const body = source.slice(source.indexOf('class ContextEntries'), source.indexOf('function roleTitle'));
+  const output = ts.transpileModule(body + '\nexports.ContextEntries = ContextEntries;', {
+    compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS }
+  }).outputText;
+  const sandbox = { exports: {} }; vm.runInNewContext(output, sandbox);
+  const rows = new sandbox.exports.ContextEntries([{ key: 'included', content: '已带入' }]);
+  let reloads = 0;
+  const listener = { onDataReloaded: () => { reloads++; } };
+  rows.registerDataChangeListener(listener);
+  rows.replace([{ key: 'omitted', content: '未带入' }]);
+  assert.equal(reloads, 1);
+  assert.equal(rows.totalCount(), 1);
+  assert.equal(rows.getData(0).content, '未带入');
+  rows.replace([]);
+  assert.equal(rows.totalCount(), 0);
+  assert.equal(reloads, 2);
+  rows.unregisterDataChangeListener(listener);
+  rows.replace([{ key: 'formatted', content: '完整文本' }]);
+  assert.equal(reloads, 2);
+});
+add('context cards group actual question-answer pairs and retain the current image question', () => {
+  const source = fs.readFileSync(path.join(ets, 'components/ChatContextDialog.ets'), 'utf8');
+  const turns = source.slice(source.indexOf('  private conversationTurns()'), source.indexOf('  private instructions()'));
+  const roundStart = source.indexOf('  private conversationRounds()');
+  const rounds = source.slice(roundStart, source.indexOf('  @Builder', roundStart));
+  const output = ts.transpileModule(`class Cards { snapshot: any; ${turns} ${rounds} } exports.Cards = Cards;`, {
+    compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS }
+  }).outputText;
+  const sandbox = { exports: {} }; vm.runInNewContext(output, sandbox);
+  const cards = new sandbox.exports.Cards();
+  cards.snapshot = { turns: [{ role: 'system', content: '提示' }, { role: 'user', content: '第一问\n' },
+    { role: 'assistant', content: '  第一答\n' }, { role: 'user', content: '本次问题' }] };
+  assert.equal(JSON.stringify(cards.conversationRounds()), JSON.stringify([
+    { question: '第一问\n', answer: '  第一答\n', current: false, hasImage: false },
+    { question: '本次问题', answer: '', current: true, hasImage: false }
+  ]));
+  cards.snapshot.imageInput = true; cards.snapshot.questionText = '';
+  cards.snapshot.turns[1].imageUri = 'saved-image';
+  const visual = cards.conversationRounds();
+  assert.equal(visual.length, 2);
+  assert.equal(visual[0].hasImage, true);
+  assert.equal(visual[0].question, '第一问\n');
+  assert.equal(visual[1].question, '本次问题');
+  assert.equal(visual[1].hasImage, false);
+});
+add('API status reflects the actual end reason and never calls a stopped request completed', async () => {
+  for (const [stopReason, expected, tone] of [
+    ['eos', 'API 生成完成', 'success'], ['max_tokens', 'API 输出已达到上限', 'warning'],
+    ['user_stop', 'API 生成已停止', 'warning'], ['timeout', 'API 生成超时', 'error'],
+    ['internal_error', 'API 生成失败', 'error'], ['unknown', 'API 生成失败', 'error']
+  ]) {
+    const view = await actionView('api-status-' + stopReason);
+    view.nativeService = { generateText: async () => ({ text: '正文', generatedTokens: 3, stopReason }) };
+    await view.runApiGeneration({ turns: [], maxNewTokens: 8, settings: {} }, () => {});
+    assert.ok(view.status.startsWith(expected), view.status);
+    assert.equal(view.statusTone, tone);
+    assert.equal(view.busy, false);
+    assert.equal(view.generating, false);
+    assert.equal(view.generationStopping, false);
+  }
+  const failed = await actionView('api-status-rejected');
+  failed.nativeService = { generateText: () => Promise.reject(new Error('native code=123 timeout')) };
+  await assert.rejects(failed.runApiGeneration({ turns: [], maxNewTokens: 8, settings: {} }, () => {}));
+  assert.equal(failed.status, 'API 生成失败，请查看服务日志');
+  assert.equal(failed.busy, false);
+});
+add('ability background saves with a short delay and foreground resumes lifecycle work', async () => {
+  const view = await actionView('ability-background');
+  const events = [];
+  view.titleService = { pause: () => events.push('pause-title'), resume: () => events.push('resume-title') };
+  view.backgroundTasks = {
+    setPerformanceState: () => {},
+    saveBeforeSuspend: async save => { events.push('protect-save'); await save(); },
+    refresh: () => events.push('refresh-background')
+  };
+  view.flushHistory = async () => { events.push('save-history'); };
+  view.setAppForeground(false);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.deepEqual(events, ['pause-title', 'protect-save', 'save-history']);
+  view.setAppForeground(true);
+  assert.deepEqual(events.slice(-2), ['resume-title', 'refresh-background']);
+});
+add('background API chunks preserve output without rendering progress and late callbacks cannot revive it', async () => {
+  const view = await actionView('api-background-chunks');
+  view.appForeground = false;
+  let callback, finish;
+  view.nativeService = { generateText: (_turns, _limit, _settings, onChunk) => {
+    callback = onChunk;
+    return new Promise(resolve => { finish = resolve; });
+  } };
+  const received = [];
+  const generation = view.runApiGeneration({ turns: [], maxNewTokens: 8, settings: {} }, chunk => received.push(chunk));
+  callback('前半');
+  assert.equal(view.status, '等待 API 首个输出片段...');
+  assert.equal(view.streamingChars, 0);
+  view.appForeground = true;
+  callback('后半');
+  assert.ok(view.status.includes('4 字符'));
+  finish({ text: '前半后半', generatedTokens: 4, stopReason: 'eos' });
+  await generation;
+  const completed = view.status;
+  callback('迟到片段');
+  assert.equal(view.status, completed);
+  assert.equal(view.streamingChars, 4);
+  assert.deepEqual(received, ['前半', '后半']);
+});
 add('sending the first question consumes the empty-conversation draft before assigning its ID', async () => {
   const view = await actionView('first-send-draft');
   await view.beginNewConversation();
@@ -340,10 +583,93 @@ add('sending the first question consumes the empty-conversation draft before ass
   await view.sendMessage();
   await new Promise(done => setTimeout(done, 0));
   assert.ok(view.activeConversationId);
+  await view.flushHistory();
+  assert.equal(view.contextForCurrentConversation().conversationId, view.activeConversationId);
+  assert.equal(view.contextForCurrentConversation().turns.at(-1).content, '新对话的第一条问题');
   await view.beginNewConversation();
   assert.equal(view.inputText, '');
   assert.equal(view.conversationDrafts.has(''), false);
   assert.equal(view.conversationDrafts.get('c-other-draft'), '其他对话的草稿');
+});
+add('failed or oversized preparation preserves original messages, versions, draft and attachments', async () => {
+  for (const failure of ['native', 'budget']) {
+    const view = await actionView('prepare-reject-' + failure);
+    const question = view.session.lastQuestion();
+    const original = JSON.stringify(view.session.messages);
+    view.inputText = '未发送草稿';
+    view.selectedImageUri = 'file://unsent-image';
+    let generated = false;
+    view.generationWorkflow = { run: () => { generated = true; return Promise.resolve(finished()); } };
+    view.nativeService.prepareChatInput = async () => {
+      if (failure === 'native') throw new Error('native internal detail');
+      return { prompt: 'native template', inputTokens: 1000, modelConfig: '{"max_position_embeddings":32}' };
+    };
+    await view.generateChatMessage('修改后的问题', '', question.id, false, true);
+    assert.equal(generated, false);
+    assert.equal(JSON.stringify(view.session.messages), original);
+    assert.equal(view.inputText, '未发送草稿');
+    assert.equal(view.selectedImageUri, 'file://unsent-image');
+    assert.equal(view.busy, false); assert.equal(view.generating, false);
+    assert.ok(!view.status.includes('native internal detail'));
+  }
+});
+add('cancelling preparation keeps the question in the composer and does not start generation', async () => {
+  const view = await actionView('prepare-cancel');
+  const original = JSON.stringify(view.session.messages);
+  let release, generated = false;
+  view.nativeService.prepareChatInput = () => new Promise(resolve => { release = resolve; });
+  view.generationWorkflow = { run: () => { generated = true; return Promise.resolve(finished()); }, stop: () => {} };
+  view.inputText = '取消准备后保留';
+  const sending = view.sendMessage();
+  assert.equal(view.generating, true);
+  await new Promise(resolve => setImmediate(resolve));
+  view.stopGeneration();
+  release({ prompt: 'prepared', inputTokens: 10, modelConfig: '{}' });
+  await sending;
+  assert.equal(generated, false);
+  assert.equal(JSON.stringify(view.session.messages), original);
+  assert.equal(view.inputText, '取消准备后保留');
+  assert.equal(view.busy, false); assert.equal(view.generating, false);
+});
+add('disposing during preparation prevents its late completion from starting a model job', async () => {
+  const view = await actionView('prepare-dispose');
+  const original = JSON.stringify(view.session.messages);
+  let release, generated = false;
+  view.nativeService.prepareChatInput = () => new Promise(resolve => { release = resolve; });
+  view.generationWorkflow = { run: () => { generated = true; return Promise.resolve(finished()); }, stop: () => {} };
+  view.inputText = '尚未提交的问题';
+  const sending = view.sendMessage();
+  await new Promise(resolve => setImmediate(resolve));
+  view.dispose();
+  release({ prompt: 'prepared', inputTokens: 10, modelConfig: '{}' });
+  await sending;
+  assert.equal(generated, false);
+  assert.equal(JSON.stringify(view.session.messages), original);
+});
+add('typing continue is a normal new question with the preceding partial answer as context', async () => {
+  for (const reason of ['user_stop', 'max_tokens', 'timeout']) {
+    const view = await actionView('ordinary-followup-' + reason);
+    view.session.lastQuestion().imageUri = '';
+    const originalId = view.session.lastAnswer().id;
+    const originalText = '<think>不发送思考过程</think>\n    已有回答';
+    view.session.updateMessage(originalId, originalText, false);
+    view.session.markGeneration(originalId, reason === 'user_stop' ? 'stopped' :
+      (reason === 'timeout' ? 'failed' : 'complete'), reason);
+    let request;
+    view.generationWorkflow = { run: value => { request = value; return Promise.resolve(finished('接着回答。')); } };
+    view.inputText = '继续';
+    view.selectedImageUri = '';
+    await view.sendMessage();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(request.turns.at(-1).content, '继续');
+    assert.equal(request.turns.at(-2).content, '\n    已有回答');
+    assert.equal(request.turns.some(turn => turn.content.includes('不发送思考过程')), false);
+    assert.equal(view.session.messages.find(message => message.id === originalId).content, originalText);
+    assert.equal(view.session.lastQuestion().content, '继续');
+    assert.notEqual(view.session.lastAnswer().id, originalId);
+    assert.equal(view.session.lastAnswer().answerVersions, undefined);
+    await view.flushHistory();
+  }
 });
 add('regeneration retains answer versions and uses current model without duplicating context', async () => {
   const view = await actionView('regenerate');
@@ -438,7 +764,8 @@ add('version selection restores metadata, thinking state and metrics across a re
   const view = await actionView('version-roundtrip');
   const first = view.session.lastAnswer();
   view.session.updateMessage(first.id, '<think>原思考</think>原回答。', true,
-    { ttft: 10, tpot: 20, tokensPerSec: 30, tokens: 40 });
+    { ttft: 10, tpot: 20, tokensPerSec: 30, tokens: 40, tokensEstimated: true,
+      inputTokens: 17, nativeTiming: { prefillMs: 12.345, decodeMs: 23.456, visionMs: 0 } });
   view.session.toggleThinkingExpanded(first.id);
   const original = JSON.parse(JSON.stringify(view.session.lastAnswer()));
   view.generationWorkflow = { run: () => Promise.resolve(finished('第二版回答。')) };
@@ -449,6 +776,8 @@ add('version selection restores metadata, thinking state and metrics across a re
   for (const key of ['content', 'modelId', 'modelName', 'createdAt', 'completedAt', 'time',
     'generationState', 'includeInContext', 'thinkingExpanded']) assert.equal(selected[key], original[key], key);
   assert.equal(selected.perfMetrics.tokens, 40);
+  assert.equal(selected.perfMetrics.tokensEstimated, true);
+  assert.equal(JSON.stringify(selected.perfMetrics.nativeTiming), JSON.stringify(original.perfMetrics.nativeTiming));
   await view.flushHistory();
   const restarted = new ChatHistoryService();
   await restarted.initialize(path.join(temporary, 'version-roundtrip'));
@@ -457,10 +786,15 @@ add('version selection restores metadata, thinking state and metrics across a re
   session.restore(record.messages);
   assert.equal(session.lastAnswer().answerVersionIndex, 0);
   assert.equal(session.lastAnswer().content, original.content);
+  assert.equal(session.lastAnswer().perfMetrics.tokensEstimated, true);
+  assert.equal(session.lastAnswer().perfMetrics.inputTokens, 17);
+  assert.equal(JSON.stringify(session.lastAnswer().perfMetrics.nativeTiming), JSON.stringify(original.perfMetrics.nativeTiming));
   assert.equal(session.selectAnswerVersion(first.id, 1), true);
   assert.equal(session.lastAnswer().content, '第二版回答。');
   assert.equal(session.lastAnswer().modelName, '新模型');
   assert.equal(session.lastAnswer().perfMetrics.tokens, 3);
+  assert.equal(session.lastAnswer().perfMetrics.tokensEstimated, undefined);
+  assert.equal(session.lastAnswer().perfMetrics.nativeTiming, undefined);
 });
 add('regenerating from an older selection appends a version rather than replacing alternatives', async () => {
   const view = await actionView('version-append');
@@ -563,7 +897,7 @@ add('failed and stopped alternatives preserve the original reply and its usable 
   await new Promise(done => setTimeout(done, 0));
   assert.equal(view.session.lastAnswer().generationState, 'stopped');
   assert.equal(view.session.lastAnswer().answerVersions.length, 3);
-  assert.equal(view.session.composeChatTurns('system', '继续', 6).length, 4);
+  assert.equal(view.session.composeChatTurns('system', '继续', 6).length, 6);
   await view.flushHistory();
   const record = await view.historyService.load(view.activeConversationId);
   const restored = new ChatSession();
@@ -586,7 +920,7 @@ add('restart during a new version keeps the newest stream checkpoint and the ori
   restored.restore(JSON.parse(JSON.stringify(session.messages)));
   assert.equal(restored.lastAnswer().generationState, 'interrupted');
   assert.equal(restored.lastAnswer().content, '<think>思考</think>最新片段。');
-  assert.equal(restored.lastAnswer().includeInContext, false);
+  assert.equal(restored.lastAnswer().includeInContext, true);
   assert.equal(restored.selectAnswerVersion(id, 0), true);
   assert.equal(restored.lastAnswer().content, '原回答。');
   assert.equal(restored.selectAnswerVersion(id, 1), true);
@@ -699,7 +1033,7 @@ add('output limits and timeouts retain their exact stop reason through versions 
   const restored = new ChatSession();
   restored.restore(record.messages);
   assert.equal(restored.lastAnswer().stopReason, 'max_tokens');
-  assert.equal(restored.lastAnswer().includeInContext, false);
+  assert.equal(restored.lastAnswer().includeInContext, true);
   assert.equal(restored.lastAnswer().generationState, 'complete');
   assert.equal(restored.lastAnswer().thinkingExpanded, true);
   assert.equal(restored.selectAnswerVersion(id, 2), true);
@@ -904,12 +1238,18 @@ add('history search uses rendered Markdown text in paragraphs, tables and code',
 
 add('a stale search completion cannot replace newer results or revive a cleared query', async () => {
   const view = await actionView('search-race');
-  let first, second;
-  view.historyService = { search: query => new Promise(resolve => { if (query === '旧') first = resolve; else second = resolve; }) };
+  let first, second, firstIsCurrent, secondIsCurrent;
+  view.historyService = { search: (query, isCurrent) => new Promise(resolve => {
+    if (query === '旧') { first = resolve; firstIsCurrent = isCurrent; }
+    else { second = resolve; secondIsCurrent = isCurrent; }
+  }) };
   view.updateHistorySearch('旧');
   await new Promise(done => setTimeout(done, 210));
+  assert.equal(firstIsCurrent(), true);
   view.updateHistorySearch('新');
+  assert.equal(firstIsCurrent(), false);
   await new Promise(done => setTimeout(done, 210));
+  assert.equal(secondIsCurrent(), true);
   second([{ id: 'c-new', excerpt: 'new' }]);
   await new Promise(done => setTimeout(done, 0));
   first([{ id: 'c-old', excerpt: 'old' }]);
@@ -918,10 +1258,123 @@ add('a stale search completion cannot replace newer results or revive a cleared 
   view.updateHistorySearch('旧');
   await new Promise(done => setTimeout(done, 210));
   view.updateHistorySearch('');
+  assert.equal(firstIsCurrent(), false);
   first([{ id: 'c-old', excerpt: 'old' }]);
   await new Promise(done => setTimeout(done, 0));
   assert.equal(view.historySearchResults.length, 0);
   assert.equal(view.historySearching, false);
+});
+add('obsolete searches stop reading and cannot delay a save behind the full corpus', async () => {
+  const directory = path.join(temporary, 'search-cancel-storage');
+  const service = new ChatHistoryService();
+  await service.initialize(directory);
+  for (let index = 0; index < 24; index++) {
+    const record = conversation('c-cancel-' + index);
+    record.updatedAt += index;
+    await service.save(record);
+  }
+  const read = service.readRecord.bind(service);
+  let releaseRead, readStarted;
+  const started = new Promise(resolve => { readStarted = resolve; });
+  const gate = new Promise(resolve => { releaseRead = resolve; });
+  let reads = 0, current = true;
+  service.readRecord = async id => {
+    reads++;
+    if (reads === 1) { readStarted(); await gate; }
+    return read(id);
+  };
+  const search = service.search('不存在', () => current);
+  await started;
+  const pendingSave = conversation('c-cancel-save');
+  const save = service.save(pendingSave);
+  current = false;
+  releaseRead();
+  assert.equal((await search).length, 0);
+  await save;
+  assert.equal(reads, 1);
+  assert.ok(fs.existsSync(path.join(directory, 'chat-history', pendingSave.id, 'conversation.json')));
+  assert.equal((await service.search('问题一')).length, 25);
+});
+add('a current search yields storage to writes and deletion without reviving deleted results', async () => {
+  const directory = path.join(temporary, 'search-storage-yield');
+  const service = new ChatHistoryService();
+  await service.initialize(directory);
+  for (let index = 0; index < 24; index++) {
+    const record = conversation('c-yield-' + index);
+    record.updatedAt += index;
+    await service.save(record);
+  }
+  const read = service.readRecord.bind(service);
+  let releaseRead, readStarted;
+  const started = new Promise(resolve => { readStarted = resolve; });
+  const gate = new Promise(resolve => { releaseRead = resolve; });
+  let reads = 0;
+  service.readRecord = async id => {
+    reads++;
+    if (reads === 2) { readStarted(); await gate; }
+    return read(id);
+  };
+  const search = service.search('问题一');
+  await started;
+  const saved = conversation('c-yield-new');
+  const save = service.save(saved);
+  const remove = service.remove('c-yield-23'); // Already searched before the gated read.
+  releaseRead();
+  await save; await remove;
+  assert.ok(reads < 24, 'save and delete must finish before the entire search');
+  const results = await search;
+  assert.equal(results.length, 23);
+  assert.ok(!results.some(result => result.id === 'c-yield-23'));
+  assert.ok(!results.some(result => result.id === saved.id), 'new records join the next query snapshot');
+});
+add('rapid query changes cancel between batches before reading a thousand conversations', async () => {
+  const service = new ChatHistoryService();
+  service.summaries = Array.from({ length: 1000 }, (_, index) => ({
+    id: 'c-batch-' + index, title: 'title', updatedAt: index, createdAt: 0
+  }));
+  let reads = 0, current = true;
+  service.readRecord = async id => {
+    reads++;
+    const record = conversation(id);
+    record.messages[1].content = '段落 **重点** '.repeat(500);
+    return record;
+  };
+  const search = service.search('不存在', () => current);
+  setTimeout(() => { current = false; }, 0);
+  assert.equal((await search).length, 0);
+  assert.ok(reads < 1000, 'input must run before scanning the entire corpus');
+});
+add('search backup recovery stays serialized with a save of the same conversation', async () => {
+  const directory = path.join(temporary, 'search-recovery-save');
+  const service = new ChatHistoryService();
+  await service.initialize(directory);
+  const record = conversation('c-search-recovery');
+  await service.save(record);
+  const filename = path.join(directory, 'chat-history', record.id, 'conversation.json');
+  fs.writeFileSync(filename + '.bak', JSON.stringify(record));
+  fs.writeFileSync(filename, '{broken');
+  const actualRead = fileIo.readText;
+  let entered, release;
+  const started = new Promise(resolve => { entered = resolve; });
+  const gate = new Promise(resolve => { release = resolve; });
+  fileIo.readText = async name => {
+    if (path.resolve(name) === filename + '.bak') {
+      entered(); await gate;
+    }
+    return actualRead(name);
+  };
+  try {
+    const search = service.search('问题一');
+    await started;
+    const updated = { ...record, title: '保存后的标题' };
+    const save = service.save(updated);
+    release();
+    await search; await save;
+    assert.equal(JSON.parse(fs.readFileSync(filename, 'utf8')).title, updated.title);
+    assert.equal((await service.load(record.id)).title, updated.title);
+  } finally {
+    fileIo.readText = actualRead;
+  }
 });
 add('search navigation targets a matching message even when a bottom scroll is pending', async () => {
   const view = await actionView('search-focus');
@@ -1189,6 +1642,20 @@ add('an unreadable backup defers attachment cleanup and preserves unrelated file
   assert.equal(fs.readFileSync(path.join(folder, 'user-notes'), 'utf8'), 'leave alone');
 });
 
+add('generated Markdown survives finalization, storage and answer extraction', async () => {
+  const { finalAssistantAnswer } = load(path.join(ets, 'utils/generationText.ets'));
+  const { parseAssistantText } = load(path.join(ets, 'utils/thinking.ets'));
+  const text = '```yaml\na: 1\n---\nb: 2\n```\n\n<s>旧价格</s>，字面量 <|im_end|>。\n第一行  \n第二行。\n本地';
+  const service = new ChatHistoryService();
+  await service.initialize(path.join(temporary, 'output-fidelity'));
+  const record = conversation('c-output-fidelity');
+  record.messages[1].content = finalAssistantAnswer({ text, generatedTokens: 20, stopReason: 'eos' });
+  await service.save(record);
+  const restored = await service.load(record.id);
+  assert.equal(restored.messages[1].content, text);
+  assert.equal(parseAssistantText(restored.messages[1].content).answer, text);
+});
+
 for (const name of ['ChatSession', 'Thinking', 'Markdown', 'GenerationWorkflow', 'GenerationMetrics', 'OpenAiApiServer', 'Knowledge', 'KnowledgeRelations']) {
   const test = path.join(project, 'entry/src/ohosTest/ets/test', name + '.test.ets');
   if (fs.existsSync(test)) load(test).default();
@@ -1197,7 +1664,17 @@ for (const name of ['ChatSession', 'Thinking', 'Markdown', 'GenerationWorkflow',
   let passed = 0;
   try {
     for (const test of tests) {
-      await test.run();
+      let timeout;
+      try {
+        await Promise.race([
+          Promise.resolve().then(() => test.run()),
+          new Promise((_, reject) => {
+            timeout = setTimeout(() => reject(new Error('Test timed out: ' + test.name)), 30000);
+          })
+        ]);
+      } finally {
+        clearTimeout(timeout);
+      }
       passed++;
       console.log('PASS', test.name);
     }

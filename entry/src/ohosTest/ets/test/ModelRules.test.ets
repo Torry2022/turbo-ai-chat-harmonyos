@@ -166,9 +166,9 @@ export default function modelRulesTest(): void {
 
     it('formatsDownloadErrorsForUsers', 0, () => {
       expect(formatDownloadError(new Error('Error: llm.mnn.weight 下载失败：HTTP 404')))
-        .assertEqual('llm.mnn.weight 下载失败：HTTP 404')
+        .assertEqual('下载地址已失效，请刷新模型广场后重试。')
       expect(formatDownloadError(new DownloadErrorFixture()))
-        .assertEqual('错误码 2300007：网络不可用')
+        .assertEqual('无法连接下载服务，请检查网络或代理设置后重试。')
     })
 
     it('reordersModelCardsAcrossEveryEqualHeightPosition', 0, () => {

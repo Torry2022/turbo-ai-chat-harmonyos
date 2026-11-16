@@ -1,3 +1,4 @@
+import { downloadApiImage, invalidImageError } from '../services/ApiImageDownload'
 import fs from '@ohos.file.fs'
 import { StreamingDisplay, STREAM_DISPLAY_INTERVAL_MS } from '../utils/streamingDisplay'
 import util from '@ohos.util'
@@ -11,7 +12,8 @@ import { ChatHistoryService } from '../services/ChatHistoryService'
 import { bundleManager, common } from '@kit.AbilityKit'
 import preferences from '@ohos.data.preferences'
 import cryptoFramework from '@ohos.security.cryptoFramework'
-import { ChatMessage, ChatTurn, GenerationResult, GenerationSettings, PerfMetrics } from '../models/ChatTypes'
+import { ChatContextSnapshot, ChatMessage, ChatTurn, ImagePayload, GenerationResult, GenerationSettings, PerfMetrics } from '../models/ChatTypes'
+import { declaredContextTokens, prepareChatContext, PreparedChatContext } from '../utils/chatContext'
 import { ImportedModelDraft } from '../models/ImportedModelTypes'
 import {
   CatalogModelType,
@@ -319,6 +321,8 @@ export class ChatViewModel {
   diagnosticLoggingEnabled: boolean = false
   private backgroundTasks: BackgroundTaskService = new BackgroundTaskService()
   private appForeground: boolean = true
+  private lastContext?: ChatContextSnapshot
+  private chatRequestSerial: number = 0
 
   setDiagnosticLogging(enabled: boolean, showResult: boolean = true): void {
     try {
@@ -430,6 +434,7 @@ export class ChatViewModel {
   }
 
   dispose(): void {
+    this.chatRequestSerial++
     this.backgroundTasks.dispose()
     if (this.generating) this.generationWorkflow.stop()
     if (this.builtinModelInstalling) {
@@ -1757,6 +1762,10 @@ export class ChatViewModel {
     return this.activeConversation?.title ?? '新对话'
   }
 
+  contextForCurrentConversation(): ChatContextSnapshot | undefined {
+    return this.lastContext?.conversationId === this.activeConversationId ? this.lastContext : undefined
+  }
+
   canManageConversations(): boolean {
     return this.historyReady && !this.historyBusy && !this.busy && !this.generating && !this.modelLoading &&
       !this.modelScanning && !this.apiServerStarting
@@ -1830,7 +1839,7 @@ export class ChatViewModel {
     if (!this.historySearching) return
     this.historySearchTimer = setTimeout(async () => {
       try {
-        const results = await this.historyService.search(value)
+        const results = await this.historyService.search(value, () => serial === this.historySearchSerial)
         if (serial === this.historySearchSerial) this.historySearchResults = results
       } catch (_) {
         if (serial === this.historySearchSerial) this.historySearchError = '搜索失败，请重试'
@@ -2043,6 +2052,7 @@ export class ChatViewModel {
   }
 
   private startEmptyConversation(restorePendingDraft: boolean = false): void {
+    this.lastContext = undefined
     this.resumeChatAutoScroll()
     this.cancelSpeechRecognition(false)
     this.activeConversation = undefined
@@ -2075,6 +2085,7 @@ export class ChatViewModel {
         updatedAt: now, messages: []
       }
       this.activeConversationId = this.activeConversation.id
+      if (this.lastContext?.conversationId === '') this.lastContext.conversationId = this.activeConversationId
     }
     const conversation = this.activeConversation
     conversation.messages = this.session.messages
@@ -2769,9 +2780,62 @@ export class ChatViewModel {
       return
     }
 
+    const requestedAt = Date.now()
+    const requestSerial = ++this.chatRequestSerial
+    const requestModel = this.currentModel()
+    const settings = this.currentGenerationSettings()
+    const maxNewTokens = this.maxNewTokens
+    const selection = this.session.composeContext(requestModel.systemPrompt, text,
+      this.currentContextMessageLimit(), replacingQuestionId)
+    selection.turns[selection.turns.length - 1].imageUri = attachedImage
+    const images = selection.turns.filter((turn: ChatTurn) => (turn.imageUri ?? '').length > 0)
+    if (images.length > 1) {
+      this.toastCallback('当前每次请求支持一张图片，请新建对话后发送另一张图片')
+      return
+    }
+    const contextImage = images[0]?.imageUri ?? ''
+    if (contextImage.length > 0 && !requestModel.supportsImage) {
+      this.toastCallback('当前对话包含图片，请切换到支持图片的模型')
+      return
+    }
+    this.busy = true
+    this.generating = true
+    this.generationStopping = false
+    this.setStatus('正在准备对话...', 'neutral')
+    this.notify()
+    let prepared: PreparedChatContext
+    let imagePayload: ImagePayload | undefined = undefined
+    try {
+      if (contextImage.length > 0) imagePayload = await this.imageService.buildImagePayload(contextImage)
+      prepared = await prepareChatContext(selection, this.session.messages, maxNewTokens, contextImage.length > 0,
+        (turns: ChatTurn[]) => this.nativeService.prepareChatInput(turns, settings,
+          turns.some((turn: ChatTurn) => (turn.imageUri ?? '').length > 0), imagePayload))
+      if (requestSerial !== this.chatRequestSerial) return
+      if (this.generationStopping || prepared.exceedsContext) {
+        this.busy = false
+        this.generating = false
+        this.generationStopping = false
+        const message = prepared.exceedsContext ?
+          '问题和预留输出超过模型的上下文长度，请缩短问题或降低最大输出' : '已取消准备'
+        this.setStatus(message, 'warning')
+        if (prepared.exceedsContext) this.toastCallback(message)
+        this.notify()
+        return
+      }
+    } catch (error) {
+      if (requestSerial !== this.chatRequestSerial) return
+      console.error(`Chat preparation failed: ${formatError(error as Object)}`)
+      this.busy = false
+      this.generating = false
+      this.generationStopping = false
+      this.setStatus('准备对话失败，请重试', 'error')
+      this.notify()
+      return
+    }
     const previousAnswer = replacingQuestionId > 0 && !editQuestion ? this.session.lastAnswer() : undefined
     if (replacingQuestionId > 0) this.session.removeFromQuestion(replacingQuestionId)
-    const chatTurns = this.composeChatTurns(text)
+    const chatTurns = prepared.selection.turns
+    const effectiveImage = chatTurns.find((turn: ChatTurn) => (turn.imageUri ?? '').length > 0)?.imageUri ?? ''
     this.session.prepareModel(this.currentModel().id, this.currentModel().shortName)
     if (replacingQuestionId > 0 && !consumeInput && question !== undefined) {
       if (editQuestion) question.content = text
@@ -2789,6 +2853,15 @@ export class ChatViewModel {
     }
     const draftConversationId = this.activeConversationId
     this.syncMessages()
+    this.lastContext = {
+      conversationId: this.activeConversationId, modelName: requestModel.name, requestedOutputTokens: maxNewTokens,
+      imageInput: effectiveImage.length > 0, contextTokens: prepared.contextTokens,
+      inputTokens: prepared.input.inputTokens >= 0 ? prepared.input.inputTokens : undefined,
+      formattedPrompt: prepared.input.prompt,
+      questionText: text,
+      turns: chatTurns,
+      omitted: prepared.selection.omitted, historyMessageIds: prepared.selection.historyMessageIds
+    }
     this.resumeChatAutoScroll()
     if (consumeInput) {
       this.conversationDrafts.delete(draftConversationId)
@@ -2809,11 +2882,14 @@ export class ChatViewModel {
     const assistantOutputPrefix = this.expectedAssistantOutputPrefixForCurrentModel()
     const generation = this.generationWorkflow.run({
       turns: chatTurns,
-      imageUri: attachedImage,
-      maxNewTokens: this.maxNewTokens,
-      settings: this.currentGenerationSettings(),
+      imageUri: effectiveImage,
+      imagePayload,
+      maxNewTokens,
+      settings,
       assistantOutputPrefix,
-      stripLeadingAssistantSeparator: this.shouldStripLeadingAssistantSeparator()
+      stripLeadingAssistantSeparator: this.shouldStripLeadingAssistantSeparator(),
+      preparedPrompt: effectiveImage.length === 0 ? prepared.input.prompt : undefined,
+      requestedAt
     }, {
       onStatus: (status: string) => {
         this.setStatus(status, 'neutral')
@@ -2826,6 +2902,9 @@ export class ChatViewModel {
     })
 
     generation.then((outcome: GenerationWorkflowResult) => {
+      if (this.lastContext !== undefined && outcome.result.inputTokens !== undefined) {
+        this.lastContext.inputTokens = outcome.result.inputTokens
+      }
       this.stopStreamDisplay()
       this.latestPerfMetrics = outcome.perfMetrics
       this.streamingChars = outcome.answer.length
@@ -2839,7 +2918,8 @@ export class ChatViewModel {
         (outcome.result.stopReason === 'timeout' || outcome.result.stopReason === 'internal_error' ? 'failed' : 'complete'),
         outcome.result.stopReason)
       this.syncMessages()
-      this.setStatus(outcome.status, outcome.includeInContext ? 'success' : 'warning')
+      const failed = outcome.result.stopReason === 'timeout' || outcome.result.stopReason === 'internal_error'
+      this.setStatus(outcome.status, failed ? 'error' : outcome.result.stopReason === 'eos' ? 'success' : 'warning')
       this.busy = false
       this.generating = false
       this.generationStopping = false
@@ -2847,8 +2927,9 @@ export class ChatViewModel {
       this.notifyAndMaybeScroll()
     }).catch((err: Error) => {
       this.stopStreamDisplay()
-      const message = `生成失败：${formatError(err as Object)}`
+      console.error(`Chat generation failed: ${formatError(err as Object)}`)
       const partialAnswer = this.session.messages.find((item: ChatMessage) => item.id === assistantId)?.content ?? ''
+      const message = partialAnswer.trim().length > 0 ? '生成失败，已保留生成内容，请重试' : '生成失败，请重试'
       this.session.updateMessage(assistantId, partialAnswer, false)
       this.session.markGeneration(assistantId, 'failed', 'internal_error')
       this.syncMessages()
@@ -3003,10 +3084,6 @@ export class ChatViewModel {
     this.syncBuiltinModelInstallPartialProgress(spec)
   }
 
-  private composeChatTurns(text: string): ChatTurn[] {
-    return this.session.composeChatTurns(this.currentModel().systemPrompt, text, this.currentContextMessageLimit())
-  }
-
   private apiServerModel(): ApiServerModel {
     const model = this.currentModel()
     return { id: model.id, name: model.name }
@@ -3029,6 +3106,28 @@ export class ChatViewModel {
     this.notify()
   }
 
+  private async generateApiInput(request: ApiGenerationRequest,
+    onChunk: (chunk: string) => void): Promise<GenerationResult> {
+    const images = request.turns.filter((turn: ChatTurn) => (turn.imageUri ?? '').length > 0)
+    if (images.length === 0) {
+      return this.nativeService.generateText(request.turns, request.maxNewTokens, request.settings, onChunk)
+    }
+    if (!this.currentModel().supportsImage) throw invalidImageError('当前模型不支持图片输入。')
+    let imageUri = images[0].imageUri ?? ''
+    if (/^https?:\/\//i.test(imageUri)) {
+      imageUri = await downloadApiImage(imageUri, (): boolean => this.generationStopping)
+    }
+    const payload = await this.imageService.buildImagePayload(imageUri)
+    if (this.generationStopping) return { text: '', generatedTokens: 0, stopReason: 'user_stop' }
+    const prepared = await this.nativeService.prepareChatInput(request.turns, request.settings, true, payload)
+    const capacity = declaredContextTokens(prepared.modelConfig)
+    if (capacity > 0 && prepared.inputTokens + request.maxNewTokens > capacity) {
+      throw invalidImageError('图片、问题和预留输出超过模型的上下文长度，请缩短输入或降低最大输出。')
+    }
+    if (this.generationStopping) return { text: '', generatedTokens: 0, stopReason: 'user_stop' }
+    return this.nativeService.generateImage(request.turns, payload, request.maxNewTokens, request.settings, onChunk)
+  }
+
   private runApiGeneration(
     request: ApiGenerationRequest,
     onChunk: (chunk: string) => void
@@ -3047,29 +3146,41 @@ export class ChatViewModel {
     this.setStatus('等待 API 首个输出片段...', 'neutral')
     this.refreshStats()
     this.notify()
-    return this.nativeService.generateText(
-      request.turns,
-      request.maxNewTokens,
-      request.settings,
+    let streamedChars = 0
+    let completed = false
+    return this.generateApiInput(request,
       (chunk: string) => {
-        this.streamingChars += chunk.length
-        this.setStatus(`正在处理 API 请求... ${this.streamingChars} 字符`, 'neutral')
+        if (completed) return
+        streamedChars += chunk.length
         onChunk(chunk)
-        this.notify()
+        if (this.appForeground) {
+          this.streamingChars = streamedChars
+          this.setStatus(`正在处理 API 请求... ${streamedChars} 字符`, 'neutral')
+          this.notify()
+        }
       }
     ).then((result: GenerationResult) => {
+      completed = true
+      this.streamingChars = result.text.length
       this.busy = false
       this.generating = false
       this.generationStopping = false
-      this.setStatus(`API 生成完成（${result.generatedTokens} tokens）`, 'success')
+      const statuses: Record<string, string> = {
+        'eos': 'API 生成完成', 'max_tokens': 'API 输出已达到上限',
+        'user_stop': 'API 生成已停止', 'timeout': 'API 生成超时'
+      }
+      const tone = result.stopReason === 'eos' ? 'success' :
+        result.stopReason === 'max_tokens' || result.stopReason === 'user_stop' ? 'warning' : 'error'
+      this.setStatus(`${statuses[result.stopReason] ?? 'API 生成失败'}（${result.generatedTokensEstimated ? '约 ' : ''}${result.generatedTokens} tokens）`, tone)
       this.refreshStats()
       this.notify()
       return result
     }).catch((err: Error) => {
+      completed = true
       this.busy = false
       this.generating = false
       this.generationStopping = false
-      this.setStatus(`API 生成失败：${formatError(err as Object)}`, 'error')
+      this.setStatus('API 生成失败，请查看服务日志', 'error')
       this.refreshStats()
       this.notify()
       throw err
