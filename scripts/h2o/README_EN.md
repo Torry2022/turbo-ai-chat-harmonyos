@@ -8,9 +8,22 @@ Runs H2O-Lightning-4B through MNN LLM Runtime. Provides loading, text and single
 
 Add `h2o_decision.cpp` and `h2o_protocol.cpp` to the caller's native target. Add this directory and the project's `third_party/mnn/include` to the include paths, link `libMNN.so`, and enable C++17. `h2o_contract.h` contains the prompt and label contract for this model version.
 
-Pass the path to `config.json` in a complete MNN model directory. The directory must contain the backbone, full output head, embeddings, tokenizer, and runtime configuration. Image requests also require the visual model. Loading verifies every candidate label token ID against the official tokenizer.
+Pass the path to `config.json` in a complete MNN model directory. The directory must contain the backbone, output head, embeddings, tokenizer, and runtime configuration. Image requests also require the visual model. Loading verifies every candidate label token ID against the official tokenizer.
+
+The wrapper supports full-vocabulary packages and packages with the 255 candidate-label outputs. Candidate-output packages set `"decision_output": "h2o-labels-v1"` in `config.json` and follow the `labelTokens` order in `h2o_contract.h`. The wrapper validates the output count and reads the corresponding logits. Full-vocabulary packages use token-ID indexing.
 
 The wrapper uses CPU inference with four threads by default, `precision=normal`, `memory=low`, and `dynamic_option=2`, matching the INT8 validation configuration. Perform loading and inference on background worker threads.
+
+### Compact decision output head
+
+`compact_model.py` converts this project's original INT8 package to candidate outputs, reducing the memory needed to load the output head. It verifies source checksums, extracts the original FP16 rows for the 255 official labels, and removes the full output head from the end of the weight file. It requires Python 3.11 or later, a C++ compiler, and the matching MNN source tree.
+
+```sh
+python scripts/h2o/compact_model.py --source /path/to/original-model \
+    --output /path/to/compact-model --mnn-source /path/to/MNN
+```
+
+The output directory must be new. It contains the model, runtime configuration, conversion metadata, and SHA-256 checksums. Candidate-output packages require this version of the decision wrapper.
 
 ## Text decisions
 
@@ -60,6 +73,12 @@ Every question starts with a reset context. The default full-input limit is 40,9
 Loading, decisions, and release are serialized by an instance mutex. Release waits for a running decision. Release before loading again. Repeated release is safe, and a failed load leaves the instance unloaded. Destruction automatically frees the model. Join all worker threads using an instance before destroying it.
 
 ## Protocol checks
+
+The compact-output checks cover weight bytes, zero bias, output shapes, and invalid inputs.
+
+```sh
+python scripts/h2o/tests/test_compact_output.py --mnn-source /path/to/MNN
+```
 
 These checks require a C++17 compiler and run without model weights.
 

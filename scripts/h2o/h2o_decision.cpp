@@ -20,9 +20,10 @@ double elapsedMs(Clock::time_point start) {
 
 struct DecisionModel::Runtime {
     std::unique_ptr<Llm, decltype(&Llm::destroy)> model{nullptr, &Llm::destroy};
-    std::vector<int> labelTokens;
+    std::vector<int> logitIndices;
     int maxInputTokens = 0;
     bool supportsImages = false;
+    bool candidateOutput = false;
 };
 
 DecisionModel::DecisionModel() = default;
@@ -38,6 +39,15 @@ void DecisionModel::load(const std::string& configPath, int threads, int maxInpu
     auto candidate = std::make_unique<Runtime>();
     candidate->model.reset(Llm::createLLM(configPath));
     if (!candidate->model) throw std::runtime_error("Cannot create H2O model");
+    const std::string modelConfig = candidate->model->dump_config();
+    static const std::regex outputFlag("\"decision_output\"\\s*:\\s*\"([^\"]*)\"");
+    std::smatch outputMatch;
+    if (std::regex_search(modelConfig, outputMatch, outputFlag)) {
+        if (outputMatch[1].str() != "h2o-labels-v1") {
+            throw std::runtime_error("Unsupported H2O output mapping");
+        }
+        candidate->candidateOutput = true;
+    }
     const std::string config = "{\"backend_type\":\"cpu\",\"thread_num\":" + std::to_string(threads) +
         ",\"precision\":\"normal\",\"memory\":\"low\",\"dynamic_option\":2,"
         "\"mllm\":{\"backend_type\":\"cpu\",\"thread_num\":" + std::to_string(threads) +
@@ -55,7 +65,7 @@ void DecisionModel::load(const std::string& configPath, int threads, int maxInpu
         if (tokens.size() != 1 || tokens[0] != Contract::labelTokens[index]) {
             throw std::runtime_error("Tokenizer does not match the H2O label contract");
         }
-        candidate->labelTokens.push_back(tokens[0]);
+        candidate->logitIndices.push_back(candidate->candidateOutput ? static_cast<int>(index) : tokens[0]);
     }
     candidate->maxInputTokens = maxInputTokens;
     runtime_ = std::move(candidate);
@@ -103,11 +113,14 @@ DecisionResult DecisionModel::decide(const Question& question, const Image* imag
         const auto forwardStart = Clock::now();
         auto logits = model->forward(tokens);
         if (!logits.get() || !logits->getInfo()) throw std::runtime_error("Missing H2O logits");
+        if (runtime_->candidateOutput && logits->getInfo()->size != Contract::labelTokens.size()) {
+            throw std::runtime_error("H2O candidate output does not match its label mapping");
+        }
         const auto* values = logits->readMap<float>();
         if (!values) throw std::runtime_error("Cannot read H2O logits");
         std::vector<float> candidates;
         for (size_t index = 0; index < prepared.options.size(); ++index) {
-            const int token = runtime_->labelTokens[index];
+            const int token = runtime_->logitIndices[index];
             if (token < 0 || token >= logits->getInfo()->size) {
                 throw std::runtime_error("Candidate token exceeds H2O output vocabulary");
             }

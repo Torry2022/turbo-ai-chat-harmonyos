@@ -382,6 +382,8 @@ Select and load a model in the Decision Model category, then call `/v1/decisions
 
 Download Laya and H2O-Lightning from the Decision Models category in the Model Gallery, then select and load them on the Model page. Model weights are downloaded separately.
 
+H2O-Lightning supports model packages retaining only the 255 candidate-label outputs to reduce loading memory. The package's output format must match the decision wrapper. See the [H2O decision wrapper](scripts/h2o/README_EN.md) for conversion instructions.
+
 `POST /v1/decisions` supports `choice`, `score`, and `boolean` tasks. Omit `model` to use the loaded decision model, or supply its ID from `GET /v1/models`. H2O-Lightning also accepts an optional `image` field containing a PNG, JPEG, or WebP Base64 data URI. Its trial dialog provides an image picker. The complete request body is limited to 1 MiB. Returned candidate probabilities preserve each model's calculation rules and numeric precision. H2O responses include the actual input token count in `metadata.input_tokens`, including the prompt template and options. `metadata.cpu_threads` reports the verified runtime CPU thread count. Decision-model threads can be adjusted under Runtime Configuration on the Model page. Changes take effect when the model is reloaded. Scores are probability-weighted expected levels. The Service page's API Guide includes request examples.
 
 ## Install from HAP

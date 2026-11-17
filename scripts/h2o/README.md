@@ -8,9 +8,22 @@
 
 将 `h2o_decision.cpp` 和 `h2o_protocol.cpp` 加入调用工程的 Native 编译目标，将本目录和项目的 `third_party/mnn/include` 加入头文件搜索路径，链接 `libMNN.so`。使用 C++17。`h2o_contract.h` 记录对应模型版本的提示词与标签。
 
-运行时传入完整 MNN 模型目录内的 `config.json` 路径。目录须包含主干、完整输出头、词嵌入、分词器和运行配置，图片调用还需要视觉模型。加载会校验全部候选标签的 token ID 是否与官方分词器一致。
+运行时传入完整 MNN 模型目录内的 `config.json` 路径。目录须包含主干、输出层、词嵌入、分词器和运行配置，图片调用还需要视觉模型。加载会校验全部候选标签的 token ID 是否与官方分词器一致。
+
+支持完整词表输出包和 255 个候选标签的输出包。候选输出包在 `config.json` 中设置 `"decision_output": "h2o-labels-v1"`，输出顺序与 `h2o_contract.h` 中的 `labelTokens` 一致。封装按该映射读取结果，并校验输出数量。完整词表输出包沿用 token ID 索引。
 
 本封装使用 CPU，默认 4 线程，`precision=normal`、`memory=low`、`dynamic_option=2`，与本轮 INT8 验证配置一致。加载和推理应在后台工作线程执行。
+
+### 缩小决策输出层
+
+`compact_model.py` 可将本项目原始 INT8 包转换为候选输出包，降低输出层加载的内存需求。它校验源文件哈希，直接提取官方 255 个标签对应的 FP16 权重行，并移除权重文件末尾的完整输出层。需要 Python 3.11 或更高版本、C++ 编译器和对应版本的 MNN 源码目录。
+
+```sh
+python scripts/h2o/compact_model.py --source /path/to/original-model \
+    --output /path/to/compact-model --mnn-source /path/to/MNN
+```
+
+输出目录需尚未存在。生成的目录包含模型、运行配置、转换信息和 SHA-256 校验清单，使用候选输出包时须配套本版决策封装。
 
 ## 文本决策
 
@@ -60,6 +73,12 @@ auto result = model.decide(question, &image);
 同一实例的加载、决策和释放通过互斥锁串行执行，释放会等待正在执行的决策完成。重复加载要求先释放，重复释放安全。加载失败不会留下已加载状态。实例析构自动释放模型，调用方应先结束使用该实例的工作线程。
 
 ## 协议检查
+
+候选输出层的转换检查覆盖权重字节、零偏置、输出形状和异常输入。
+
+```sh
+python scripts/h2o/tests/test_compact_output.py --mnn-source /path/to/MNN
+```
 
 以下检查不需要模型权重，可在有 C++17 编译器的主机运行。
 

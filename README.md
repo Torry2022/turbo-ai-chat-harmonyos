@@ -382,6 +382,8 @@ PC/二合一设备在 API 服务开启或模型执行任务时，按需申请系
 
 Laya 和 H2O-Lightning 均可从模型广场的“决策模型”分类下载，安装后在模型页选择并加载。模型权重单独下载。
 
+H2O-Lightning 支持只保留 255 个候选标签输出的模型包，可降低加载内存需求。模型包的输出格式须与决策封装匹配，转换方法见 [H2O 决策封装](scripts/h2o/README.md)。
+
 `POST /v1/decisions` 支持 `choice`、`score` 和 `boolean` 任务。省略 `model` 时使用已加载的决策模型，也可填写 `GET /v1/models` 返回的模型 ID。H2O-Lightning 还支持通过可选的 `image` 字段传入 PNG、JPEG 或 WebP 的 Base64 数据 URI，在试用窗口中可直接添加图片。整个请求体上限为 1 MiB。返回的候选概率保留各模型的计算规则及数值精度。H2O 响应的 `metadata.input_tokens` 提供实际输入词元数，包含提示词模板和选项。`metadata.cpu_threads` 返回运行时校验的实际 CPU 线程数。决策模型的线程数可在模型页“运行配置”中调节，修改后点击“重新加载”生效。评分结果为各等级按概率加权的期望值。服务页“调用说明”提供请求示例。
 
 ## 从 HAP 直接安装

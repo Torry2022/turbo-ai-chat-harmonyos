@@ -665,7 +665,7 @@ async function main() {
     assert.equal(modelInstallDirectory('/test', h2o), '/test/decision-models/H2O-Lightning-4B-MNN-INT8');
     assert.equal(catalogItemToProfile(h2o), undefined);
     assert.equal(h2o.totalBytes, h2o.files.reduce((sum, f) => sum + f.sizeBytes, 0));
-    assert(h2o.files.every(f => f.url.includes('/resolve/20f037453f0f9138fec5adf29892bf1352547e95/')));
+    assert(h2o.files.every(f => f.url.includes('/resolve/f626be5d7680deae28eaf292d22b902ac54c2772/')));
 
     assert(service.items().some(item => item.modelType === 'rerank'));
     const reloaded = new ModelCatalogService(); await reloaded.load('/test');

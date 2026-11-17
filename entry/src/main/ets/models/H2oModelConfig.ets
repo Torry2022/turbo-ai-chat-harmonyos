@@ -1,7 +1,7 @@
 import { ModelCatalogItem } from './BuiltinModelDownloadTypes'
 
 const REPO = 'TorryJi/H2O-Lightning-4B-MNN-INT8'
-const REVISION = '20f037453f0f9138fec5adf29892bf1352547e95'
+const REVISION = 'f626be5d7680deae28eaf292d22b902ac54c2772'
 const BASE_URL = `https://modelscope.cn/models/${REPO}/resolve/${REVISION}`
 
 export const H2O_DOWNLOAD_SPEC: ModelCatalogItem = {
@@ -19,10 +19,10 @@ export const H2O_DOWNLOAD_SPEC: ModelCatalogItem = {
   sourceName: 'ModelScope',
   sourceUrl: `https://modelscope.cn/models/${REPO}`,
   files: [
-    { relativePath: 'config.json', sizeBytes: 686, url: `${BASE_URL}/config.json` },
+    { relativePath: 'config.json', sizeBytes: 724, url: `${BASE_URL}/config.json` },
     { relativePath: 'llm_config.json', sizeBytes: 9045, url: `${BASE_URL}/llm_config.json` },
-    { relativePath: 'llm.mnn', sizeBytes: 4048696, url: `${BASE_URL}/llm.mnn` },
-    { relativePath: 'llm.mnn.weight', sizeBytes: 5064979968, url: `${BASE_URL}/llm.mnn.weight` },
+    { relativePath: 'llm.mnn', sizeBytes: 5340552, url: `${BASE_URL}/llm.mnn` },
+    { relativePath: 'llm.mnn.weight', sizeBytes: 3793581568, url: `${BASE_URL}/llm.mnn.weight` },
     { relativePath: 'embeddings_bf16.bin', sizeBytes: 1271398400, url: `${BASE_URL}/embeddings_bf16.bin` },
     { relativePath: 'tokenizer.mtok', sizeBytes: 7334464, url: `${BASE_URL}/tokenizer.mtok` },
     { relativePath: 'visual.mnn', sizeBytes: 5271136, url: `${BASE_URL}/visual.mnn` },
@@ -30,5 +30,5 @@ export const H2O_DOWNLOAD_SPEC: ModelCatalogItem = {
     { relativePath: 'LICENSE', sizeBytes: 11343, url: `${BASE_URL}/LICENSE` },
     { relativePath: 'NOTICE', sizeBytes: 482, url: `${BASE_URL}/NOTICE` }
   ],
-  totalBytes: 7016022540
+  totalBytes: 5745916034
 }
