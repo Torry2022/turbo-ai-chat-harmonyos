@@ -79,6 +79,7 @@ export struct AppHeader {
           .fontSize(20)
           .fontWeight(FontWeight.Bold)
           .fontColor($r('app.color.text_title'))
+          .translate({ y: '5px' })
         Text(this.status)
           .fontSize(12)
           .fontColor(this.statusColor)
@@ -89,6 +90,7 @@ export struct AppHeader {
           .id('app-header-status')
           .width('100%')
           .height(18)
+          .translate({ y: '-5px' })
       }
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)

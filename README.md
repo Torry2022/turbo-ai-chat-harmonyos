@@ -8,11 +8,11 @@
 
 ![Turbo AI Chat hero](docs/images/hero.png)
 
-**Turbo AI Chat 是一个 HarmonyOS NEXT 原生端侧大模型聊天应用**，支持在鸿蒙手机、平板和 PC 上直接运行本地文本与多模态模型。项目基于 ArkTS、C++ N-API 和 MNN Runtime 构建，预置 Qwen3-4B-Instruct、MiniCPM5-1B 和 Gemma-4-E2B-it，并可通过模型广场或本地导入扩展兼容的 MNN 模型；同时提供流式对话、模型切换、图片理解、运行监控和局域网 OpenAI 兼容 API。
+**Turbo AI Chat 是一个 HarmonyOS NEXT 原生端侧大模型聊天应用**，支持在鸿蒙手机、平板和 PC 上直接运行本地文本与多模态模型。项目基于 ArkTS、C++ N-API 和 MNN Runtime 构建，提供 Qwen3-4B-Instruct、MiniCPM5-1B 和 Gemma-4-E2B-it 的预设配置，并可通过模型广场或本地导入扩展兼容的 MNN 模型；同时提供流式对话、模型切换、图片理解、运行监控和局域网 OpenAI 兼容 API。
 
 > 当前版本基于 MNN 开发快照 [`f0b6105c`](https://github.com/alibaba/MNN/commit/f0b6105c5c7f901b1531dd4c23afa8a00b454db3) 构建。自行编译运行库时，请使用下文提供的构建脚本。
 
-项目包含[MNN 兼容性补丁](third_party/mnn/patches/README.md)，用于正确处理 NFC 文本规范化，并保留流式输出中模型自定义标记的原文。构建脚本会自动应用这些补丁。
+项目包含[MNN 兼容性补丁](third_party/mnn/patches/README.md)，用于文本与流式输出兼容、模型加载校验、运行时线程读取和生成参数更新。构建脚本会自动应用这些补丁。
 
 ## 目录
 
@@ -24,6 +24,7 @@
 - [功能](#功能)
 - [截图](#截图)
 - [OpenAI 兼容 API 服务](#openai-兼容-api-服务)
+- [从 HAP 直接安装](#从-hap-直接安装)
 - [模型管理](#模型管理)
 - [模型格式说明](#模型格式说明)
 - [推理后端与性能](#推理后端与性能)
@@ -48,28 +49,25 @@ Turbo AI Chat 采用原生推理链路（ArkTS → N-API → MNN → CPU），�
 - **架构原生**：推理层直接对接 HarmonyOS NDK，无 Android 兼容层转译开销
 - **模型安装便捷**：通过模型广场从 ModelScope 下载预置模型，无需另行访问 HuggingFace
 - **工程可复用**：MNN Runtime 封装、流式输出管线、Markdown 渲染等模块可作为其他鸿蒙 AI 应用的集成参考
-- **诊断记录**：在设置中临时开启后，可通过 hdc 查看最近一次文字请求的输入、回答和采样参数（`raw_output_debug.txt`）；默认关闭
-
-  ```sh
-  hdc shell "cat /data/app/el2/100/base/com.torry.turbochat/haps/entry/files/raw_output_debug.txt"
-  ```
 
 项目可作为鸿蒙本地 AI 应用的开发与集成参考。
 
 ## 近期重要改进
 
-**独立应用标识与对话数据能力（v2.0.0）**
+**对话管理与本地推理（v2.0.0）**
 
 - 使用正式包名 `com.torry.turbochat`，保留 Turbo AI Chat 名称。
-- 导出当前对话，纯文本保存为 Markdown，含图片的对话保存为 ZIP。
-- 备份和恢复完整对话历史，保留图片、全部回答版本和分支来源。
-- 从助手回答创建独立对话分支，保留截至该回答的历史，并可返回原对话。
-- 查看回答实际携带的上下文及消息未被带入的原因；模型标明上下文上限时，为回答预留空间，按完整问答裁剪较早历史。
-- 停止、超时或达到输出上限时保存已生成内容，后续提问可继续参考；图片保留在多轮上下文中，支持追问原图细节。
-- API 支持图片输入和远程图片 URL，完善请求校验、上下文预算及连接资源限制。
-- 当前文字对话在前缀一致时复用 KV 缓存，减少后续回答的重复预填充；保留模型原始文本与特殊标记，按实际准备的输入计量上下文。
-- 下载前解析未固定版本条目的实际文件清单，并将文件固定到同一提交；重试和续传沿用已解析清单，加强文件与响应校验。按需管理下载及支持设备上的计算后台任务。
-- 鼠标悬停时滚动显示未展示完整的历史标题；设置中可临时开启本地诊断记录，便于排查问题。
+- 导出当前对话为 Markdown 或包含图片的 ZIP。完整历史支持备份与恢复，保留图片、全部回答版本和分支来源。
+- 从助手回答创建独立对话分支，保留截至该回答的历史，并可返回来源对话。
+- 查看回答实际使用的上下文及消息未被带入的原因。模型声明上下文上限时，为回答预留空间，按完整问答裁剪较早历史。
+- 停止、超时或达到输出上限时保留已生成内容，后续提问可继续参考。图片保留在多轮上下文中，支持追问原图细节。
+- 对话 API 支持图片输入和远程图片 URL，并完善请求校验、上下文预算及连接资源限制。
+- 文字对话复用匹配的上下文缓存，减少重复计算。协调对话生成、自动命名、决策和重排任务，完善任务占用与失败后的状态恢复。
+- 查看并导出每版回答的生成参数、模型来源、实际线程和运行库信息。运行状态 API 提供最近一次 API 对话生成的记录，设置中可临时开启本地诊断记录。
+- 模型页展示加载结果、最近一次成功记录、已加载模型与实时进程内存，并可逐个释放模型。
+- 下载前核对模型文件信息，改善失败提示与中断后的继续下载。按需管理下载和支持设备上的后台计算任务。
+- 更新 H2O-Lightning 模型下载包，降低加载时的内存需求，并减少存储占用。
+- 统一模型厂商与系列标注。历史长标题支持鼠标悬停滚动，优化手机标题条背景、不可用操作的显示和启动画面的系统栏适配。
 
 **决策模型与运行配置（v1.22.0）**
 
@@ -78,6 +76,9 @@ Turbo AI Chat 采用原生推理链路（ArkTS → N-API → MNN → CPU），�
 - 服务页以完整模型名和状态标签展示已加载模型，长名称单行滚动；精简决策与重排模型的安装入口。
 - 修复深度思考开关的模板识别兼容性，减少聊天滚动时的状态更新与解析开销，并修正跨文本块复制的内容顺序。
 - 手机底栏选中态统一为蓝色。
+
+<details>
+<summary>早期版本改进</summary>
 
 **启动画面（v1.21.1）**
 
@@ -182,43 +183,7 @@ Turbo AI Chat 采用原生推理链路（ArkTS → N-API → MNN → CPU），�
 - 保留原有页面布局，统一按钮的主次配色、文字、尺寸和圆角，并调整输入框与参数滑块的样式。
 - 优化轻量操作的点击区域，为代码块的复制按钮预留空间，修正模型广场刷新状态文字显示不全的问题。
 
-**平板与 PC 适配**
-
-- 按实际窗口宽度切换底部导航、紧凑侧栏和完整侧栏；模型、监控等页面在宽窗口下分栏显示。
-- 支持外接键盘 Enter 发送、Shift+Enter 换行、Ctrl+N 新对话，以及 Esc 退出输入或关闭可取消弹窗；中文输入法选词优先。
-- 调整启动背景和系统安全区、弹窗限宽、聊天阅读宽度与状态条位置，并支持鼠标拖动模型排序。
-
-**模型与市场**
-
-- 默认文本模型切换为 Qwen3-4B-Instruct，并支持在 App 内通过模型广场从 ModelScope 安装预置模型和更多 MNN 模型条目。
-- 模型广场分为对话、决策和重排三类。对话模型接入 MNN 官方广场，重排模型从魔搭 MNN 组织获取 Qwen3-Reranker，决策模型提供 Laya 和 H2O-Lightning；同时保留本项目的补充目录和离线缓存。三类模型分别管理、独立加载。
-- Fork 或二次开发版本默认仍使用 MNN 官方来源及本仓库的补充目录；如需维护自己的补充目录，应修改 [`ModelCatalogService.ets`](entry/src/main/ets/services/ModelCatalogService.ets) 中的 `REMOTE_MODEL_CATALOG_URL` 和 `REMOTE_MODEL_CATALOG_API_URL`，分别指向自己的 Raw 目录及 GitHub Contents 接口，再重新构建 App。
-- 模型广场下载支持停止后断点续传；关闭已停止的安装弹窗会清理未完成的临时下载文件，避免沙箱残留。
-- 模型默认生成参数来自仓库配置或 App 预设，可在模型页调整；刷新目录不会自动覆盖内置预设和已安装模型的配置快照。参数来源与更新方式见[生成参数说明](model-catalog/generation-defaults.md)。
-- 除 zip 导入外，支持将完整 MNN 模型目录推送到 App 沙箱后，在模型页一键扫描注册，适合绕过大 zip 导入失败的问题。
-- 模型页支持排序和删除已安装模型；生成、加载或导入期间，相关操作暂不可用。
-
-**聊天体验**
-
-- 模型流式输出过程中可中断生成；被停止的回答不会写入后续上下文。
-- 新增离线普通话语音输入：输入框为空且未聚焦时显示麦克风，识别过程中实时回填文字并显示语音活动声波，结束后可编辑再发送。
-- 缓存 Markdown 与思考块解析结果，优化流式输出中的 UTF-8 片段和表格列宽稳定性；用户查看历史消息时不会在生成结束后被自动拉回底部，并隐藏聊天列表滚动条。
-- 聊天页新增设备状态条，可快速查看应用 CPU、应用内存和设备温度等运行状态，并按指标风险动态调整数值颜色。
-
-**稳定性与调试**
-
-- MNN 运行库与公开头文件使用同一固定版本，构建脚本统一管理所需补丁。
-- 模型加载、市场安装和本地导入统一执行目录预检，在进入原生推理前检查配置、权重引用、视觉文件和对话模板兼容性。
-- 图片推理使用模型目录声明的视觉输入尺寸，兼容不同视觉网格配置的 MNN 多模态模型。
-- 增加 `ohosTest` 自动化测试，覆盖对话上下文、Markdown、思考块、模型兼容性、导入命名和下载进度。
-- 监控页新增 App 存储占用、模型状态、版本/许可证信息和更紧凑的设备指标展示。
-- 模型加载失败时会保留加载弹窗中的错误提示并清理推理状态，便于用户识别可用内存不足等加载问题后重试。
-- 优化 Markdown 表格、列表、代码片段、思考块展示、原始输出日志和 MNN 对话模板处理，便于排查模型复读、停止符和模板问题。
-
-**API 服务**
-
-- 可将当前已加载的 MNN 模型作为局域网 OpenAI 兼容服务，供 Cherry Studio 等客户端调用。
-- 支持 `/v1/models`、`/v1/chat/completions` 和 `/v1/responses`，包括 SSE 流式输出与可选 Bearer API Key。
+</details>
 
 ## 系统要求
 
@@ -234,19 +199,32 @@ Turbo AI Chat 采用原生推理链路（ArkTS → N-API → MNN → CPU），�
 
 > 从 v2.0.0 起，本版使用包名 `com.torry.turbochat`，与旧包名 `com.example.gemma4mnn` 的应用分别安装。旧应用的模型、对话和设置仍保留在旧应用中；本版首次安装使用全新数据目录。
 
-### 1. 克隆并构建
+### 1. 安装应用
+
+从 [Releases](https://github.com/Torry2022/turbo-ai-chat-harmonyos/releases) 下载 HAP 压缩包，解压后安装到设备。调试签名包仅适用于签名范围内的设备；其他设备需下载未签名 HAP，使用自己的开发者账号签名。详细步骤见[从 HAP 直接安装](#从-hap-直接安装)。
+
+<details>
+<summary>从源码构建</summary>
+
+安装 DevEco Studio 和项目要求的 HarmonyOS SDK。克隆后用 IDE 打开工程并完成依赖同步，登录华为开发者账号，配置自动签名，再运行到真机。
 
 ```sh
 git clone https://github.com/Torry2022/turbo-ai-chat-harmonyos.git
 cd turbo-ai-chat-harmonyos
 ```
 
-用 DevEco Studio 打开项目，登录华为开发者账号，开启自动签名，然后运行到真机。或命令行：
+已配置 SDK、Node.js、ohpm 和签名的命令行环境可执行：
 
 ```sh
+npm install
+ohpm install
 node ./node_modules/@ohos/hvigor/bin/hvigor.js assembleHap --no-daemon
 hdc install -r entry/build/default/outputs/default/entry-default-signed.hap
 ```
+
+模型权重需要单独下载。按需重新编译 MNN 的方法见[推理后端与性能](#推理后端与性能)。
+
+</details>
 
 ### 2. 安装模型
 
@@ -262,60 +240,80 @@ App 和 HAP 均不内置模型权重。打开 App → 模型页 → 模型广场
 
 ### 3. 开始聊天
 
-模型加载完成后回到聊天页，发送消息即可。Qwen3-4B-Instruct 是默认文本模型，MiniCPM5-1B 会展示思考块（`<think>`），Gemma-4-E2B-it 支持图片输入。
+模型加载完成后回到聊天页，发送消息即可。Qwen3-4B-Instruct 是默认文本模型，MiniCPM5-1B 支持展示思考块（`<think>`），Gemma-4-E2B-it 支持图片输入。
 
 外接键盘在聊天输入框中使用 Enter 发送、Shift+Enter 换行；中文输入法选词优先由输入法处理。Ctrl+N 开始新对话，Esc 可退出输入或关闭可取消的弹窗，不会退出 App。软键盘仍通过发送按钮发送。宽窗口下聊天区域居中限宽，软键盘弹出时缩小内容区，保留顶栏和底部输入栏。
 
 ## 功能
 
-- 外观：新安装默认跟随系统；可在设置中选择浅色模式、深色模式或跟随系统，选择会保留。宽窗口从侧栏底部进入设置，手机窄窗口点击左上角 Logo 菜单进入；两种模式使用相同布局、Logo 和启动图。
-- 正文诊断记录默认关闭。需要排查问题时，可在设置中临时开启，将最近一次文本请求的上下文、回答和生成参数保存在本机。关闭记录、删除对话或重新启动应用时清除，设置中也可手动清除。图片、决策和重排请求不记录正文。
-- 自适应导航：窄窗口使用底部标签栏，较宽窗口改为侧栏。API 26 及以上手机使用官方沉浸光感底栏，聊天页常驻，其他页面滚动时自动收起或显示。
-- PC 窗口标题栏提供“对话、设置、帮助”菜单，可新建对话、打开应用设置，以及查看快捷键说明和应用版本。展开后，鼠标移到其他菜单项即可切换，按 Esc 关闭；手机和平板从侧栏或 Logo 菜单进入设置。
-- 聊天页显示应用 CPU、应用内存和设备温度等运行状态；宽屏下限制消息宽度，便于阅读。
-- 输入区常驻显示模型名称与加载状态；未加载时点击输入区会前往模型页。
-- 消息文本支持局部选取复制：API 26 及以上可用触屏手柄或鼠标在同一条回答内跨段落、列表、代码块和表格选取，旧系统保留单个文本块内选取。选区复制可见文字，气泡顶栏的复制按钮保留 Markdown，代码块按钮仅复制代码。
-- 输入框从单行起步，长文本自动增高，并可原地展开或收起。
-- 模型页在宽窗口下并排显示模型列表与参数区；触屏长按拖动手柄排序，鼠标可直接拖动手柄。
-- 监控页根据可用宽度切换单列或双列卡片，卡片内的指标自动分配剩余宽度。
-- 弹窗按可用窗口限宽，长正文可滚动；模型广场在软键盘弹出时自动缩小，避免内容被遮挡。
-- 本地推理：模型在设备端运行，无网络依赖
-- 流式输出：边生成边显示回答，无需等待整条回复完成
-- 停止生成：输出过程中可中断本轮回复；达到输出上限或超时会在回答内提示，并随历史记录保存
-- 图片输入：每条消息可附一张图片，发送前可预览或移除；点击消息中的图片可全屏查看，支持双指缩放、双击放大与拖动。
-- 消息操作：气泡顶栏提供复制、编辑和重新生成图标；使用鼠标时，用户消息的操作在悬停或键盘聚焦时显示，触控时保持显示。长按正文可选取文字。可重新生成最后一条回答，使用当前加载的模型并沿用原问题和图片，旧回答会保留，可在气泡内切换版本，后续提问使用当前选中的回答作为上下文；也可在原消息气泡内编辑任意问题后发送，原回答及后续聊天记录会被替换，底部未发送的草稿会保留。
-- 语音输入：通过 Core Speech Kit 离线识别普通话，实时显示中间结果并支持手动停止
-- 模型切换：可在预置模型、已安装市场模型和导入模型之间切换
-- 思考块：分开展示思考过程与最终回答，也支持聊天模板已带起始 `<think>`、生成输出只带结束标签的模型；支持切换的模型可在模型列表下方开启或关闭深度思考，按模型保存并从下一次请求生效；未设置时沿用模型默认模式。思考过程也计入最大输出长度，达到上限时可能截断回答。
-- Markdown 渲染：代码块（含复制按钮）、表格、引用、链接等，并针对流式输出中的未闭合行内代码、表格空单元格和表格列宽抖动做了兼容处理
-- 流式显示与滚动：逐步呈现生成中的文字，新内容短暂淡入；缓存 Markdown / 思考块解析结果，并在用户滚动查看时暂停自动跟随底部
-- 生成参数调节：温度、Top-P/K、惩罚项等，修改后从下一次生成生效；温度为 0 时选择最高分 token，惩罚窗口为 0 时使用全部已记录 token
-- 性能指标：正常完成的回复显示 TTFT、TPOT、tokens/s 等指标
-- 从回答的更多菜单查看运行详情，保留本次模型、线程、生成参数与耗时，支持导出 JSON。模型页提供本机加载历史、已加载模型和内存概览，可按需释放模型。
-- 模型管理：模型广场下载、调整模型排序、删除已安装模型目录；可为当前模型启用启动时自动加载
-- 导入本地 MNN 模型：支持选择文件夹（设备支持时）、zip 导入及 hdc 推送目录后扫描注册；正式 MNN 导出目录优先使用 `llm_config.json` 中的 `jinja.chat_template`
-- OpenAI 兼容 API：通过局域网向 Cherry Studio 等客户端提供当前已加载模型，支持流式输出和 Bearer 鉴权
-- 历史对话：本地保存对话与图片，支持新建、继续、重命名、删除和清空；可搜索标题与消息正文，包括重新生成前的旧版回答；点击结果定位到对应消息和回答版本。鼠标双击聊天页顶部标题也可重命名，悬停在历史列表项上可滚动查看未显示完整的标题。新对话首轮回答后，空闲时使用已加载模型生成标题；失败时保留原名称，手动命名不会被覆盖。消息保留各自的回复模型与时间。卸载或清除应用数据会删除记录。
-- 对话上下文：停止、超时或达到输出上限时保留已有内容，后续提问可参考已生成的回答。在对话标题右侧菜单中查看最近一次回答所用的消息及未带入原因。模型包标明上下文上限时，按实际输入长度为输出预留空间，优先移除较早的完整问答。
-- 纯文本多轮对话支持上下文缓存复用，减少重复计算，缩短后续回答的等待时间。
+### 对话与历史
 
-- 对话分支：通过回答上的“新建分支”保留截至该回答的记录，在独立对话中继续。图片和回答版本一并保存，来源提示可返回原对话。
+- 在设备本地运行文本与多模态模型，流式展示 Markdown、代码块、表格和思考过程。安装模型后可离线对话。
+- 支持停止生成、编辑问题和重新生成回答。旧回答保留为可切换的版本，后续提问使用当前选中的版本。
+- 停止、超时或达到输出上限时保留已生成内容，并在气泡顶部显示状态标签；已有的有效回答正文可参与后续上下文。
+- 本地保存对话与图片，支持搜索标题、正文和旧版回答。新对话首轮完成后，空闲时自动命名，手动标题保持原样。
+- 从助手回答创建独立分支，保留截至该回答的历史、图片和回答版本，并可返回来源对话。
+- 导出当前对话为 Markdown 或含图片的 ZIP；在设置中备份与恢复完整历史，恢复内容作为独立副本追加。
 
-- 对话导出与备份：通过对话标题右侧菜单导出当前对话，纯文本保存为 Markdown，图片随 ZIP 保存。在设置的“对话数据”中保存完整备份，包含图片和全部回答版本。恢复前展示对话数量，恢复的对话独立保存并追加到历史列表。备份不含模型权重和 API Key。
+### 图片与上下文
+
+- 每条消息可添加一张图片，发送前可预览或移除。消息图片支持全屏查看、双指缩放、双击缩放与拖动。
+- 支持围绕同一张图片连续追问。每次请求的上下文支持一张图片，更换图片时新建对话。
+- 可查看最近一次回答实际携带的上下文和消息未被带入的原因。模型包声明容量时，为输出预留空间，优先裁剪较早的完整问答。
+- 支持的模型提供深度思考开关，按模型保存，从下一次生成生效。文字多轮对话可复用匹配的上下文缓存。
+
+### 模型与运行配置
+
+- 模型广场提供对话、决策和重排三类模型，分别管理与加载。对话模型还支持文件夹、ZIP 和已推送目录导入。
+- 三类模型均支持 CPU 线程调节，修改运行配置后可重新加载。生成参数与深度思考设置从下一次生成生效。
+- 模型页显示本机加载记录、已加载模型和当前内存，可逐个释放模型，并设置启动时自动加载的对话模型。
+- 决策模型提供选择、评分和是非判断，可在试用窗口操作或通过 API 调用；重排模型通过 API 对候选文本排序。
+
+### 输入、复制与多端界面
+
+- 手机、平板与 PC 按窗口宽度切换布局，支持浅色、深色和跟随系统外观。手机对话标题条采用原生背景模糊。
+- 支持离线普通话语音输入。长草稿可展开编辑；外接键盘支持 Enter 发送、Shift+Enter 换行、Ctrl+N 新对话和 Esc 关闭可取消窗口，中文输入法选词优先。
+- 消息支持局部选取复制，API 26 及以上可跨 Markdown 文本块选取。选区复制可见文字，气泡复制保留 Markdown，代码按钮仅复制代码。
+- 鼠标悬停可滚动查看未显示完整的历史标题，双击聊天页标题可重命名。宽窗口提供历史侧栏和 PC 菜单。
+
+### API 与运行监控
+
+- 提供局域网 OpenAI 兼容聊天 API，以及决策、重排和运行状态接口，支持流式输出和可选 Bearer 鉴权。
+- 聊天状态栏和监控页显示 CPU、RSS 常驻内存、温度等信息。每版回答可查看运行详情并导出模型来源、线程、生成参数与耗时。
+- 正文诊断记录默认关闭，可在设置中临时启用。关闭、重启或删除对话时清除记录，详细操作见[开发检查](#开发检查)。
 
 ## 截图
 
-| 聊天界面                          | 模型界面                              | 服务界面                                | 监控界面                                |
-|-------------------------------|-----------------------------------|-------------------------------------|-------------------------------------|
-| ![chat](docs/images/chat.jpg) | ![models](docs/images/models.jpg) | ![service](docs/images/service.jpg) | ![monitor](docs/images/monitor.jpg) |
+v2.0.0 手机浅色模式真机界面：
 
-平板横屏：
+| 聊天 | 模型 | API 服务 | 监控 |
+| --- | --- | --- | --- |
+| ![聊天](docs/images/chat.jpg) | ![模型](docs/images/models.jpg) | ![API 服务](docs/images/service.jpg) | ![监控](docs/images/monitor.jpg) |
 
-![平板模型页](docs/images/tablet-models.jpg)
+PC 最大化窗口，全屏截图：
 
-PC 最大化：
+![PC 对话与历史栏](docs/images/pc-chat.jpg)
 
-![PC 模型页](docs/images/pc-models.jpg)
+<details>
+<summary>PC 模型配置与手机模型广场</summary>
+
+![PC 模型配置](docs/images/pc-models.jpg)
+
+<img src="docs/images/model-gallery.jpg" alt="手机模型广场" width="360">
+
+</details>
+
+<details>
+<summary>平板横屏对话与模型配置</summary>
+
+v2.0.0 浅色模式，MatePad Edge 真机截图。
+
+![平板对话](docs/images/tablet-chat.jpg)
+
+![平板模型配置](docs/images/tablet-models.jpg)
+
+</details>
+
 
 ## OpenAI 兼容 API 服务
 
@@ -334,11 +332,14 @@ PC 最大化：
 
 服务页顶部的“接口文档”可查看接口清单；点击日志条目可查看和复制完整内容。服务内容显示实际已加载的模型，未加载时显示“未加载”。
 
-手机底栏和窄侧栏的入口显示为“API 服务”；宽侧栏显示“服务”，并保留“OpenAI API”副标题。
+手机底栏和窄侧栏的入口显示为“API 服务”；宽侧栏显示“服务”，并保留“本地 API”副标题。
 
 服务页会显示服务启停、请求路径、模型参数、响应状态、耗时和输出规模等运行日志，不记录 API Key、提示词或回答正文。
 
 宽窗口下，服务设置与 API 日志并排显示；缩窄窗口后恢复单栏，已启动的服务不会因布局切换而重启。
+
+<details>
+<summary>图片输入、协议限制与后台运行</summary>
 
 服务最多保持 16 个连接，单个请求须在连接后 15 秒内接收完成，总大小不超过 1 MiB。单次发送等待超过 30 秒或待发送数据超过 4 MiB 时会关闭连接，聊天和重排任务会收到取消请求。接收期限不用于限制模型的正常推理时间。
 
@@ -371,6 +372,8 @@ PC/二合一设备在 API 服务开启或模型执行任务时，按需申请系
 | 工具调用、JSON 模式和 JSON Schema | 返回明确的不支持错误 |
 | Responses 的历史响应 ID、服务端会话、后台任务和保存 | 返回明确的不支持错误 |
 | 自定义停止序列、随机种子和一次生成多个答案 | 暂不支持 |
+
+</details>
 
 ### 运行状态
 
@@ -497,41 +500,28 @@ App 使用 **MNN 模型目录**格式。内置模型当前从 ModelScope 下载�
 ## 架构
 
 ```text
-ChatTab / ModelTab / MonitorTab / ...
+ChatViewModel / OpenAiApiServer
+    |-- GenerationWorkflow / NativeInferenceService
+    |-- DecisionService
+    `-- RerankerService
                 |
-          ChatViewModel
-      |-- GenerationWorkflow -- ImagePayloadService
-      |-- ModelLifecycleService -- 目录预检 / 安装 / 导入 / 扫描
-      `-- NativeInferenceService（由上述工作流共享）
+       N-API Bridge (libentry.so)
+    |-- MnnLlmRunner       text / image
+    |-- Laya / H2O         decisions
+    `-- MNN Reranker       scoring
                 |
-        N-API Bridge (libentry.so)
-                |
-     MnnLlmRunner (mnn_llm_runner.cpp)
-        |          |           |
-      文本      原始 Prompt    图片
-                |
-       MNN Runtime (libMNN.so)
-                |
-           CPU Backend
+       MNN Runtime / CPU Backend
 ```
 
-`MnnLlmRunner` 负责兼容 MNN `Transformer::Llm` 目录的 native 推理。模型安装、导入和目录预检由 ArkTS 生命周期服务处理，文本、原始 Prompt 和图片生成共享稳定的 N-API 边界。Laya 决策使用独立的 `LayaDecisionService` → N-API → MNN Interpreter 链路，直接返回选项概率，不生成聊天文本。详细演进见[核心推理链演进说明](docs/architecture/core-inference-evolution.md)。
+对话、决策和重排共用 MNN CPU 运行库，由共享执行许可协调模型任务，各类模型可独立保留在内存中。安装、导入、目录预检与加载记录由 ArkTS 服务层管理，局域网 API 复用相同的推理路径。详细说明见[核心推理链演进](docs/architecture/core-inference-evolution.md)。
 
 ## 原生接口
 
-ArkTS 通过 `import entry from 'libentry.so'` 调用 N-API：
+ArkTS 通过 `libentry.so` 访问 Native 推理层，完整函数签名与返回类型统一维护在[类型声明](entry/src/main/cpp/types/libentry/Index.d.ts)中。
 
-```ts
-entry.loadModelAsync(configPath, threadNum, maxNewTokens, settings): Promise<string>
-entry.generateRawPromptStream(prompt, maxNewTokens, endWith, settings, onChunk): Promise<GenerationResult>
-entry.generateChatStream(messages, maxNewTokens, settings, onChunk): Promise<GenerationResult>
-entry.generateImageChatStream(messages, pixels, width, height, maxNewTokens, settings, onChunk): Promise<GenerationResult>
-entry.stopGeneration(): void
-entry.reset(): void
-entry.isLoaded(): boolean
-entry.layaDecideAsync(modelPath, tokenizerPath, state, type, instruction, options): Promise<string>
-entry.layaReleaseAsync(): Promise<void>
-```
+- 对话生成先准备实际输入，再执行文本、原始 Prompt 或图片推理，返回文本、停止原因、Token 计数和 Native 耗时。
+- Laya 与 H2O 分别提供加载、决策和释放操作；重排服务封装加载、评分、取消与释放。
+- 接口同时提供线程信息、生成取消与诊断控制，由 ArkTS 服务层协调执行占用和模型生命周期。
 
 ## 开发检查
 
@@ -541,12 +531,19 @@ entry.layaReleaseAsync(): Promise<void>
 
 这些测试在电脑上执行，使用模拟的系统接口，无需模型权重或真机。ArkTS 编译、HAP 构建、签名和真机验收仍通过 DevEco Studio 完成。
 
+需要排查文字生成问题时，可在设置中临时开启正文诊断，通过 hdc 查看最近一次请求、回答与生成参数。记录默认关闭，关闭、重启或删除对话时清除；图片、决策和重排请求不记录正文。
+
+```sh
+hdc shell "cat /data/app/el2/100/base/com.torry.turbochat/haps/entry/files/raw_output_debug.txt"
+```
+
 ## 许可证
 
 本仓库源码使用 Apache-2.0 许可证。
 
 MNN Runtime 和模型权重遵循各自上游许可证或模型卡说明。本仓库和 Release HAP 均不提交模型权重，用户通过模型广场、脚本或手动推送获得的模型文件需自行遵守对应来源的使用条款。
 
+- [H2O-Lightning-4B-MNN-INT8](https://modelscope.cn/models/TorryJi/H2O-Lightning-4B-MNN-INT8)
 - [Laya-Multilingual-MNN-FP16](https://modelscope.cn/models/TorryJi/Laya-Multilingual-MNN-FP16)
 - [MNN](https://github.com/alibaba/MNN)
 - [Qwen3-4B-Instruct-2507-MNN](https://modelscope.cn/models/MNN/Qwen3-4B-Instruct-2507-MNN)

@@ -71,7 +71,7 @@ export struct ModelLoadDialog {
             .clip(true)
 
             Row() {
-              Text(this.viewModel.modelLoadDialogBusy() ? `加载用时 ${this.viewModel.modelLoadElapsedSeconds} 秒` :
+              Text(this.viewModel.modelLoadDialogBusy() ? `已耗时 ${this.viewModel.modelLoadElapsedSeconds} 秒` :
                 (this.viewModel.modelLoadDialogComplete() ? '已完成' : '等待操作'))
                 .fontSize(12)
                 .fontColor($r('app.color.text_muted'))

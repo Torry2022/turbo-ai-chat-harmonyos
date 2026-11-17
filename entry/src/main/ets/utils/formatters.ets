@@ -78,6 +78,7 @@ export function formatDownloadError(err: Object): string {
   if (code === 13900028 || /enospc|no space left|disk full/.test(lower)) {
     return '存储空间不足，请清理空间后重试。'
   }
+  if (/下载响应无效.*HTTP 200/i.test(raw)) return '下载文件与模型信息不符，请关闭窗口后重试。'
   if (/http\s*404/i.test(raw)) return '下载地址已失效，请刷新模型广场后重试。'
   if (/http\s*(401|403)/i.test(raw)) return '下载源拒绝访问，请确认模型可公开下载后重试。'
   if (/http\s*416/i.test(raw)) return '续传信息已失效，请关闭安装窗口后重新下载。'

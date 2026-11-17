@@ -102,7 +102,7 @@ export struct BuiltinModelInstallDialog {
               this.viewModel.closeBuiltinModelInstallDialog()
             })
 
-          Button(this.viewModel.builtinModelInstalling ? '下载中...' : (this.viewModel.builtinModelInstallCanceled ? '继续下载' : '下载并安装'))
+          Button(this.viewModel.builtinModelInstalling ? '下载中...' : ((this.viewModel.builtinModelInstallCanceled || this.viewModel.builtinModelInstallError.length > 0 || this.viewModel.builtinModelInstallDownloadedBytes > 0) ? '继续下载' : '下载并安装'))
             .attributeModifier(new ActionButtonStyle($r('app.color.button_primary_background'), $r('app.color.button_primary_text')))
             .layoutWeight(1)
             .enabled(!this.viewModel.builtinModelInstalling)

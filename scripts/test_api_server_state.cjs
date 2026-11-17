@@ -134,6 +134,10 @@ console.log('PASS service capabilities use loaded models and runtime states with
   view.loaded = true;
   view.reranker = { busy: false };
   view.nativeService = { cancelTitleGeneration: async () => {} };
+  view.modelLifecycleService = {
+    recordSuccessfulLoad: async () => {},
+    recordFailedLoad: async () => {}
+  };
   let resolveLoad, resolveDecision, rejectDecision, releaseCalls = 0;
   context.loadDecision = () => new Promise(resolve => { resolveLoad = () => { decisionLoaded = true; resolve(); }; });
   context.decide = () => new Promise((resolve, reject) => { resolveDecision = resolve; rejectDecision = reject; });

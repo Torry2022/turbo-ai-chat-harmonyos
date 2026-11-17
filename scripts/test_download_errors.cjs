@@ -21,6 +21,7 @@ const cases = [
   [new Error('llm.mnn.weight 写入失败：Error: ENOSPC'), '存储空间不足，请清理空间后重试。'],
   [{ code: 13900028, message: 'No space left on device' }, '存储空间不足，请清理空间后重试。'],
   [new Error('模型配置已不可用（HTTP 404）'), '下载地址已失效，请刷新模型广场后重试。'],
+  [new Error('llm_config.json 下载响应无效：HTTP 200，预期 4803 字节，实际 3286 字节'), '下载文件与模型信息不符，请关闭窗口后重试。'],
   [new Error('下载响应无效：HTTP 403'), '下载源拒绝访问，请确认模型可公开下载后重试。'],
   [new Error('下载响应无效：HTTP 416'), '续传信息已失效，请关闭安装窗口后重新下载。'],
   [new Error('下载响应无效：HTTP 503'), '下载服务暂时不可用，请稍后重试。'],
@@ -38,4 +39,14 @@ assert.ok(formatError(diagnostic).includes('2300028'));
 assert.ok(formatError(diagnostic).includes('Operation timeout'));
 assert.ok(!formatDownloadError(diagnostic).includes('2300028'));
 assert.ok(!formatDownloadError(diagnostic).includes('Operation timeout'));
-console.log('PASS 22 download error presentations and preserved diagnostic details');
+const dialog = fs.readFileSync(path.join(__dirname, '../entry/src/main/ets/components/BuiltinModelInstallDialog.ets'), 'utf8');
+const primary = dialog.match(/Button\((this\.viewModel\.builtinModelInstalling \? '下载中\.\.\.'[^\n]+)\)/)[1];
+const label = vm.runInNewContext(`(viewModel) => ${primary.replaceAll('this.viewModel', 'viewModel')}`);
+const idle = { builtinModelInstalling: false, builtinModelInstallCanceled: false,
+  builtinModelInstallError: '', builtinModelInstallDownloadedBytes: 0 };
+assert.equal(label(idle), '下载并安装');
+assert.equal(label({ ...idle, builtinModelInstalling: true }), '下载中...');
+assert.equal(label({ ...idle, builtinModelInstallCanceled: true }), '继续下载');
+assert.equal(label({ ...idle, builtinModelInstallError: '连接中断' }), '继续下载');
+assert.equal(label({ ...idle, builtinModelInstallDownloadedBytes: 403 }), '继续下载');
+console.log('PASS download error presentation, diagnostics and resume button states');

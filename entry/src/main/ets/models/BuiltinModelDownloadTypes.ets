@@ -40,7 +40,7 @@ export interface BuiltinModelDownloadSpec {
 export interface ModelCatalogItem extends BuiltinModelDownloadSpec {
   shortName: string
   description: string
-  // Model brand or family; the download repository remains in sourceUrl.
+  // Model vendor or family; the download repository remains in sourceUrl.
   provider: string
   supportsImage: boolean
   capabilities: string[]

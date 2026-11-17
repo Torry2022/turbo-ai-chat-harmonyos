@@ -436,7 +436,7 @@ export struct ModelTab {
               .fontColor($r('app.color.text_secondary'))
               .width('100%')
             Text(this.viewModel.startupAutoLoadEnabled ?
-              `当前自动加载：${this.viewModel.startupModelName()}` : '当前未选择自动加载的模型')
+              `当前自动加载模型：${this.viewModel.startupModelName()}` : '当前未设置自动加载模型')
               .fontSize(12)
               .lineHeight(18)
               .fontColor($r('app.color.text_muted'))
@@ -522,6 +522,12 @@ export struct ModelTab {
             else this.viewModel.loadDecisionModel()
           })
       }
+      if (this.viewModel.decisionSelectedId !== LAYA_MODEL_ID) {
+        Button('删除当前模型')
+          .attributeModifier(new ActionButtonStyle($r('app.color.button_danger_background'), $r('app.color.button_danger_text')))
+          .width('100%').enabled(this.controlsEnabled() && !this.viewModel.decisionImporting)
+          .onClick(() => this.viewModel.requestDeleteDecisionModel())
+      }
       Button(this.decisionReady ? '进入决策' : '下载模型')
         .attributeModifier(new ActionButtonStyle($r('app.color.button_secondary_background'), $r('app.color.button_secondary_text')))
         .width('100%')
@@ -529,12 +535,6 @@ export struct ModelTab {
           if (this.decisionReady) this.onDecisionTrial()
           else this.viewModel.openModelMarketDialog()
         })
-      if (this.viewModel.decisionSelectedId !== LAYA_MODEL_ID) {
-        Button('删除当前模型')
-          .attributeModifier(new ActionButtonStyle($r('app.color.button_danger_background'), $r('app.color.button_danger_text')))
-          .width('100%').enabled(this.controlsEnabled() && !this.viewModel.decisionImporting)
-          .onClick(() => this.viewModel.requestDeleteDecisionModel())
-      }
       if (this.viewModel.decisionMessage.length > 0) {
         Text(this.viewModel.decisionMessage).fontSize(12).fontColor($r('app.color.text_muted')).width('100%')
       }

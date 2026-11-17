@@ -270,7 +270,7 @@ export class BuiltinModelInstallService {
             throw new Error(`${file.relativePath} 远端文件已变化，请重新下载`)
           }
         } else if (code !== 200 || receivedBytes !== file.sizeBytes) {
-          throw new Error(`${file.relativePath} 下载响应无效：HTTP ${code}`)
+          throw new Error(`${file.relativePath} 下载响应无效：HTTP ${code}，预期 ${file.sizeBytes} 字节，实际 ${receivedBytes} 字节`)
         }
         fs.fsyncSync(output.fd)
         fs.closeSync(output)

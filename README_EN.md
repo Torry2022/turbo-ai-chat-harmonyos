@@ -6,13 +6,13 @@
 ![HarmonyOS](https://img.shields.io/badge/HarmonyOS-NEXT-orange)
 ![Runtime](https://img.shields.io/badge/runtime-MNN%20CPU-green)
 
-![Turbo AI Chat hero](docs/images/hero.png)
+![Turbo AI Chat hero](docs/images/hero-en.png)
 
 **Turbo AI Chat is a HarmonyOS NEXT native on-device LLM chat application** that runs text and multimodal models locally on HarmonyOS phones, tablets, and PCs. It is built with ArkTS, C++ N-API, and MNN Runtime, ships profiles for Qwen3-4B-Instruct, MiniCPM5-1B, and Gemma-4-E2B-it, and can add compatible MNN models through the Model Gallery or local import. The app also includes streaming chat, model switching, image understanding, runtime monitoring, and an OpenAI-compatible LAN API.
 
 > This version is built on MNN development snapshot [`f0b6105c`](https://github.com/alibaba/MNN/commit/f0b6105c5c7f901b1531dd4c23afa8a00b454db3). Use the build scripts described below when compiling the runtime yourself.
 
-The project includes [MNN compatibility patches](third_party/mnn/patches/README.md) for NFC text normalization and preserving model-defined token text in streaming output. The build scripts apply these patches automatically.
+The project includes [MNN compatibility patches](third_party/mnn/patches/README.md) for text and streaming compatibility, model-load validation, runtime thread reporting and generation-setting updates. The build scripts apply these patches automatically.
 
 ## Table of Contents
 
@@ -24,6 +24,7 @@ The project includes [MNN compatibility patches](third_party/mnn/patches/README.
 - [Features](#features)
 - [Screenshots](#screenshots)
 - [OpenAI-Compatible API Server](#openai-compatible-api-server)
+- [Install from HAP](#install-from-hap)
 - [Model Management](#model-management)
 - [Model Format](#model-format)
 - [Inference Backend and Performance](#inference-backend-and-performance)
@@ -48,28 +49,25 @@ Turbo AI Chat runs models locally on HarmonyOS devices through a native inferenc
 - **Native architecture**: inference directly via HarmonyOS NDK, no Android compatibility layer overhead
 - **Easy model installation**: download preset models from ModelScope through the Model Gallery without separately accessing HuggingFace
 - **Reusable engineering**: MNN Runtime wrapper, streaming pipeline, Markdown rendering as integration references for other HarmonyOS AI apps
-- **Diagnostics**: temporarily enable records in Settings to inspect the latest text request's input, answer, and sampling parameters through hdc (`raw_output_debug.txt`); disabled by default
-
-  ```sh
-  hdc shell "cat /data/app/el2/100/base/com.torry.turbochat/haps/entry/files/raw_output_debug.txt"
-  ```
 
 The project can serve as a development and integration reference for local AI applications on HarmonyOS.
 
 ## Recent Highlights
 
-**Conversation tools and permanent app identity (v2.0.0)**
+**Conversation management and local inference (v2.0.0)**
 
 - Use the permanent bundle name `com.torry.turbochat` while retaining the Turbo AI Chat name.
-- Export the current conversation as Markdown, or as a ZIP when it contains images.
-- Back up and restore conversation history, including images, all saved answer versions and branch origins.
-- Create an independent conversation from an assistant answer, retain its preceding history, and return to the source conversation through the branch link.
+- Export the current conversation as Markdown or a ZIP containing its images. Back up and restore complete history, including images, all answer versions and branch origins.
+- Create an independent branch from an assistant answer, retain the history through that answer and return to the source conversation.
 - Inspect the context used for an answer and why messages were omitted. When the model declares a context limit, reserve space for the reply and trim older complete exchanges.
 - Preserve generated content after stopping, timeout or output-limit termination so later questions can use it. Keep images in multi-turn context for follow-up questions about the original image.
-- Support image input and remote image URLs through the API, with stronger request validation, context budgeting and connection resource limits.
-- Reuse matching KV prefixes in active text conversations to reduce repeated prefill work. Preserve model-provided text and special markers, and account for context using the actual prepared input.
-- Resolve the actual file list for unpinned model entries before downloading and pin the files to one commit. Reuse that manifest for retries and resume, validate files and responses, and manage download and supported-device compute background tasks as needed.
-- Scroll truncated history titles on mouse hover, and temporarily enable local diagnostic records through Settings for troubleshooting.
+- Support image input and remote image URLs through the conversation API, with stronger request validation, context budgeting and connection resource limits.
+- Reuse matching context caches in text conversations to reduce repeated computation. Coordinate conversation generation, automatic titles, decisions and reranking, with state recovery after rejected or failed operations.
+- Inspect and export the generation settings, model source, effective threads and runtime-library information for each answer version. The runtime API provides the latest API chat generation record, and Settings offers temporary local diagnostic logging.
+- View loading outcomes, the last successful load, loaded models and live process memory on the Model tab, with individual model release controls.
+- Check model file information before downloading, improve failure messages and resume interrupted downloads. Manage download and supported-device compute background tasks as needed.
+- Update the H2O-Lightning model download package to reduce loading memory and storage requirements.
+- Standardize model vendor and family labels. Scroll long history titles on mouse hover, and improve phone conversation headers, disabled-action feedback and startup system-bar coverage.
 
 **Decision models and runtime settings (v1.22.0)**
 
@@ -78,6 +76,9 @@ The project can serve as a development and integration reference for local AI ap
 - Identify loaded models by full names and status tags, with single-line scrolling for long names and simpler decision and reranking setup.
 - Fix template recognition for thinking controls, reduce state updates and parsing work while scrolling chats, and preserve document order when copying across text blocks.
 - Use blue selection accents in phone navigation.
+
+<details>
+<summary>Earlier releases</summary>
 
 **Startup presentation (v1.21.1)**
 
@@ -182,43 +183,7 @@ The project can serve as a development and integration reference for local AI ap
 - Retained the existing page layouts while aligning button colors, text, sizes, and corner radii, with consistent input fields and parameter sliders.
 - Expanded touch targets for compact actions, reserved space for code-block copy buttons, and fixed clipped refresh-state text in the Model Gallery.
 
-**Tablet and PC support**
-
-- Navigation switches between bottom tabs, a compact sidebar, and a full sidebar according to actual window width. Model and monitoring pages use columns in wide windows.
-- Physical keyboards support Enter to send, Shift+Enter for a line break, Ctrl+N for a new conversation, and Esc to leave input or close dismissible dialogs. Input-method candidate selection takes priority.
-- Updated launch backgrounds, system safe areas, dialog sizing, chat reading width, and runtime-strip placement, with mouse dragging for model reordering.
-
-**Models and market**
-
-- Switched the default text model to Qwen3-4B-Instruct, with in-app model-market installation from ModelScope for preset models and additional MNN model entries.
-- The Model Gallery separates conversation, decision and reranking models. It reads conversation models from the official MNN gallery and Qwen3-Reranker models from the MNN organization on ModelScope, and provides Laya for decisions. The project’s supplemental catalog and offline caches remain available. The three model categories are managed and loaded independently.
-- Forks and derivative builds use the official MNN sources and this repository's supplemental catalog by default. To maintain your own supplemental catalog, change `REMOTE_MODEL_CATALOG_URL` and `REMOTE_MODEL_CATALOG_API_URL` in [`ModelCatalogService.ets`](entry/src/main/ets/services/ModelCatalogService.ets) to your own Raw catalog and GitHub Contents URLs, then rebuild the app.
-- Default generation settings come from repository configuration or app presets and can be adjusted on the Model tab. Catalog refresh does not overwrite bundled presets or installed-model configuration snapshots. See the [parameter sourcing and update notes (Chinese)](model-catalog/generation-defaults.md).
-- Model-market downloads support stop-and-resume behavior. Closing a stopped install dialog clears unfinished temporary download files to avoid sandbox leftovers.
-- In addition to zip import, you can push a complete MNN model directory into the app sandbox and scan it from the Model tab to avoid large zip import failures.
-- The Model tab supports reordering and deleting installed models. Related actions are temporarily unavailable during generation, loading, or import.
-
-**Chat experience**
-
-- Streaming output can be interrupted; stopped responses are not added to future conversation context.
-- Added offline Mandarin voice input: an empty, unfocused composer shows a microphone, partial transcripts appear in real time with voice-activity feedback, and the final text remains editable before sending.
-- Markdown and thinking-block parsing results are cached, UTF-8 streaming chunks and table column stability are improved, completed generations no longer pull the view back to the bottom while the user is reading history, and the chat list scrollbar is hidden.
-- The Chat tab includes a compact device status strip for app CPU, app memory, and device temperature, with threshold-based value colors.
-
-**Stability and diagnostics**
-
-- Keep the MNN runtime and public headers on the same pinned version, with required patches managed by the build scripts.
-- Model loading, market installation, and local import share one directory preflight that validates configuration, referenced weights, visual files, and chat-template compatibility before native inference starts.
-- Image inference preserves the visual input size declared by each model directory, supporting MNN multimodal models with different visual-grid configurations.
-- Added `ohosTest` automated tests for conversation context, Markdown, thinking blocks, model compatibility, imported-model naming, and download progress.
-- The Monitor tab includes app storage usage, model state, version/license text, and tighter device metrics.
-- Model load failures keep the error in the load dialog and reset inference state, making low-memory or failed-load recovery clearer.
-- Markdown tables, lists, code snippets, thinking blocks, raw output logs, and MNN chat-template handling were improved for diagnosing repetition, stop tokens, and prompt template issues.
-
-**API server**
-
-- The currently loaded MNN model can be exposed as an OpenAI-compatible LAN service for clients such as Cherry Studio.
-- `/v1/models`, `/v1/chat/completions`, and `/v1/responses` are supported, including SSE streaming and optional Bearer authentication.
+</details>
 
 ## System Requirements
 
@@ -234,19 +199,32 @@ The project can serve as a development and integration reference for local AI ap
 
 > Starting with v2.0.0, this build uses `com.torry.turbochat` and installs separately from the former `com.example.gemma4mnn` app. Its existing models, conversations and settings remain in the old app. This release starts with a fresh data directory.
 
-### 1. Clone and build
+### 1. Install the app
+
+Download a HAP bundle from [Releases](https://github.com/Torry2022/turbo-ai-chat-harmonyos/releases), extract it and install the HAP on your device. Debug-signed HAPs only work on devices included in their signing profile; other devices need an unsigned HAP signed with your own developer account. See [Install from HAP](#install-from-hap).
+
+<details>
+<summary>Build from source</summary>
+
+Install DevEco Studio and the project's HarmonyOS SDK. Open the cloned project, let the IDE synchronize its dependencies, then configure automatic signing with your Huawei developer account and run it on a device.
 
 ```sh
 git clone https://github.com/Torry2022/turbo-ai-chat-harmonyos.git
 cd turbo-ai-chat-harmonyos
 ```
 
-Open with DevEco Studio, log in to your Huawei developer account, enable automatic signing, then run on a device. Or via command line:
+With the SDK, Node.js, ohpm and signing configured, the command-line equivalent is:
 
 ```sh
+npm install
+ohpm install
 node ./node_modules/@ohos/hvigor/bin/hvigor.js assembleHap --no-daemon
 hdc install -r entry/build/default/outputs/default/entry-default-signed.hap
 ```
+
+Model weights are downloaded separately. Rebuilding MNN is optional; see [Inference Backend and Performance](#inference-backend-and-performance).
+
+</details>
 
 ### 2. Install models
 
@@ -262,60 +240,80 @@ Interrupted downloads resume from verified blocks, with the unfinished block dow
 
 ### 3. Start chatting
 
-After the model loads, return to the Chat tab and send a message. Qwen3-4B-Instruct is the default text model. MiniCPM5-1B displays thinking blocks (`<think>`). Gemma-4-E2B-it supports image input.
+After the model loads, return to the Chat tab and send a message. Qwen3-4B-Instruct is the default text model. MiniCPM5-1B supports thinking blocks (`<think>`). Gemma-4-E2B-it supports image input.
 
 With a physical keyboard, Enter sends from the chat input and Shift+Enter inserts a line break; the input method handles candidate selection first. Ctrl+N starts a new conversation. Esc leaves the input or closes a dismissible dialog without exiting the app. With the on-screen keyboard, use the send button. Chat content is centered with a maximum width in wide windows; opening the on-screen keyboard reduces the content area while keeping the header and input visible.
 
 ## Features
 
-- Appearance: new installations follow the system. Choose Light, Dark, or System in Settings. Open Settings from the bottom of the sidebar in wide windows, or from the top-left logo menu in narrow windows. The selection is saved; both themes share the same layouts, logo, and launch artwork.
-- Diagnostic content recording is off by default. Enable it temporarily in Settings to save the latest text request's context, answer, and generation parameters locally. Disabling recording, deleting a conversation, or restarting the app clears the record. Settings also provides a manual clear action. Image, decision, and reranking requests do not record their content.
-- Adaptive navigation: bottom tabs in narrow windows and a sidebar in wider windows. On API 26 or later phones, the official immersive bar stays visible in Chat and hides or reappears while scrolling other pages.
-- The PC window title bar provides Chat, Settings, and Help menus for starting a new chat, opening app settings, and viewing keyboard shortcuts or the app version. Once opened, hover over another menu heading to switch menus, or press Esc to close. On phones and tablets, open Settings from the sidebar or logo menu.
-- Chat displays app CPU, app memory, and device temperature. Message width is limited on wide screens for readability.
-- The composer keeps the model name and loading state visible. Clicking it before a model is loaded opens the model page.
-- Message text supports partial copying: on API 26 or later, use touch handles or a mouse to select across paragraphs, lists, code blocks, and tables within one answer; older systems support selection within one text block. Selections copy visible text, the copy button in the bubble header preserves Markdown, and code-block buttons copy code only.
-- The composer starts with one line, grows for long drafts, and can expand or collapse in place.
-- Wide model pages place the model list beside its settings. Long-press a handle to reorder by touch, or drag it directly with a mouse.
-- Monitoring cards switch between one and two columns according to available width, with metrics sharing the space inside each card.
-- Dialogs fit the available window width and allow long body text to scroll. The Model Gallery shrinks when the on-screen keyboard opens to keep content visible.
-- Local inference: models run on-device, no network required
-- Streaming output: displays the answer as it is generated, without waiting for the full response
-- Stop generation: interrupt the current response while it is streaming. Output-limit and timeout notices appear in the answer and are saved with chat history
-- Voice input: offline Mandarin recognition through Core Speech Kit, with live partial results and manual stop
-- Model switching: switch between preset models, installed market models, and imported models
-- Thinking blocks: separate reasoning from the final answer, including models whose chat template already supplies the opening `<think>` tag. Models with a supported template expose a Deep thinking switch below the model list. The choice is saved per model and applies to the next request; untouched settings retain the model default. Reasoning counts toward the maximum output length, so reaching the limit may cut the answer short.
-- Markdown rendering: code blocks (with copy button), tables, blockquotes, links, etc., with compatibility handling for incomplete inline code, empty table cells, and table column jitter during streaming output
-- Streaming display and scrolling: progressively reveals generated text with a brief fade-in for new content, caches Markdown / thinking-block parsing, and pauses auto-follow while the user is scrolling
-- Generation parameter controls: temperature, Top-P/K and penalties take effect on the next generation request. Zero temperature selects the highest-scoring token; a zero penalty window includes all recorded tokens.
-- Performance metrics: TTFT, TPOT, tokens/s, and token counts for completed responses
-- Open run details from a response’s more menu to inspect its saved model, threads, generation settings and timings, or export them as JSON. The Models page shows local load history, loaded models and memory usage, with controls to release models.
-- Model management: download from the Model Gallery, reorder or delete installed models, and optionally load the current model when the app starts
-- Import local MNN models by selecting a folder (where supported), importing a zip, or pushing a directory and scanning it in the app; standard MNN export directories use `jinja.chat_template` from `llm_config.json`
-- OpenAI-compatible API: serve the currently loaded model to Cherry Studio and other LAN clients with streaming output and Bearer authentication
-- Image input: attach one image per message and preview or remove it before sending. Tap an image in a message to view it full-screen, with pinch zoom, double-tap zoom and panning.
-- Message actions: copy, edit, and regenerate icons appear in message bubble headers. User-message actions appear on hover or keyboard focus when using a mouse and remain visible for touch input. Long-press the text to select it. Regenerate the last answer using the currently loaded model and the original question and image. Earlier answers are retained and can be selected within the bubble; follow-up questions use the selected answer as context. You can also edit and resend any question directly in its bubble, replacing its answer and subsequent messages while preserving the composer draft.
-- Chat history: save conversations and images locally; create, resume, rename, delete, or clear chats. Search titles and message text, including earlier answer versions, then open a result at the matching message and version. Double-click the title at the top of the chat with a mouse to rename it. Hover over a history item to scroll a truncated title into view. After the first reply in a new chat, the loaded model generates a title when idle. If naming fails, the existing title stays; manual names are preserved. Each reply retains its model and timestamp. Uninstalling or clearing app data removes history.
-- Conversation context: retain existing content when generation stops, times out, or reaches the output limit, and use the generated answer in follow-up questions. Use the menu beside the conversation title to inspect the messages used for the latest answer and the reasons for exclusions. When the model package declares a context limit, reserve room for the output using the actual input length and remove the oldest complete exchanges first.
-- Text-only multi-turn conversations support context cache reuse to reduce repeated computation and shorten the wait for follow-up answers.
+### Conversations and history
 
-- Conversation branches: choose New Branch on an answer to continue in an independent conversation containing the history through that answer. Images and answer versions are preserved, with a source link back to the original chat.
+- Run text and multimodal models on-device, with streaming Markdown, code blocks, tables and reasoning. Chat offline after installing a model.
+- Stop generation, edit questions and regenerate answers. Retain earlier answer versions and use the selected version in follow-up context.
+- Preserve generated content after stopping, timeout or output-limit termination, with a status tag in the bubble header. Valid answer text remains available to later questions.
+- Save conversations and images locally. Search titles, messages and earlier answer versions. Generate new conversation titles when idle after the first reply, while preserving manual titles.
+- Branch from an assistant answer with the history, images and answer versions through that point, and return to the source conversation.
+- Export a conversation as Markdown or a ZIP with its images. Back up and restore complete history through Settings, appending restored conversations as independent copies.
 
-- Export and backup: export the current conversation from the menu beside its title. Text-only exports use Markdown; conversations with images use a ZIP. Save a complete backup, including images and all answer versions, under Conversation Data in Settings. Restoration previews the conversation count and appends independent copies to history. Backups exclude model weights and API keys.
+### Images and context
+
+- Attach one image per message and preview or remove it before sending. Open message images full-screen with pinch zoom, double-tap zoom and panning.
+- Ask follow-up questions about the same image. Each request context supports one image; start a new conversation when changing images.
+- Inspect the context used for the latest answer and why messages were omitted. When the model declares a capacity, reserve space for the output and trim older complete exchanges first.
+- Toggle deep thinking for supported models, with a per-model choice applied to the next generation. Text conversations can reuse matching context caches.
+
+### Models and runtime settings
+
+- Browse conversation, decision and reranking models in the Model Gallery, with independent loading and management. Conversation models also support folder, ZIP and pushed-directory imports.
+- Adjust CPU threads for all three categories and reload to apply runtime changes. Generation parameters and thinking settings take effect on the next generation.
+- View local loading records, loaded models and current memory on the Models page. Release models individually and select a conversation model to load at startup.
+- Try choice, score and boolean tasks in the decision dialog or through the API. Use reranking models through the API to rank candidate passages.
+
+### Input, copying and adaptive layouts
+
+- Use the app on phones, tablets and PCs with window-adaptive layouts and Light, Dark or System appearance. Phone conversation headers use native background blur.
+- Dictate in Mandarin offline and expand long drafts for editing. Physical keyboards support Enter to send, Shift+Enter for a new line, Ctrl+N for a new conversation and Esc to close dismissible windows. Input-method candidate selection takes priority.
+- Copy selected message text across Markdown blocks on API 26 or later. Selections copy visible text, bubble copy preserves Markdown and code-block buttons copy code only.
+- Hover over truncated history titles to scroll them into view and double-click the conversation title to rename it. Wide windows provide a history sidebar and PC menus.
+
+### APIs and runtime monitoring
+
+- Expose an OpenAI-compatible LAN chat API, plus decision, reranking and runtime endpoints, with streaming and optional Bearer authentication.
+- View CPU, RSS resident memory, temperature and other metrics in the chat status bar and Monitor page. Inspect and export the model source, threads, generation settings and timings saved with each answer version.
+- Content diagnostics are off by default and can be enabled temporarily in Settings. Turning them off, restarting the app or deleting a conversation clears the record. See [Development checks](#development-checks).
 
 ## Screenshots
 
-| Chat | Model | Service | Monitor |
+Phone screenshots from v2.0.0 in Light mode:
+
+| Chat | Models | API Service | Monitor |
 | --- | --- | --- | --- |
-| ![chat](docs/images/chat.jpg) | ![models](docs/images/models.jpg) | ![service](docs/images/service.jpg) | ![monitor](docs/images/monitor.jpg) |
+| ![Chat](docs/images/chat.jpg) | ![Models](docs/images/models.jpg) | ![API Service](docs/images/service.jpg) | ![Monitor](docs/images/monitor.jpg) |
 
-Tablet in landscape:
+Maximized PC window, captured full-screen:
 
-![Tablet model page](docs/images/tablet-models.jpg)
+![PC conversation and history](docs/images/pc-chat.jpg)
 
-Maximized PC window:
+<details>
+<summary>PC model settings and the phone Model Gallery</summary>
 
-![PC model page](docs/images/pc-models.jpg)
+![PC model settings](docs/images/pc-models.jpg)
+
+<img src="docs/images/model-gallery.jpg" alt="Phone Model Gallery" width="360">
+
+</details>
+
+<details>
+<summary>Tablet landscape conversation and model settings</summary>
+
+v2.0.0 in Light mode, captured on a MatePad Edge.
+
+![Tablet conversation](docs/images/tablet-chat.jpg)
+
+![Tablet model settings](docs/images/tablet-models.jpg)
+
+</details>
+
 
 ## OpenAI-Compatible API Server
 
@@ -334,11 +332,14 @@ Inference requests are handled one at a time. While busy, the server returns HTT
 
 The service header provides an endpoint reference. Click a log entry to view and copy its full text. The service list shows the models currently loaded in memory and marks unloaded categories as “未加载” (Not loaded).
 
-The phone bottom bar and narrow sidebar label this entry “API 服务” (API Service). The wide sidebar uses “服务” (Service) with the “OpenAI API” subtitle.
+The phone bottom bar and narrow sidebar label this entry “API 服务” (API Service). The wide sidebar uses “服务” (Service) with the “本地 API” (Local API) subtitle.
 
 The Service tab shows operational logs for server lifecycle, request paths, model parameters, response status, latency, and output size. It does not log API keys, prompts, or response text.
 
 Wide windows place service settings beside the API logs. Narrowing the window restores a single column without restarting an active server.
+
+<details>
+<summary>Image input, protocol limits and background operation</summary>
 
 The server keeps at most 16 connections. Each request must be received within 15 seconds of connecting and must fit within 1 MiB. A send that stalls for 30 seconds, or more than 4 MiB of pending output, closes the connection and requests cancellation of its chat or reranking task. The receive deadline does not limit normal model inference time.
 
@@ -371,6 +372,8 @@ At the output limit, Chat Completions returns `finish_reason: length`, while Res
 | Tool calls, JSON mode, JSON Schema | Rejected with an explicit unsupported-feature error |
 | Responses history IDs, server-side conversations, background tasks and storage | Rejected with an explicit unsupported-feature error |
 | Custom stop sequences, seeds and multiple completions per request | Not currently supported |
+
+</details>
 
 ### Runtime status
 
@@ -495,41 +498,28 @@ On-device LLM decoding includes token-by-token serial stages, and actual through
 ## Architecture
 
 ```text
-ChatTab / ModelTab / MonitorTab / ...
+ChatViewModel / OpenAiApiServer
+    |-- GenerationWorkflow / NativeInferenceService
+    |-- DecisionService
+    `-- RerankerService
                 |
-          ChatViewModel
-      |-- GenerationWorkflow -- ImagePayloadService
-      |-- ModelLifecycleService -- preflight / install / import / scan
-      `-- NativeInferenceService (shared by both workflows)
+       N-API Bridge (libentry.so)
+    |-- MnnLlmRunner       text / image
+    |-- Laya / H2O         decisions
+    `-- MNN Reranker       scoring
                 |
-        N-API Bridge (libentry.so)
-                |
-     MnnLlmRunner (mnn_llm_runner.cpp)
-        |          |           |
-      text      raw prompt     image
-                |
-       MNN Runtime (libMNN.so)
-                |
-           CPU Backend
+       MNN Runtime / CPU Backend
 ```
 
-`MnnLlmRunner` provides native inference for compatible MNN `Transformer::Llm` directories. ArkTS lifecycle services handle installation, import, and directory preflight, while text, raw-prompt, and image generation share a stable N-API boundary. Laya decisions use a separate `LayaDecisionService` → N-API → MNN Interpreter path, with option probabilities returned directly rather than generated as chat text. See [Core Inference Pipeline Evolution](docs/architecture/core-inference-evolution.md) for details.
+The conversation, decision and reranking paths share the MNN CPU runtime. A shared execution permit coordinates model tasks; the models can remain loaded independently. Installation, import, preflight checks and loading records are managed in ArkTS. The local API uses these same runtime paths. See [Core Inference Pipeline Evolution](docs/architecture/core-inference-evolution.md).
 
 ## Native API
 
-ArkTS calls N-API via `import entry from 'libentry.so'`:
+ArkTS accesses the Native bridge through `libentry.so`. The maintained signatures and result types are in the [type declarations](entry/src/main/cpp/types/libentry/Index.d.ts).
 
-```ts
-entry.loadModelAsync(configPath, threadNum, maxNewTokens, settings): Promise<string>
-entry.generateRawPromptStream(prompt, maxNewTokens, endWith, settings, onChunk): Promise<GenerationResult>
-entry.generateChatStream(messages, maxNewTokens, settings, onChunk): Promise<GenerationResult>
-entry.generateImageChatStream(messages, pixels, width, height, maxNewTokens, settings, onChunk): Promise<GenerationResult>
-entry.stopGeneration(): void
-entry.reset(): void
-entry.isLoaded(): boolean
-entry.layaDecideAsync(modelPath, tokenizerPath, state, type, instruction, options): Promise<string>
-entry.layaReleaseAsync(): Promise<void>
-```
+- Conversation generation prepares the actual input, then runs text, raw-prompt or image inference, returning text, stop reasons, token counts and Native timings.
+- Laya and H2O provide explicit loading, decision and release operations. Reranking provides loading, scoring, cancellation and release through its service wrapper.
+- The bridge also exposes thread information, generation cancellation and diagnostic controls. ArkTS services coordinate execution ownership and model lifecycle.
 
 ## Development checks
 
@@ -539,12 +529,19 @@ See the [test and acceptance checklist](docs/testing.md) for device scenarios an
 
 These tests run on a host computer with mocked system interfaces and require neither model weights nor a device. ArkTS compilation, HAP builds, signing and device validation still use DevEco Studio.
 
+Content diagnostics can be enabled temporarily in Settings to inspect the latest text request, answer and generation parameters in `raw_output_debug.txt` through hdc. Recording is off by default and is cleared when disabled, on restart or when a conversation is deleted. Image, decision and reranking requests do not record their content.
+
+```sh
+hdc shell "cat /data/app/el2/100/base/com.torry.turbochat/haps/entry/files/raw_output_debug.txt"
+```
+
 ## License
 
 This repository's source code is licensed under Apache-2.0.
 
 MNN Runtime and model weights follow their respective upstream licenses or model-card terms. This repository and Release HAPs do not include model weights. Users who download models through the Model Gallery, scripts, or manual push should follow the terms of the corresponding upstream source.
 
+- [H2O-Lightning-4B-MNN-INT8](https://modelscope.cn/models/TorryJi/H2O-Lightning-4B-MNN-INT8)
 - [Laya-Multilingual-MNN-FP16](https://modelscope.cn/models/TorryJi/Laya-Multilingual-MNN-FP16)
 - [MNN](https://github.com/alibaba/MNN)
 - [Qwen3-4B-Instruct-2507-MNN](https://modelscope.cn/models/MNN/Qwen3-4B-Instruct-2507-MNN)

@@ -72,6 +72,10 @@ const Subject = vm.runInNewContext(compile(`class Subject { ${members.map(node=>
   fs:{readText:name=>read(name)},modelThinkingSupport,
   preferences:{getPreferences:async()=>({get:async(key,fallback)=>store.get(key)??fallback,put:async(key,value)=>store.set(key,value),flush:async()=>{}})}
 });
+Object.assign(Subject.prototype, {
+  currentModel() { return { id: this.selectedModelId }; },
+  refreshModelUsage() {}
+});
 const flush=async()=>{for(let i=0;i<20;i++) await Promise.resolve();};
 (async()=>{
   const view=new Subject();Object.assign(view,{context:{},selectedModelId:'model-a',modelPath:'/a/config.json',notify:()=>{},toastCallback:message=>{assert.equal(message, '下次生成使用此思考设置');}});
@@ -95,7 +99,10 @@ const flush=async()=>{for(let i=0;i<20;i++) await Promise.resolve();};
   console.log('PASS model/path changes reject stale reads and missing templates hide the control');
   const received=[];
   const native={generateChatStream:async(_turns,_limit,settings,_chunk,title)=>{received.push({settings,title});return {};},generateImageChatStream:async(_turns,_pixels,_w,_h,_limit,settings)=>{received.push({settings});return {};}};
-  const {NativeInferenceService}=moduleFrom('services/NativeInferenceService.ets',id=>{assert.equal(id,'libentry.so');return {default:native};});
+  const {NativeInferenceService}=moduleFrom('services/NativeInferenceService.ets',id=>{
+    if(id==='./ModelExecutionService') return moduleFrom('services/ModelExecutionService.ets',()=>({}));
+    assert.equal(id,'libentry.so');return {default:native};
+  });
   const bridge=new NativeInferenceService();await bridge.generateText([],128,{thinkingEnabled:false},()=>{});await bridge.generateImage([],{pixels:new ArrayBuffer(3),width:1,height:1},128,{thinkingEnabled:true},()=>{});await bridge.generateTitle([]);
   assert.equal(received[0].settings.thinkingEnabled,false);assert.equal(received[1].settings.thinkingEnabled,true);assert.equal(received[2].title,true);
   assert.equal(received[2].settings.thinkingEnabled,undefined,'native title scope independently disables thinking');

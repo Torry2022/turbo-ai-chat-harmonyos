@@ -89,7 +89,7 @@ python scripts/model_catalog.py --catalog model-catalog/catalog.json validate
 
 自动推断不合适时可使用 `--id`、`--directory-name`、`--display-name`、`--description`、`--supports-image`、`--system-prompt` 和 `--context-message-limit` 覆盖。运行 `python scripts/model_catalog.py add --help` 可查看完整参数。
 
-`provider` 表示模型品牌或系列，例如 `Qwen`、`Gemma`、`MiniCPM`、`Laya`。下载仓库账号保留在 `source.repo` 中。发布器默认识别已知系列，无法确定时使用 `Other`，可用 `--provider` 指定。App 读取旧目录缓存、已解析目录及已安装快照时，也会按此口径归一化旧标注。
+`provider` 表示模型厂商或系列，例如 `Qwen`、`Gemma`、`MiniCPM`、`Laya`。下载仓库账号保留在 `source.repo` 中。发布器默认识别已知系列，无法确定时使用 `Other`，可用 `--provider` 指定。App 读取旧目录缓存、已解析目录及已安装快照时，也会按此口径归一化旧标注。
 
 更新规则：
 

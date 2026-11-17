@@ -8,7 +8,7 @@ Turbo AI Chat 基于 [`Turbo1123/turbo-ai-chat-harmonyos`](https://github.com/Tu
 
 上游实现主要面向 Gemma 4，模型目录、提示词格式和 native 类名都带有较强的单模型特征。接入 Qwen、MiniCPM 等模型后，加载流程改为以 MNN 模型目录为单位，不再由 ArkTS 固定某一种模型的提示词模板。
 
-当前流程会先检查模型目录，再读取其中的 `llm_config.json`。对话模板、停止符、视觉配置和生成参数优先采用模型自身的配置；兼容代码只处理少数仍在使用的旧目录格式。预置模型、从模型广场下载的模型和用户导入的模型最终通过同一套接口加载。
+当前流程会先检查模型目录，再读取其中的 `llm_config.json`。对话模板、停止符和视觉配置优先采用模型自身的配置；生成参数结合模型配置、预设与安装快照确定，规则见[生成参数说明](../../model-catalog/generation-defaults.md)。兼容代码处理仍在使用的旧目录格式。预置模型、从模型广场下载的模型和用户导入的模型最终通过同一套接口加载。
 
 C++ 推理类也由 `GemmaRunner` 更名为 `MnnLlmRunner`。这个名称对应其实际职责：加载并运行兼容 MNN `Transformer::Llm` 的模型目录，而不是绑定某个具体模型。
 
@@ -36,7 +36,7 @@ C++ 推理类也由 `GemmaRunner` 更名为 `MnnLlmRunner`。这个名称对应�
 - `eos`、达到最大长度、用户停止、超时和内部错误等停止原因；
 - 输入、输出 token 数量及生成耗时。
 
-ArkTS 根据这些结果更新消息状态，并计算 TTFT、TPOT 和 tokens/s。被用户停止或因异常中断的回答会按停止原因处理，避免将不完整内容误当作正常回答继续参与上下文。
+ArkTS 根据这些结果更新消息状态，并计算 TTFT、TPOT 和 tokens/s。回答按停止原因保存状态。用户停止、超时和达到输出上限时，有效回答正文可继续参与上下文；未完成的思考内容、空回答和内部错误结果会按上下文规则排除。
 
 ## 模型安装、导入与切换
 
@@ -50,32 +50,24 @@ ArkTS 根据这些结果更新消息状态，并计算 TTFT、TPOT 和 tokens/s�
 
 `OpenAiApiServer` 使用 HarmonyOS 的 `TCPSocketServer` 在设备上监听端口，将 OpenAI 兼容请求转换为现有的文本生成调用。服务支持查询当前模型，并通过 Chat Completions API 或 Responses API 返回普通 JSON 和 SSE 流式结果。
 
-API 请求与 App 内对话共用同一个 `MnnLlmRunner` 实例和忙碌状态，因此同一时间只执行一个生成任务。第一版不自动切换模型，也不接收图片或工具调用。模型输出包含 `<think>` 时，Chat Completions API 通过 `reasoning_content` 返回思考过程，Responses API 使用独立 reasoning 输出项，最终回答仍保留在常规文本字段中。
+API 请求与 App 内对话共用对话模型实例。对话、自动命名、决策和重排由 `ModelExecutionService` 协调，同一时间执行一项模型任务。当前 API 支持文字、单张图片、图片 URL、决策、重排和运行状态查询。客户端携带原图与历史消息可连续追问；工具调用仍会返回不支持错误。模型输出包含 `<think>` 时，Chat Completions API 通过 `reasoning_content` 返回思考过程，Responses API 使用独立 reasoning 输出项，最终回答仍保留在常规文本字段中。
 
 服务仅在用户手动开启后监听局域网地址，并可使用 Bearer API Key 鉴权。关闭服务或断开正在生成的客户端连接时，停止请求会继续传递到 native 推理层。
 
 ## 当前调用关系
 
 ```text
-ChatTab / ModelTab / MonitorTab          Cherry Studio 等局域网客户端
-                |                                   |
-          ChatViewModel <---------------- OpenAiApiServer
-      |-- GenerationWorkflow -- ImagePayloadService
-      |-- ModelLifecycleService
-      |     |-- ModelDirectoryPreflightService
-      |     |-- BuiltinModelInstallService
-      |     `-- ModelImportService
-      `-- NativeInferenceService
+ChatViewModel / OpenAiApiServer
+    |-- GenerationWorkflow / NativeInferenceService
+    |-- DecisionService
+    `-- RerankerService
                 |
-        N-API Bridge (libentry.so)
+       N-API Bridge (libentry.so)
+    |-- MnnLlmRunner       text / image
+    |-- Laya / H2O         decisions
+    `-- MNN Reranker       scoring
                 |
-     MnnLlmRunner (mnn_llm_runner.cpp)
-        |          |           |
-      文本      原始 Prompt    图片
-                |
-       MNN Runtime 3.6.0
-                |
-           CPU Backend
+       MNN Runtime / CPU Backend
 ```
 
 各层的职责如下：
@@ -84,7 +76,9 @@ ChatTab / ModelTab / MonitorTab          Cherry Studio 等局域网客户端
 - `GenerationWorkflow` 组织单次生成流程，并协调文字与图片输入；
 - `ModelLifecycleService` 处理模型加载、切换、删除及相关状态检查；
 - `NativeInferenceService` 封装 ArkTS 对 N-API 的调用；
-- `OpenAiApiServer` 处理 HTTP、Bearer 鉴权和 OpenAI 协议转换；
+- `OpenAiApiServer` 处理 HTTP、Bearer 鉴权、图片输入和 OpenAI 协议转换；
+- `DecisionService` 路由 Laya 与 H2O 决策，`RerankerService` 管理重排模型；
+- `ModelExecutionService` 协调共享执行许可，模型是否驻留内存由各自生命周期管理；
 - N-API 负责参数转换、异步任务和流式回调；
 - `MnnLlmRunner` 直接调用 MNN，返回生成文本、停止原因和 token 统计。
 
@@ -103,7 +97,7 @@ ChatTab / ModelTab / MonitorTab          Cherry Studio 等局域网客户端
 
 ## 兼容性说明
 
-本次核心代码整理更改了 `GemmaRunner`、CMake 工程名和 native 内部任务名，但没有修改 ArkTS 使用的 N-API 方法，因此现有 ArkTS 调用无需迁移。
+早期核心代码整理将 `GemmaRunner` 更名为 `MnnLlmRunner`，并调整 CMake 工程名和 Native 内部任务名。当前 Native 接口已扩展输入准备、独立决策加载、重排和线程信息等能力，实际签名以[类型声明](../../entry/src/main/cpp/types/libentry/Index.d.ts)为准。
 
 从 v2.0.0 起，应用使用包名 `com.torry.turbochat`。此前的 `com.example.gemma4mnn` 来自项目早期实现；新包名使用独立的数据目录，首次安装不会自动沿用旧应用的数据。
 
@@ -111,4 +105,4 @@ ChatTab / ModelTab / MonitorTab          Cherry Studio 等局域网客户端
 
 The upstream project established the initial ArkTS → N-API → C++ → MNN pipeline for Gemma 4 text generation on HarmonyOS. This repository retains that foundation and extends it with compatible multi-model loading, native image input, generation control, performance metrics, model lifecycle management, and an OpenAI-compatible LAN API.
 
-Model-specific settings are read primarily from each MNN directory. Text, raw-prompt, image, and LAN API requests share the same native boundary, while generation results include cancellation state, stop reason, and token counts. The API server exposes the currently loaded model through `/v1/models`, `/v1/chat/completions`, and `/v1/responses`. The internal runner was renamed from `GemmaRunner` to `MnnLlmRunner` to reflect its current responsibility. Public N-API methods and the existing application identity remain unchanged.
+Model-specific settings are read primarily from each MNN directory. Text, raw-prompt, image, and LAN API requests share the same native boundary, while generation results include cancellation state, stop reason, and token counts. The API server exposes model listing, text and image conversations, decision, reranking and runtime status endpoints. A shared execution permit coordinates model tasks. The internal runner was renamed from `GemmaRunner` to `MnnLlmRunner` to reflect its current responsibility. The Native interface now includes input preparation, decision-model loading and reranking. Its maintained signatures are in the bridge type declarations. Since v2.0.0, the bundle name is `com.torry.turbochat`, with a separate data directory from the previous application.
