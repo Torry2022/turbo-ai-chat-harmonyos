@@ -10,7 +10,7 @@
       "displayName": "Qwen2.5-0.5B-Instruct",
       "shortName": "Qwen2.5-0.5B-Instruct",
       "description": "轻量 Qwen2.5 文本模型，适合快速响应和低存储占用。",
-      "provider": "MNN",
+      "provider": "Qwen",
       "supportsImage": false,
       "capabilities": [
         "文本"
@@ -66,7 +66,7 @@
       "displayName": "Qwen2-1.5B-Instruct",
       "shortName": "Qwen2-1.5B-Instruct",
       "description": "轻量 Qwen2 文本模型，兼顾响应速度、效果和存储占用。",
-      "provider": "MNN",
+      "provider": "Qwen",
       "supportsImage": false,
       "capabilities": [
         "文本"
@@ -122,7 +122,7 @@
       "displayName": "Qwen2-0.5B-Instruct",
       "shortName": "Qwen2-0.5B-Instruct",
       "description": "超轻量 Qwen2 文本模型，适合快速响应和低存储占用。",
-      "provider": "MNN",
+      "provider": "Qwen",
       "supportsImage": false,
       "capabilities": [
         "文本"
@@ -178,7 +178,7 @@
       "displayName": "Qwen3-4B",
       "shortName": "Qwen3-4B",
       "description": "Qwen3 文本模型，默认进行深度思考，响应较慢，适合较复杂的问题。",
-      "provider": "MNN",
+      "provider": "Qwen",
       "supportsImage": false,
       "capabilities": [
         "文本"
@@ -230,7 +230,7 @@
       "displayName": "Qwen1.5-0.5B-Chat",
       "shortName": "Qwen1.5-0.5B-Chat",
       "description": "超轻量 Qwen1.5 文本模型，适合快速本地对话和基础任务。",
-      "provider": "MNN",
+      "provider": "Qwen",
       "supportsImage": false,
       "capabilities": [
         "文本"
@@ -286,7 +286,7 @@
       "displayName": "Qwen-1.8B-Chat",
       "shortName": "Qwen-1.8B-Chat",
       "description": "经典 Qwen 1.8B 文本对话模型，适合基础中文问答。",
-      "provider": "MNN",
+      "provider": "Qwen",
       "supportsImage": false,
       "capabilities": [
         "文本"

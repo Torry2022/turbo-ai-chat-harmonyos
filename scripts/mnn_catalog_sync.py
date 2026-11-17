@@ -279,7 +279,7 @@ def build_candidate(model: dict[str, Any], max_bytes: int) -> dict[str, Any]:
         "displayName": display_name,
         "shortName": display_name,
         "description": description.strip(),
-        "provider": repo.split("/", 1)[0],
+        "provider": model_catalog.model_brand(display_name),
         "supportsImage": supports_image,
         "capabilities": ["文本", "图片"] if supports_image else ["文本"],
         "source": {"type": "modelscope", "repo": repo, "revision": revision},

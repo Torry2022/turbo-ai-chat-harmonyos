@@ -1,5 +1,5 @@
 import { BuiltinModelFileSpec, CatalogGenerationDefaults, ModelCatalogItem } from '../models/BuiltinModelDownloadTypes'
-import { catalogCapabilityLabels } from './modelCatalog'
+import { catalogCapabilityLabels, modelCatalogBrand } from './modelCatalog'
 import { ModelFileSnapshot, inferSupportsImageFromLlmConfig, validateModelDirectorySnapshot } from './modelCompatibility'
 
 interface OfficialModelSource {
@@ -121,7 +121,7 @@ export function parseOfficialModelCatalog(text: string, existing: ModelCatalogIt
     items.push({
       id, modelId: id, directoryName, displayName, shortName: displayName,
       description: supportsImage ? '支持文本与图片输入的多模态对话模型。' : '文本对话模型。',
-      provider: typeof entry.vendor === 'string' && entry.vendor.trim() ? entry.vendor : 'MNN',
+      provider: modelCatalogBrand(displayName, typeof entry.vendor === 'string' ? entry.vendor : ''),
       sourceName: 'ModelScope', sourceUrl, supportsImage, capabilities, recommended: false,
       files: [], totalBytes: entry.file_size
     })

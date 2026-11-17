@@ -38,6 +38,18 @@ const FILE_PATH_PATTERN: RegExp = /^[A-Za-z0-9._\/-]+$/
 const REPO_PATTERN: RegExp = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/
 const REVISION_PATTERN: RegExp = /^[A-Za-z0-9._-]+$/
 
+// Older catalogs used the package uploader as provider. Normalize display metadata only.
+export function modelCatalogBrand(name: string, provider: string): string {
+  const brand = provider.trim()
+  if (brand.length > 0 && brand.toLowerCase() !== 'mnn' && brand.toLowerCase() !== 'torryji') return brand
+  if (/^qwen(?:[0-9._ -]|$)/i.test(name)) return 'Qwen'
+  if (/^gemma(?:[0-9._ -]|$)/i.test(name)) return 'Gemma'
+  if (/^minicpm(?:[0-9._ -]|$)/i.test(name)) return 'MiniCPM'
+  if (/^laya(?:[0-9._ -]|$)/i.test(name)) return 'Laya'
+  if (/^h2o[-_ ]lightning(?:[0-9._ -]|$)/i.test(name)) return 'H2O.ai'
+  return 'Other'
+}
+
 export function catalogCapabilityLabels(capabilities: string[]): string[] {
   const labels: string[] = []
   for (const value of capabilities) {
@@ -168,6 +180,7 @@ export function parseInstalledCatalog(text: string): ModelCatalogItem[] {
     const item = parsed.items[index]
     validateInstalledItem(item)
     requireCondition(findCatalogItemIndex(result, item.id) < 0, `已安装市场模型 ID 重复：${item.id}`)
+    item.provider = modelCatalogBrand(item.displayName, item.provider)
     result.push(item)
   }
   return result
@@ -296,7 +309,7 @@ function toCatalogItem(remote: RemoteCatalogItem, bundled?: ModelCatalogItem): M
     displayName: remote.displayName,
     shortName: remote.shortName,
     description: remote.description,
-    provider: remote.provider,
+    provider: modelCatalogBrand(remote.displayName, remote.provider),
     sourceName: 'ModelScope',
     sourceUrl: `${MODELSCOPE_BASE_URL}/${remote.source.repo}`,
     supportsImage: remote.supportsImage,

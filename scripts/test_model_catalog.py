@@ -47,6 +47,17 @@ def valid_catalog() -> dict:
 
 
 class ModelCatalogPublisherTest(unittest.TestCase):
+    def test_model_brand_does_not_default_to_the_upload_account(self):
+        for name, brand in (("Qwen3-0.6B", "Qwen"), ("Gemma-4-E2B", "Gemma"),
+                            ("MiniCPM5-1B", "MiniCPM"), ("Laya-Multilingual", "Laya"),
+                            ("H2O-Lightning-4B", "H2O.ai")):
+            with self.subTest(name=name):
+                self.assertEqual(brand, model_catalog.model_brand(name))
+                self.assertEqual(brand, model_catalog.model_brand(name, "MNN"))
+                self.assertEqual(brand, model_catalog.model_brand(name, "TorryJi"))
+        self.assertEqual("Other", model_catalog.model_brand("Unknown-Model"))
+        self.assertEqual("CustomBrand", model_catalog.model_brand("Qwen3-Converted", "CustomBrand"))
+
     def defaults(self, config, generation_config=None):
         return model_catalog.build_runtime("Test", False, "", 6, config, generation_config)["generationDefaults"]
 
@@ -92,6 +103,7 @@ class ModelCatalogPublisherTest(unittest.TestCase):
         with patch.object(model_catalog, "fetch_modelscope_files", return_value=(files, revision)), \
                 patch.object(model_catalog, "fetch_repo_json", side_effect=lambda r, v, p: configs[p]) as fetch:
             item = model_catalog.build_item(args)
+            self.assertEqual(item["provider"], "Other")
             fetch.assert_any_call("Test/Model-MNN", revision, "generation_config.json")
             self.assertEqual(item["runtime"]["generationDefaults"]["temperature"], 0.8)
         with patch.object(model_catalog, "fetch_modelscope_files", return_value=(files[:-1], revision)), \

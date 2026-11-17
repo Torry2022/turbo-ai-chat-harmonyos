@@ -41,7 +41,7 @@
 
 工作流只允许修改这一份目录文件；如果 `main` 在运行期间发生变化或生成器触碰其他文件，发布会失败并要求重新运行。工作流由手动表单触发，自己的提交不会递归触发下一次发布。
 
-注意：`add_or_update` 会重新生成运行配置，不自动保留人工调整过的参数。已有条目应先在本地使用 `--dry-run` 比较差异；有意保留的实测配置须人工维护，不要直接用 Actions 覆盖。当前已确认的条目见[生成参数说明](generation-defaults.md#历史依据复核与处理结论)。
+注意：`add_or_update` 会重新生成运行配置，不自动保留人工调整过的参数。已有条目应先在本地使用 `--dry-run` 比较差异；有意保留的实测配置须人工维护，不要直接用 Actions 覆盖。当前已确认的条目见[生成参数说明](generation-defaults.md#保留的模型配置)。
 
 ## Fork 与二次开发
 
@@ -85,9 +85,11 @@ python scripts/model_catalog.py --catalog model-catalog/catalog.json validate
 
 新增模型时，发布器会自动读取仓库文件名和精确大小、排除 README 等非运行文件、解析文本/图片能力和常用生成参数、生成运行配置、递增 `catalogVersion` 并更新 `publishedAt`。使用 `master`、分支或标签作为输入时，最终写入目录的是 ModelScope 返回的具体提交哈希。
 
-生成参数兼容新旧字段名，并以同一提交的 `config.json` 优先、`generation_config.json` 次之，缺项使用 App 兜底值。内置预设和已安装快照不会随目录刷新自动覆盖，详见[生成参数来源、更新边界与审计结果](generation-defaults.md)。
+生成参数兼容新旧字段名，并以同一提交的 `config.json` 优先、`generation_config.json` 次之，缺项使用 App 兜底值。内置预设和已安装快照不会随目录刷新自动覆盖，详见[生成参数来源、更新方式与维护规则](generation-defaults.md)。
 
 自动推断不合适时可使用 `--id`、`--directory-name`、`--display-name`、`--description`、`--supports-image`、`--system-prompt` 和 `--context-message-limit` 覆盖。运行 `python scripts/model_catalog.py add --help` 可查看完整参数。
+
+`provider` 表示模型品牌或系列，例如 `Qwen`、`Gemma`、`MiniCPM`、`Laya`。下载仓库账号保留在 `source.repo` 中。发布器默认识别已知系列，无法确定时使用 `Other`，可用 `--provider` 指定。App 读取旧目录缓存、已解析目录及已安装快照时，也会按此口径归一化旧标注。
 
 更新规则：
 

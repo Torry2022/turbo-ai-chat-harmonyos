@@ -297,6 +297,50 @@ async function main() {
     file_size: 1234, sources: { ModelScope: 'MNN/Example-MNN' }, tags: ['Think', 'Code'] }] });
   const response = value => ({ responseCode: 200, result: JSON.stringify(value) });
   const revision = '0123456789abcdef0123456789abcdef01234567';
+  await check('model cards use model brands for bundled and special entries', async () => {
+    const service = new ModelCatalogService();
+    const expected = { 'qwen3-4b-instruct': 'Qwen', 'gemma4': 'Gemma', 'minicpm5-1b': 'MiniCPM',
+      'laya-multilingual-mnn-fp16': 'Laya' };
+    for (const [id, brand] of Object.entries(expected)) assert.equal(service.findMarketItem(id).provider, brand);
+    assert(service.items().every(item => !['MNN', 'TorryJi'].includes(item.provider)));
+    const { modelCatalogBrand } = load(path.join(sourceRoot, 'utils/modelCatalog.ets'));
+    assert.equal(modelCatalogBrand('H2O-Lightning-4B', 'TorryJi'), 'H2O.ai');
+    assert.equal(modelCatalogBrand('Qwen3-Converted', 'AnotherBrand'), 'AnotherBrand');
+    assert.equal(modelCatalogBrand('Unrecognized-Model', 'MNN'), 'Other');
+  });
+  await check('offline old catalog, resolved and installed caches display normalized brands without changing packages', async () => {
+    const oldManifest = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../model-catalog/catalog-v2.json'), 'utf8'));
+    oldManifest.items.filter(item => item.displayName.startsWith('Qwen')).forEach(item => { item.provider = 'MNN'; });
+    const cacheText = JSON.stringify(oldManifest);
+    files.set(newCache, cacheText);
+    const stale = { ...MODEL_CATALOG_ITEMS[0], provider: 'MNN' };
+    const mini = { ...MODEL_CATALOG_ITEMS.find(item => item.id === 'minicpm5-1b'), provider: 'TorryJi' };
+    const laya = { ...load(path.join(sourceRoot, 'models/LayaModelConfig.ets')).LAYA_DOWNLOAD_SPEC, provider: 'TorryJi' };
+    const installedText = serializeInstalledCatalog([stale, mini, laya]);
+    files.set(current, installedText);
+    const oldResolved = { ...stale, id: 'official-deepseek-replay-mnn', directoryName: 'DeepSeek-Replay-MNN',
+      displayName: 'DeepSeek-Replay', sourceUrl: 'https://modelscope.cn/models/MNN/DeepSeek-Replay-MNN' };
+    oldResolved.files = stale.files.map(file => ({ ...file, url: file.url.replace(stale.sourceUrl, oldResolved.sourceUrl) }));
+    files.set('/test/model-catalog-official-files.json', serializeInstalledCatalog([stale, oldResolved]));
+    files.set('/test/model-catalog-official.json', JSON.stringify(official('21', [{ modelName: 'Qwen3.5-2B-MNN',
+      file_size: 1234, sources: { ModelScope: 'MNN/Qwen3.5-2B-MNN' }, tags: ['Chat'] },
+      { modelName: 'DeepSeek-Replay-MNN', vendor: 'DeepSeek', file_size: 1234,
+        sources: { ModelScope: 'MNN/DeepSeek-Replay-MNN' }, tags: ['Chat'] }])));
+    for (let restart = 0; restart < 2; restart++) {
+      const service = new ModelCatalogService();
+      await service.load('/test');
+      assert.equal(service.findMarketItem(stale.id).provider, 'Qwen');
+      assert.equal(service.findMarketItem('qwen2-0.5b-instruct').provider, 'Qwen');
+      assert.equal(service.findMarketItem('official-qwen3.5-2b-mnn').provider, 'Qwen');
+      assert.equal(service.findMarketItem(oldResolved.id).provider, 'DeepSeek');
+      assert.equal(service.findInstallItem(mini.id).provider, 'MiniCPM');
+      assert.equal(service.findInstallItem(laya.id).provider, 'Laya');
+      assert.deepEqual({ ...service.findInstallItem(stale.id), provider: 'MNN' }, stale);
+      assert.equal(files.get(newCache), cacheText);
+      assert.equal(files.get(current), installedText);
+      assert.equal(requests.length, 0);
+    }
+  });
   const blobs = ['config.json', 'llm_config.json', 'tokenizer.txt', 'llm.mnn', 'llm.mnn.weight'].map(Path =>
     ({ Type: 'blob', Path, Size: 12, Revision: revision }));
   const listing = (Files = blobs) => ({ Success: true, Data: { Files, LatestCommitter: { ShortId: revision.slice(0, 8) } } });

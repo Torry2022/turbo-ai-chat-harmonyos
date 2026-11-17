@@ -172,6 +172,7 @@ class CandidatePipelineTest(unittest.TestCase):
     def test_generation_config_fallback_uses_resolved_revision(self) -> None:
         self.add_generation_config({"temperature": 0.23, "top_p": 0.71, "top_k": 17, "do_sample": True})
         candidate = self.build()
+        self.assertEqual(candidate["catalogItem"]["provider"], "Qwen")
         defaults = candidate["catalogItem"]["runtime"]["generationDefaults"]
         self.assertEqual((defaults["temperature"], defaults["topP"], defaults["topK"]), (0.23, 0.71, 17))
         self.assertEqual(candidate["failures"], [])

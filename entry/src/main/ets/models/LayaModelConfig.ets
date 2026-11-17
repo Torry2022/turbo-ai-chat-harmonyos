@@ -17,7 +17,7 @@ export const LAYA_DOWNLOAD_SPEC: ModelCatalogItem = {
   modelType: 'decision',
   shortName: LAYA_SHORT_NAME,
   description: '对输入状态和候选项进行选择、评分与概率判断。',
-  provider: 'TorryJi',
+  provider: 'Laya',
   supportsImage: false,
   capabilities: [],
   recommended: false,

@@ -221,6 +221,22 @@ def build_runtime(display_name: str, supports_image: bool, system_prompt: str, c
     }
 
 
+def model_brand(name: str, provider: str = "") -> str:
+    brand = provider.strip()
+    if brand and brand.lower() not in ("mnn", "torryji"):
+        return brand
+    for pattern, label in (
+        (r"^qwen(?:[0-9._ -]|$)", "Qwen"),
+        (r"^gemma(?:[0-9._ -]|$)", "Gemma"),
+        (r"^minicpm(?:[0-9._ -]|$)", "MiniCPM"),
+        (r"^laya(?:[0-9._ -]|$)", "Laya"),
+        (r"^h2o[-_ ]lightning(?:[0-9._ -]|$)", "H2O.ai"),
+    ):
+        if re.match(pattern, name, re.IGNORECASE):
+            return label
+    return "Other"
+
+
 def build_item(args: argparse.Namespace) -> dict[str, Any]:
     repo = normalize_repo(args.modelscope_model)
     files, resolved_revision = fetch_modelscope_files(repo, args.revision)
@@ -234,7 +250,7 @@ def build_item(args: argparse.Namespace) -> dict[str, Any]:
     display_name = args.display_name.strip() or re.sub(r"-MNN(?:-.*)?$", "", repo_name, flags=re.IGNORECASE)
     model_id = args.model_id.strip() or slugify(display_name)
     directory_name = args.directory_name.strip() or repo_name
-    provider = args.provider.strip() or repo.split("/", 1)[0]
+    provider = model_brand(display_name, args.provider)
     supports_image = infer_supports_image(args.supports_image, llm_config, selected_files)
     description = args.description.strip() or "来自 ModelScope 的兼容 MNN 端侧模型。"
     capabilities = ["对话", "图像理解"] if supports_image else ["对话"]
@@ -431,7 +447,7 @@ def create_parser() -> argparse.ArgumentParser:
     add.add_argument("--directory-name", default="", help="App 沙箱安装目录名")
     add.add_argument("--display-name", default="", help="模型显示名称")
     add.add_argument("--description", default="", help="模型介绍")
-    add.add_argument("--provider", default="", help="提供方，默认使用 ModelScope 组织名")
+    add.add_argument("--provider", default="", help="模型品牌或系列，默认识别已知系列，无法确定时使用 Other")
     add.add_argument("--supports-image", choices=("auto", "true", "false"), default="auto")
     add.add_argument("--system-prompt", default="", help="系统提示词，默认自动生成")
     add.add_argument("--context-message-limit", type=int, default=6)
