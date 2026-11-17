@@ -11,7 +11,7 @@ let failLoad = false;
 let threadConfig = {};
 let loadedThreads;
 const native = {
-  h2oLoadAsync: async (_path, threads) => { loadedThreads = threads; if (failLoad) throw new Error('load failed'); },
+  h2oLoadAsync: async (_path, threads) => { loadedThreads = threads; if (failLoad) throw new Error('load failed'); return JSON.stringify({cpu_threads:Math.min(threads,6)}); },
   h2oReleaseAsync: async () => {},
   h2oDecideAsync: () => new Promise(resolve => { resolveRun = resolve; }),
 };
@@ -22,7 +22,13 @@ const legacy = {
   isLayaLoaded: () => legacyLoaded,
   decideLaya: async () => { legacyLoaded = false; throw new Error('legacy failure'); },
 };
+const executionContext={exports:{}};
+vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(__dirname,'../entry/src/main/ets/services/ModelExecutionService.ets'),'utf8'),
+ {compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText,executionContext);
+const execution=executionContext.exports;
 const context = {exports:{}, require: name => {
+  if (name.includes('ModelExecutionService')) return execution;
+  if (name.includes('NativeInferenceService')) return {NativeInferenceService:class {async cancelTitleGeneration(){}}};
   if (name === 'libentry.so') return {default:native};
   if (name === '@ohos.file.fs') return {default:{statSync:()=>({isFile:()=>true}),readText:async()=>JSON.stringify(threadConfig)}};
   if (name.includes('LayaDecisionService')) return legacy;
@@ -40,7 +46,11 @@ const service = context.exports;
 const h2o = {id:'h2o',configPath:'/h2o/config.json'};
 (async () => {
   service.observeDecisionRuntime(state => states.push(state));
-  await service.loadDecision('/files',h2o);
+  const releaseChat = execution.ModelExecutionService.acquire('chat');
+  await assert.rejects(service.loadDecision('/files',h2o), /当前模型任务/);
+  assert.equal(service.isDecisionLoaded(),false);
+  releaseChat();
+  assert.equal(await service.loadDecision('/files',h2o),4);
   assert.equal(service.loadedDecisionModel().id,'h2o');
   assert.equal(loadedThreads,4);
   const pending = service.decide('/files','record','choice','question',['a','b'],['a','b'],['a','b']);

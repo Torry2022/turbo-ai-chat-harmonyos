@@ -1,3 +1,5 @@
+import { ModelExecutionService } from './ModelExecutionService'
+import { NativeInferenceService } from './NativeInferenceService'
 import entry from 'libentry.so'
 import { ModelProfile } from '../models/ModelProfile'
 import { ModelDirectoryPreflightService } from './ModelDirectoryPreflightService'
@@ -14,11 +16,14 @@ export class RerankerService {
     if (active || this.busy || this.loadedId.length > 0) throw new Error('请先释放已加载的重排模型')
     active = true
     this.busy = true
+    let release: (() => void) | undefined
     try {
+      await new NativeInferenceService().cancelTitleGeneration()
+      release = ModelExecutionService.acquire('rerank')
       await new ModelDirectoryPreflightService().requireCompatible(model.configPath ?? '', false, [], false)
       await entry.rerankerAsync('load', model.configPath ?? '', threads, tokens, '', [])
       this.loadedId = model.id
-    } finally { this.busy = false; active = false }
+    } finally { release?.(); this.busy = false; active = false }
   }
 
   async score(query: string, documents: string[], prepare: () => Promise<void>): Promise<number[]> {
@@ -27,11 +32,14 @@ export class RerankerService {
     active = true
     this.busy = true
     this.cancelled = false
+    let release: (() => void) | undefined
     try {
+      await new NativeInferenceService().cancelTitleGeneration()
+      release = ModelExecutionService.acquire('rerank')
       await prepare()
       if (this.cancelled) throw new Error('重排已取消')
       return await entry.rerankerAsync('score', '', 0, 0, query, documents)
-    } finally { this.busy = false; active = false }
+    } finally { release?.(); this.busy = false; active = false }
   }
 
   cancel(): void { this.cancelled = true; entry.rerankerCancel() }
@@ -40,9 +48,12 @@ export class RerankerService {
     if (active || this.busy) throw new Error('请等待重排任务结束')
     active = true
     this.busy = true
+    let release: (() => void) | undefined
     try {
+      await new NativeInferenceService().cancelTitleGeneration()
+      release = ModelExecutionService.acquire('rerank')
       await entry.rerankerAsync('release', '', 0, 0, '', [])
       this.loadedId = ''
-    } finally { this.busy = false; active = false }
+    } finally { release?.(); this.busy = false; active = false }
   }
 }

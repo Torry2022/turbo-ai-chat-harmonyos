@@ -58,8 +58,8 @@ const api = context.exports;
   await assert.rejects(api.releaseLaya());
   await assert.rejects(api.loadLaya('/files'));
   assert.equal(loads, 1);
-  resolveLoad();
-  await loading;
+  resolveLoad(JSON.stringify({session_threads:4}));
+  assert.equal(await loading,4);
   assert.equal(api.isLayaLoaded(), true);
   const first = api.decideLaya('/files', 'text', 'choice', 'question', ['a', 'b']);
   assert.deepEqual(nativePaths, [

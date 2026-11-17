@@ -20,9 +20,12 @@ assert.deepEqual(JSON.parse(JSON.stringify(utils.rankScores([0.2,0.8,0.8],3))), 
   {index:1,relevance_score:0.8},{index:2,relevance_score:0.8},{index:0,relevance_score:0.2}]);
 for (const score of [NaN,Infinity,-0.1,1.1]) assert.throws(() => utils.rankScores([score],1));
 
+const execution = compile('entry/src/main/ets/services/ModelExecutionService.ets', () => ({}));
 const native = { rerankerAsync: async () => [], rerankerCancel: () => {} };
 const {RerankerService} = compile('entry/src/main/ets/services/RerankerService.ets', name =>
-  name === 'libentry.so' ? {default:native} : {});
+  name === 'libentry.so' ? {default:native} :
+  name.includes('ModelExecutionService') ? execution :
+  name.includes('NativeInferenceService') ? {NativeInferenceService:class {async cancelTitleGeneration(){}}} : {});
 const {OpenAiApiServer} = compile('entry/src/main/ets/services/OpenAiApiServer.ets', name => {
   if (name.includes('/rerank')) return utils;
   if (name === '@ohos.util') return {default:{TextDecoder:{create:()=>new TextDecoder()}}};
@@ -31,6 +34,11 @@ const {OpenAiApiServer} = compile('entry/src/main/ets/services/OpenAiApiServer.e
 const tick = () => new Promise(resolve => setImmediate(resolve));
 (async () => {
   const service = new RerankerService(); service.loadedId = 'model';
+  const releaseDecision = execution.ModelExecutionService.acquire('decision');
+  await assert.rejects(service.score('q',['doc'],async()=>{}), /当前模型任务/);
+  assert.equal(service.busy,false);
+  assert.equal(service.loadedId,'model');
+  releaseDecision();
   let resume; const preparing = new Promise(resolve => {resume=resolve});
   let nativeCalls=0; native.rerankerAsync=async()=>{nativeCalls++;return [0.8]};
   const pending = service.score('q',['doc'],()=>preparing);

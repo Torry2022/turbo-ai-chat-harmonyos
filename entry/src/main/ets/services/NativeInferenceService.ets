@@ -1,3 +1,4 @@
+import { ModelExecutionService } from './ModelExecutionService'
 import entry from 'libentry.so'
 import { ChatTurn, GenerationResult, GenerationSettings, ImagePayload, PreparedChatInput } from '../models/ChatTypes'
 
@@ -7,9 +8,42 @@ export interface ModelThreadWidth {
 }
 
 export interface NativeModelThreadInfo {
+  runtimeLibrarySha256?: string
   maxThreads: number
   chat: ModelThreadWidth
   rerank: ModelThreadWidth
+}
+
+// A request keeps prepared image state exclusive until generation has finished.
+export class ChatRequestExecution {
+  private active: boolean = true
+  private running: boolean = false
+  private released: boolean = false
+  private finish: () => void
+
+  constructor(finish: () => void) { this.finish = finish }
+
+  async run<T>(operation: () => Promise<T>): Promise<T> {
+    if (!this.active || this.running) throw new Error('当前模型请求不能执行此操作')
+    this.running = true
+    try { return await operation() }
+    finally {
+      this.running = false
+      this.finishIfClosed()
+    }
+  }
+
+  release(): void {
+    this.active = false
+    this.finishIfClosed()
+  }
+
+  private finishIfClosed(): void {
+    if (!this.active && !this.running && !this.released) {
+      this.released = true
+      this.finish()
+    }
+  }
 }
 
 export class NativeInferenceService {
@@ -26,16 +60,36 @@ export class NativeInferenceService {
   private static foregroundStopEpoch: number = 0
   private static foregroundJobs: number = 0
 
-  private foreground<T>(operation: () => Promise<T>): Promise<T> {
+  async beginChatRequest(): Promise<ChatRequestExecution> {
+    NativeInferenceService.foregroundJobs++
+    try {
+      await this.cancelTitleGeneration()
+      await NativeInferenceService.modelBarrier
+      const release = ModelExecutionService.acquire('chat')
+      return new ChatRequestExecution((): void => {
+        release()
+        NativeInferenceService.foregroundJobs--
+      })
+    } catch (error) {
+      NativeInferenceService.foregroundJobs--
+      throw new Error(`${error}`)
+    }
+  }
+
+  private foreground<T>(operation: () => Promise<T>, request?: ChatRequestExecution): Promise<T> {
+    if (request !== undefined) return request.run(operation)
     NativeInferenceService.foregroundJobs++
     const cancelled = this.cancelTitleGeneration()
     const barrier = NativeInferenceService.modelBarrier
-    return cancelled.then(() => barrier).then(operation).finally(() => {
+    return cancelled.then(() => barrier).then(async (): Promise<T> => {
+      const release = ModelExecutionService.acquire('chat')
+      try { return await operation() } finally { release() }
+    }).finally(() => {
       NativeInferenceService.foregroundJobs--
     })
   }
 
-  private generateForeground(operation: () => Promise<GenerationResult>): Promise<GenerationResult> {
+  private generateForeground(operation: () => Promise<GenerationResult>, request?: ChatRequestExecution): Promise<GenerationResult> {
     const epoch = NativeInferenceService.foregroundStopEpoch
     return this.foreground<GenerationResult>((): Promise<GenerationResult> => {
       if (epoch !== NativeInferenceService.foregroundStopEpoch) {
@@ -43,7 +97,7 @@ export class NativeInferenceService {
         return Promise.resolve(stopped)
       }
       return operation()
-    })
+    }, request)
   }
 
   generateTitle(turns: ChatTurn[]): Promise<GenerationResult> {
@@ -53,9 +107,14 @@ export class NativeInferenceService {
       temperature: 0.1, topP: 0.8, topK: 1, repetitionPenalty: 1.05,
       frequencyPenalty: 0, presencePenalty: 0, penaltyWindow: 256
     }
-    const task: Promise<GenerationResult> = entry.generateChatStream(turns, 48, settings, (_chunk: string) => {}, true)
+    let release: () => void
+    try { release = ModelExecutionService.acquire('title') } catch (error) { return Promise.reject(error) }
+    let task: Promise<GenerationResult>
+    try { task = entry.generateChatStream(turns, 48, settings, (_chunk: string) => {}, true) }
+    catch (error) { release(); return Promise.reject(error) }
     NativeInferenceService.titleTask = task
     const clear = (): void => {
+      release()
       if (NativeInferenceService.titleTask === task) NativeInferenceService.titleTask = undefined
     }
     task.then(clear, clear)
@@ -76,19 +135,20 @@ export class NativeInferenceService {
     })
   }
 
-  prepareChatInput(turns: ChatTurn[], settings: GenerationSettings, imageInput: boolean, image?: ImagePayload): Promise<PreparedChatInput> {
+  prepareChatInput(turns: ChatTurn[], settings: GenerationSettings, imageInput: boolean, image?: ImagePayload, request?: ChatRequestExecution): Promise<PreparedChatInput> {
     return this.foreground<PreparedChatInput>((): Promise<PreparedChatInput> =>
-      entry.prepareChatInput(turns, settings, imageInput, image?.pixels, image?.width, image?.height))
+      entry.prepareChatInput(turns, settings, imageInput, image?.pixels, image?.width, image?.height), request)
   }
 
   generateText(
     turns: ChatTurn[],
     maxNewTokens: number,
     settings: GenerationSettings,
-    onChunk: (chunk: string) => void
+    onChunk: (chunk: string) => void,
+    request?: ChatRequestExecution
   ): Promise<GenerationResult> {
     return this.generateForeground((): Promise<GenerationResult> =>
-      entry.generateChatStream(turns, maxNewTokens, settings, onChunk))
+      entry.generateChatStream(turns, maxNewTokens, settings, onChunk), request)
   }
 
   generateRawPrompt(
@@ -96,10 +156,11 @@ export class NativeInferenceService {
     maxNewTokens: number,
     endWith: string,
     settings: GenerationSettings,
-    onChunk: (chunk: string) => void
+    onChunk: (chunk: string) => void,
+    request?: ChatRequestExecution
   ): Promise<GenerationResult> {
     return this.generateForeground((): Promise<GenerationResult> =>
-      entry.generateRawPromptStream(prompt, maxNewTokens, endWith, settings, onChunk))
+      entry.generateRawPromptStream(prompt, maxNewTokens, endWith, settings, onChunk), request)
   }
 
   generateImage(
@@ -107,7 +168,8 @@ export class NativeInferenceService {
     image: ImagePayload,
     maxNewTokens: number,
     settings: GenerationSettings,
-    onChunk: (chunk: string) => void
+    onChunk: (chunk: string) => void,
+    request?: ChatRequestExecution
   ): Promise<GenerationResult> {
     return this.generateForeground((): Promise<GenerationResult> => entry.generateImageChatStream(
       turns,
@@ -117,14 +179,15 @@ export class NativeInferenceService {
       maxNewTokens,
       settings,
       onChunk
-    ))
+    ), request)
   }
 
   reset(): Promise<void> {
     NativeInferenceService.pendingResets++
     const cancelled = this.cancelTitleGeneration()
     const task = NativeInferenceService.modelBarrier.then(() => cancelled).then(() => {
-      entry.reset()
+      const release = ModelExecutionService.acquire('chat')
+      try { entry.reset() } finally { release() }
     }).finally(() => { NativeInferenceService.pendingResets-- })
     NativeInferenceService.modelBarrier = task.catch(() => {})
     return task

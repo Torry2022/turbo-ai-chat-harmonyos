@@ -183,5 +183,39 @@ test('API/raw and image paths also preempt titles without firing the generic cha
     assert.equal(nativeLog.at(-1),mode);assert.ok(!nativeLog.includes('stop-chat'));
   }
 });
+test('one request keeps image preparation exclusive across the gap before generation',async()=>{
+  const {ModelExecutionService}=load('services/ModelExecutionService.ets');
+  const a=new NativeInferenceService();
+  native.prepareChatInput=async()=>({prompt:'image prompt',inputTokens:15,modelConfig:'{}'});
+  const request=await a.beginChatRequest();
+  try {
+    await a.prepareChatInput([],settings,true,{pixels:new ArrayBuffer(4),width:1,height:1},request);
+    await flush();
+    assert.equal(ModelExecutionService.current(),'chat');
+    for(const owner of ['decision','rerank','title']) assert.throws(()=>ModelExecutionService.acquire(owner));
+    await assert.rejects(new NativeInferenceService().generateText([],20,settings,()=>{}));
+    await assert.rejects(a.generateTitle([]));
+    const result=await a.generateImage([],{pixels:new ArrayBuffer(4),width:1,height:1},20,settings,()=>{},request);
+    assert.equal(result.stopReason,'eos');
+    assert.equal(ModelExecutionService.current(),'chat');
+  } finally {request.release();}
+  assert.equal(ModelExecutionService.current(),undefined);
+});
+test('early release waits for Native completion and a closed request cannot run again',async()=>{
+  const {ModelExecutionService}=load('services/ModelExecutionService.ets');
+  const a=new NativeInferenceService();const job=deferred();
+  const old=native.generateImageChatStream;
+  native.generateImageChatStream=()=>job.promise;
+  const request=await a.beginChatRequest();
+  try {
+    const generating=a.generateImage([],{pixels:new ArrayBuffer(4),width:1,height:1},20,settings,()=>{},request);
+    await assert.rejects(a.generateText([],20,settings,()=>{},request));
+    request.release();request.release();
+    assert.equal(ModelExecutionService.current(),'chat');
+    job.resolve(finished);await generating;
+    assert.equal(ModelExecutionService.current(),undefined);
+    await assert.rejects(a.generateText([],20,settings,()=>{},request));
+  } finally {native.generateImageChatStream=old;request.release();}
+});
 (async()=>{for(const t of tests){timers.clear();await t.run();console.log('PASS',t.name);}console.log(tests.length+' title scheduler/preemption checks passed.');})()
   .catch(error=>{console.error(error);process.exitCode=1;});
