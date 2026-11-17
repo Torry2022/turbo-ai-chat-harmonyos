@@ -12,7 +12,6 @@ import { InputFieldStyle } from './ControlStyles'
 
 @Component
 export struct ChatTab {
-  @StorageProp('darkAppearance') private darkAppearance: boolean = true
   @ObjectLink viewModel: ChatViewModel
   @Prop renderVersion: number
   @Prop @Watch('onActiveChange') active: boolean = false
@@ -504,12 +503,8 @@ export struct ChatTab {
       }.width('100%').height(this.compactTicker ? 46 : 34)
         .padding({ left: this.compactTicker ? this.contentInset : 0, right: this.compactTicker ? this.contentInset : 0,
           top: this.compactTicker ? 6 : 0, bottom: this.compactTicker ? 6 : 0 })
-        .backgroundBlurStyle(this.compactTicker ? BlurStyle.Thin : BlurStyle.NONE, {
-          colorMode: this.darkAppearance ? ThemeColorMode.DARK : ThemeColorMode.LIGHT,
-          adaptiveColor: AdaptiveColor.DEFAULT,
-          scale: 1,
-          policy: BlurStyleActivePolicy.ALWAYS_ACTIVE
-        })
+        .backgroundColor(this.compactTicker ? $r('app.color.chat_title_background') : Color.Transparent)
+        .backdropBlur(this.compactTicker ? 28 : 0)
 
   }
 
