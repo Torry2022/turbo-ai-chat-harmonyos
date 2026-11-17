@@ -37,3 +37,13 @@ Omit the header when API authentication is disabled. Queries remain available du
 Poll every 2 seconds. Runtime samples may be reused for up to 1 second and storage samples for up to 30 seconds; check their separate timestamps. The Monitor page and endpoint share sampling and unit-conversion logic. Successful polls do not produce individual API log entries.
 
 Invalid authentication returns `401`. Collection failures return `503` with `runtime_unavailable`, rather than substituting zero values. Responses contain no API keys, prompts, answers or model paths.
+
+## Latest API generation
+
+`lastChatGeneration` contains the stop reason, timings, Token counts and captured configuration of the latest API chat generation that returned a result. It is cleared when a new request starts and is kept only for the current app session. Preparation or Native exceptions leave this field absent.
+
+`lastChatGeneration.perfMetrics.configuration` captures generation settings, model identity, threads, configuration and runtime-library fingerprints, app version, device model and OS version at request start. It excludes prompts, responses, images, API keys and private cache identifiers. Missing fields remain absent.
+
+`configurationSha256` covers the configuration text. `fileManifestSha256` covers relative file names, sizes and modification times, captured at model load to identify local file changes. Byte-level weight verification requires separate content hashes.
+
+For app-managed downloads with a pinned installation snapshot, `sourceRepository` and `sourceRevision` identify the repository and commit used for that installation. Imported models, custom configuration paths and missing installation snapshots leave these fields absent. Source versions come from the installed snapshot.

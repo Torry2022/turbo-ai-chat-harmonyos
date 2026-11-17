@@ -5,6 +5,7 @@ import statvfs from '@ohos.file.statvfs'
 import zlib from '@ohos.zlib'
 import util from '@ohos.util'
 import { ChatArchive, CHAT_ARCHIVE_MANIFEST_MAX_BYTES, conversationMarkdown } from '../utils/chatArchive'
+import { generationDetailsJson } from '../utils/generationDetails'
 import { ChatMessage } from '../models/ChatTypes'
 import { ChatConversation, ChatConversationOrigin } from '../models/ChatHistoryTypes'
 import { inspectChatArchiveZip } from '../utils/chatArchiveZip'
@@ -68,6 +69,16 @@ export class ChatDataService {
     } finally {
       await this.removeDirectory(workspace)
     }
+  }
+
+  async exportGeneration(context: common.UIAbilityContext, message: ChatMessage): Promise<boolean> {
+    const options = new picker.DocumentSaveOptions()
+    options.newFileNames = [`turbo-run-${message.createdAt ?? message.id}.json`]
+    options.fileSuffixChoices = ['运行记录|.json']
+    const destinations = await new picker.DocumentViewPicker(context).save(options)
+    if (destinations.length === 0) return false
+    this.writeText(destinations[0], generationDetailsJson(message))
+    return true
   }
 
   async prepareRestore(context: common.UIAbilityContext, history: ChatHistoryService): Promise<PendingChatRestore | undefined> {

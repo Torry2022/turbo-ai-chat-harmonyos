@@ -1,3 +1,7 @@
+import { captureGenerationConfiguration } from '../utils/generationSnapshot'
+import { ApiGenerationRun } from '../services/OpenAiApiServer'
+import { calculatePerfMetrics } from '../utils/generationText'
+import { ModelExecutionService, ModelTaskOwner } from '../services/ModelExecutionService'
 import { downloadApiImage, invalidImageError } from '../services/ApiImageDownload'
 import fs from '@ohos.file.fs'
 import { StreamingDisplay, STREAM_DISPLAY_INTERVAL_MS } from '../utils/streamingDisplay'
@@ -5,6 +9,7 @@ import util from '@ohos.util'
 import { modelThinkingSupport } from '../utils/modelThinking'
 import { RerankerService } from '../services/RerankerService'
 import { ConversationTitleService, ConversationTitleRequest, conversationTitleSignature } from '../services/ConversationTitleService'
+import { deviceInfo } from '@kit.BasicServicesKit'
 import { decide, loadDecision, isDecisionLoaded, isDecisionReady, DecisionRuntimeState, observeDecisionRuntime, releaseDecision, loadedDecisionModel } from '../services/DecisionService'
 import { LAYA_MODEL_ID, LAYA_MODEL_DIRECTORY } from '../models/LayaModelConfig'
 import { ChatConversation, ChatConversationSummary, ChatHistorySearchResult, conversationTitle } from '../models/ChatHistoryTypes'
@@ -48,7 +53,7 @@ import { BuiltinModelInstallService } from '../services/BuiltinModelInstallServi
 import { ModelImportService } from '../services/ModelImportService'
 import { ModelCatalogService } from '../services/ModelCatalogService'
 import { catalogCapabilityLabels, catalogCompatibilityMessage, isPinnedModelDownload } from '../utils/modelCatalog'
-import { NativeInferenceService } from '../services/NativeInferenceService'
+import { NativeInferenceService, ChatRequestExecution } from '../services/NativeInferenceService'
 import { BackgroundTaskService } from '../services/BackgroundTaskService'
 import {
   ApiGenerationRequest,
@@ -79,6 +84,12 @@ export interface ApiServerLogEntry {
   time: string
   level: string
   message: string
+}
+
+export interface LoadedModelEntry {
+  type: ModelTaskOwner
+  category: string
+  name: string
 }
 
 @Observed
@@ -491,6 +502,7 @@ export class ChatViewModel {
   selectDecisionModel(id: string): void {
     if (this.busy || this.modelLoading || this.decisionImporting) return
     this.decisionSelectedId = id
+    this.refreshModelUsage(this.selectedDecisionModel())
     this.refreshDecisionReady()
     this.notify()
   }
@@ -561,6 +573,8 @@ export class ChatViewModel {
   selectReranker(id: string): void {
     if (this.rerankImporting) return
     this.rerankSelectedId = id
+    const model = this.selectedReranker()
+    if (model !== undefined) this.refreshModelUsage(model)
     this.notify()
   }
 
@@ -601,6 +615,9 @@ export class ChatViewModel {
     try {
       await this.nativeService.cancelTitleGeneration()
       await this.reranker.load(model, this.rerankThreads, this.rerankMaxTokens)
+      const loadedAt = Date.now()
+      await this.modelLifecycleService.recordSuccessfulLoad(model, this.modelLoadStartedAt, loadedAt,
+        this.rerankThreads, 'rerank')
       this.rerankLoadedThreads = this.rerankThreads
       this.rerankLoadedTokens = this.rerankMaxTokens
       if (reloading) this.toastCallback('运行配置已应用')
@@ -616,6 +633,7 @@ export class ChatViewModel {
         }
       }, 450)
     } catch (error) {
+      await this.modelLifecycleService.recordFailedLoad(model, this.modelLoadStartedAt, this.rerankThreads)
       const message = formatError(error as Object)
       this.rerankMessage = `加载失败：${message}`
       this.setStatus(`重排模型加载失败：${message}`, 'error')
@@ -1737,6 +1755,7 @@ export class ChatViewModel {
       await this.modelLifecycleService.reset()
     } catch (error) {
       this.busy = false
+      this.loaded = this.nativeService.isLoaded()
       this.setStatus(`释放模型失败：${formatError(error as Object)}`, 'error')
       this.notify()
       return
@@ -2279,7 +2298,9 @@ export class ChatViewModel {
     this.notify()
     try {
       await this.nativeService.cancelTitleGeneration()
-      await loadDecision(this.filesDir, model, this.decisionThreads)
+      const actualThreads = await loadDecision(this.filesDir, model, this.decisionThreads)
+      await this.modelLifecycleService.recordSuccessfulLoad(model, this.modelLoadStartedAt, Date.now(),
+        this.decisionThreads, 'decision', actualThreads)
       this.decisionLoadedThreads = this.decisionThreads
       if (reloading) this.toastCallback('运行配置已应用')
       this.setStatus(`${model.shortName} 决策模型已加载`, 'success')
@@ -2293,6 +2314,7 @@ export class ChatViewModel {
         }
       }, 450)
     } catch (error) {
+      await this.modelLifecycleService.recordFailedLoad(model, this.modelLoadStartedAt, this.decisionThreads)
       const message = formatError(error as Object)
       this.setStatus(`决策模型加载失败：${message}`, 'error')
       this.modelLoadMessage = `${model.shortName} 加载失败。\n\n${message}`
@@ -2402,6 +2424,8 @@ export class ChatViewModel {
     this.notify()
   }
 
+  private lastApiGeneration?: ApiGenerationRun
+
   private async readApiRuntimeSnapshot(): Promise<ApiRuntimeSnapshot> {
     const model = this.currentModel()
     const modelConfig = this.modelPath
@@ -2410,6 +2434,7 @@ export class ChatViewModel {
     const storage = await this.statsService.readStorageSample(this.filesDir, modelDir)
     const threads = this.nativeService.modelThreadInfo()
     return {
+      lastChatGeneration: this.lastApiGeneration,
       chatModel: {
         requestedThreads: threads.chat.requested,
         actualCpuThreads: threads.chat.actual,
@@ -2525,6 +2550,43 @@ export class ChatViewModel {
     this.apiServerStartAfterModelLoad = false
     this.showModelLoadDialog = false
     this.notify()
+  }
+
+  loadedModelEntries(): LoadedModelEntry[] {
+    const entries: LoadedModelEntry[] = []
+    if (this.loaded) entries.push({ type: 'chat', category: '对话', name: this.currentModel().name })
+    const decision = loadedDecisionModel()
+    if (decision !== undefined) entries.push({ type: 'decision', category: '决策', name: decision.name })
+    const rerank = this.loadedReranker()
+    if (rerank !== undefined) entries.push({ type: 'rerank', category: '重排', name: rerank.name })
+    return entries
+  }
+
+  canReleaseLoadedModels(): boolean {
+    const owner = ModelExecutionService.current()
+    return !this.busy && !this.modelLoading && !this.rerankLoading && !this.reranker.busy &&
+      this.decisionRuntimeState !== 'loading' && this.decisionRuntimeState !== 'running' &&
+      this.decisionRuntimeState !== 'releasing' && (owner === undefined || owner === 'title')
+  }
+
+  async releaseLoadedModel(type: ModelTaskOwner): Promise<void> {
+    if (!this.canReleaseLoadedModels()) {
+      this.toastCallback('请等待当前模型任务结束')
+      return
+    }
+    if (type === 'chat') await this.unloadModel()
+    else if (type === 'decision') await this.releaseDecisionModel()
+    else if (type === 'rerank') await this.releaseRerankModel()
+  }
+
+  recentModelLoadText(modelId: string = this.selectedModelId): string {
+    const record = this.modelLifecycleService.recentLoad(modelId)
+    if (record === undefined) return '本机尚无加载记录'
+    const date = new Date(record.loadedAt)
+    const day = `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`
+    if (this.modelLifecycleService.modelFilesChanged(modelId)) return '模型文件已变化，之前的加载记录仅供参考'
+    if (record.outcome === 'failed') return `上次加载未完成（${day}），可重新尝试`
+    return `上次加载成功（${day}），用时 ${(record.loadDurationMs / 1000).toFixed(1)} 秒`
   }
 
   loadModel(): void {
@@ -2906,6 +2968,8 @@ export class ChatViewModel {
     const requestedAt = Date.now()
     const requestSerial = ++this.chatRequestSerial
     const requestModel = this.currentModel()
+    const requestRuntime = this.nativeService.modelThreadInfo()
+    const requestThreads = requestRuntime.chat
     const settings = this.currentGenerationSettings()
     const maxNewTokens = this.maxNewTokens
     const selection = this.session.composeContext(requestModel.systemPrompt, text,
@@ -2927,13 +2991,15 @@ export class ChatViewModel {
     this.setStatus('正在准备对话...', 'neutral')
     this.notify()
     let prepared: PreparedChatContext
+    let execution: ChatRequestExecution | undefined
     let imagePayload: ImagePayload | undefined = undefined
     try {
+      execution = await this.nativeService.beginChatRequest()
       if (contextImage.length > 0) imagePayload = await this.imageService.buildImagePayload(contextImage)
       prepared = await prepareChatContext(selection, this.session.messages, maxNewTokens, contextImage.length > 0,
         (turns: ChatTurn[]) => this.nativeService.prepareChatInput(turns, settings,
-          turns.some((turn: ChatTurn) => (turn.imageUri ?? '').length > 0), imagePayload))
-      if (requestSerial !== this.chatRequestSerial) return
+          turns.some((turn: ChatTurn) => (turn.imageUri ?? '').length > 0), imagePayload, execution))
+      if (requestSerial !== this.chatRequestSerial) { execution?.release(); return }
       if (this.generationStopping || prepared.exceedsContext) {
         this.busy = false
         this.generating = false
@@ -2943,16 +3009,18 @@ export class ChatViewModel {
         this.setStatus(message, 'warning')
         if (prepared.exceedsContext) this.toastCallback(message)
         this.notify()
+        execution?.release()
         return
       }
     } catch (error) {
-      if (requestSerial !== this.chatRequestSerial) return
+      if (requestSerial !== this.chatRequestSerial) { execution?.release(); return }
       console.error(`Chat preparation failed: ${formatError(error as Object)}`)
       this.busy = false
       this.generating = false
       this.generationStopping = false
       this.setStatus('准备对话失败，请重试', 'error')
       this.notify()
+      execution?.release()
       return
     }
     const previousAnswer = replacingQuestionId > 0 && !editQuestion ? this.session.lastAnswer() : undefined
@@ -3005,6 +3073,16 @@ export class ChatViewModel {
     settings.kvCacheScope = effectiveImage.length === 0 ? this.chatKvScope : undefined
     const assistantOutputPrefix = this.expectedAssistantOutputPrefixForCurrentModel()
     const generation = this.generationWorkflow.run({
+      execution,
+      environment: { appVersion: this.appVersion, appVersionCode: this.appVersionCode,
+        deviceModel: deviceInfo.productModel, osVersion: deviceInfo.displayVersion },
+      modelIdentity: { id: requestModel.id, name: requestModel.name,
+        runtimeLibrarySha256: requestRuntime.runtimeLibrarySha256,
+        sourceRepository: this.modelLifecycleService.sourceRepository(),
+        sourceRevision: this.modelLifecycleService.sourceRevision(),
+        configurationSha256: this.modelLifecycleService.configurationSha256(),
+        fileManifestSha256: this.modelLifecycleService.fileManifestSha256(),
+        requestedThreads: requestThreads.requested, actualThreads: requestThreads.actual },
       turns: chatTurns,
       imageUri: effectiveImage,
       imagePayload,
@@ -3026,6 +3104,7 @@ export class ChatViewModel {
     })
 
     generation.then((outcome: GenerationWorkflowResult) => {
+      execution?.release()
       if (this.lastContext !== undefined && outcome.result.inputTokens !== undefined) {
         this.lastContext.inputTokens = outcome.result.inputTokens
       }
@@ -3036,7 +3115,7 @@ export class ChatViewModel {
         assistantId,
         outcome.answer,
         outcome.includeInContext,
-        outcome.result.stopReason === 'user_stop' ? undefined : outcome.perfMetrics
+        outcome.perfMetrics
       )
       this.session.markGeneration(assistantId, outcome.result.stopReason === 'user_stop' ? 'stopped' :
         (outcome.result.stopReason === 'timeout' || outcome.result.stopReason === 'internal_error' ? 'failed' : 'complete'),
@@ -3050,6 +3129,7 @@ export class ChatViewModel {
       this.refreshStats()
       this.notifyAndMaybeScroll()
     }).catch((err: Error) => {
+      execution?.release()
       this.stopStreamDisplay()
       console.error(`Chat generation failed: ${formatError(err as Object)}`)
       const partialAnswer = this.session.messages.find((item: ChatMessage) => item.id === assistantId)?.content ?? ''
@@ -3232,24 +3312,27 @@ export class ChatViewModel {
 
   private async generateApiInput(request: ApiGenerationRequest,
     onChunk: (chunk: string) => void): Promise<GenerationResult> {
-    const images = request.turns.filter((turn: ChatTurn) => (turn.imageUri ?? '').length > 0)
-    if (images.length === 0) {
-      return this.nativeService.generateText(request.turns, request.maxNewTokens, request.settings, onChunk)
-    }
-    if (!this.currentModel().supportsImage) throw invalidImageError('当前模型不支持图片输入。')
-    let imageUri = images[0].imageUri ?? ''
-    if (/^https?:\/\//i.test(imageUri)) {
-      imageUri = await downloadApiImage(imageUri, (): boolean => this.generationStopping)
-    }
-    const payload = await this.imageService.buildImagePayload(imageUri)
-    if (this.generationStopping) return { text: '', generatedTokens: 0, stopReason: 'user_stop' }
-    const prepared = await this.nativeService.prepareChatInput(request.turns, request.settings, true, payload)
-    const capacity = declaredContextTokens(prepared.modelConfig)
-    if (capacity > 0 && prepared.inputTokens + request.maxNewTokens > capacity) {
-      throw invalidImageError('图片、问题和预留输出超过模型的上下文长度，请缩短输入或降低最大输出。')
-    }
-    if (this.generationStopping) return { text: '', generatedTokens: 0, stopReason: 'user_stop' }
-    return this.nativeService.generateImage(request.turns, payload, request.maxNewTokens, request.settings, onChunk)
+    const execution = await this.nativeService.beginChatRequest()
+    try {
+      const images = request.turns.filter((turn: ChatTurn) => (turn.imageUri ?? '').length > 0)
+      if (images.length === 0) {
+        return await this.nativeService.generateText(request.turns, request.maxNewTokens, request.settings, onChunk, execution)
+      }
+      if (!this.currentModel().supportsImage) throw invalidImageError('当前模型不支持图片输入。')
+      let imageUri = images[0].imageUri ?? ''
+      if (/^https?:\/\//i.test(imageUri)) {
+        imageUri = await downloadApiImage(imageUri, (): boolean => this.generationStopping)
+      }
+      const payload = await this.imageService.buildImagePayload(imageUri)
+      if (this.generationStopping) return { text: '', generatedTokens: 0, stopReason: 'user_stop' }
+      const prepared = await this.nativeService.prepareChatInput(request.turns, request.settings, true, payload, execution)
+      const capacity = declaredContextTokens(prepared.modelConfig)
+      if (capacity > 0 && prepared.inputTokens + request.maxNewTokens > capacity) {
+        throw invalidImageError('图片、问题和预留输出超过模型的上下文长度，请缩短输入或降低最大输出。')
+      }
+      if (this.generationStopping) return { text: '', generatedTokens: 0, stopReason: 'user_stop' }
+      return await this.nativeService.generateImage(request.turns, payload, request.maxNewTokens, request.settings, onChunk, execution)
+    } finally { execution.release() }
   }
 
   private runApiGeneration(
@@ -3262,6 +3345,22 @@ export class ChatViewModel {
     if (!this.loaded || this.busy || this.modelLoading) {
       return Promise.reject(new Error('模型未就绪或当前已有任务。'))
     }
+    const startedAt = Date.now()
+    const model = this.currentModel()
+    const runtime = this.nativeService.modelThreadInfo()
+    const configuration = captureGenerationConfiguration(request.maxNewTokens, request.settings,
+      { id: model.id, name: model.name, requestedThreads: runtime.chat.requested, actualThreads: runtime.chat.actual,
+        sourceRepository: this.modelLifecycleService.sourceRepository(),
+        sourceRevision: this.modelLifecycleService.sourceRevision(),
+        configurationSha256: this.modelLifecycleService.configurationSha256(),
+        fileManifestSha256: this.modelLifecycleService.fileManifestSha256(), runtimeLibrarySha256: runtime.runtimeLibrarySha256 },
+      { appVersion: this.appVersion, appVersionCode: this.appVersionCode,
+        deviceModel: deviceInfo.productModel, osVersion: deviceInfo.displayVersion }, startedAt)
+    const capturedRequest: ApiGenerationRequest = {
+      turns: request.turns, maxNewTokens: configuration.maxNewTokens, settings: configuration.settings
+    }
+    this.lastApiGeneration = undefined
+    let firstChunkAt = 0
     this.busy = true
     this.generating = true
     this.generationStopping = false
@@ -3272,9 +3371,10 @@ export class ChatViewModel {
     this.notify()
     let streamedChars = 0
     let completed = false
-    return this.generateApiInput(request,
+    return this.generateApiInput(capturedRequest,
       (chunk: string) => {
         if (completed) return
+        if (firstChunkAt === 0) firstChunkAt = Date.now()
         streamedChars += chunk.length
         onChunk(chunk)
         if (this.appForeground) {
@@ -3284,6 +3384,15 @@ export class ChatViewModel {
         }
       }
     ).then((result: GenerationResult) => {
+      const finishedAt = Date.now()
+      const metrics = calculatePerfMetrics(startedAt, firstChunkAt, finishedAt,
+        result.generatedTokens, result.generatedTokensEstimated ?? false)
+      configuration.finishedAt = finishedAt
+      metrics.configuration = configuration
+      metrics.inputTokens = result.inputTokens
+      metrics.reusedInputTokens = result.reusedInputTokens
+      metrics.nativeTiming = result.nativeTiming
+      this.lastApiGeneration = { stopReason: result.stopReason, perfMetrics: metrics }
       completed = true
       this.streamingChars = result.text.length
       this.busy = false
@@ -3350,11 +3459,18 @@ export class ChatViewModel {
     })
   }
 
+  private refreshModelUsage(profile: ModelProfile, configPath?: string): void {
+    if (this.filesDir.length === 0) return
+    this.modelLifecycleService.refreshUsageIdentity(profile, configPath).then(() => this.notify())
+      .catch(() => {})
+  }
+
   private refreshThinkingMode(): void {
     if (this.context === undefined || !this.thinkingSettingsReady) return
     const serial = ++this.thinkingReadSerial
     const id = this.selectedModelId
     const path = this.modelPath
+    this.refreshModelUsage(this.currentModel(), path)
     this.thinkingSupported = false
     const root = path.substring(0, path.lastIndexOf('/'))
     Promise.all([fs.readText(path), fs.readText(`${root}/llm_config.json`)]).then((texts: string[]) => {

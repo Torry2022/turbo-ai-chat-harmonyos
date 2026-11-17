@@ -4,7 +4,7 @@ import { RerankResponse, RerankRequest, validateRerankRequest, rankScores } from
 import connection from '@ohos.net.connection'
 import socket from '@ohos.net.socket'
 import util from '@ohos.util'
-import { ChatTurn, GenerationResult, GenerationSettings } from '../models/ChatTypes'
+import { ChatTurn, GenerationResult, GenerationSettings, PerfMetrics, GenerationStopReason } from '../models/ChatTypes'
 import { MAX_GENERATION_TOKENS } from '../models/ModelProfile'
 import { RuntimeSample, StorageSample } from '../models/RuntimeStats'
 import { parseAssistantText } from '../utils/thinking'
@@ -36,7 +36,13 @@ export interface ApiRuntimeModel extends ApiServerModel {
   generating: boolean
 }
 
+export interface ApiGenerationRun {
+  stopReason: GenerationStopReason
+  perfMetrics: PerfMetrics
+}
+
 export interface ApiRuntimeSnapshot {
+  lastChatGeneration?: ApiGenerationRun
   chatModel: ApiRuntimeModel
   rerankModel?: ApiRuntimeModel
   metrics: RuntimeSample
@@ -794,6 +800,8 @@ export class OpenAiApiServer {
         object: 'turbo.runtime',
         service: { target: 'all', inferenceBusy: this.activeClientId >= 0 || this.rerankConnection !== undefined },
         chatModel: snapshot.chatModel,
+        rerankModel: snapshot.rerankModel,
+        lastChatGeneration: snapshot.lastChatGeneration,
         metrics: snapshot.metrics,
         storage: snapshot.storage
       }

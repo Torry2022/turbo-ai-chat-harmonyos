@@ -1,5 +1,8 @@
+import { captureGenerationConfiguration } from '../utils/generationSnapshot'
 import {
   ChatTurn,
+  GenerationModelIdentity,
+  GenerationEnvironment,
   GenerationResult,
   GenerationSettings,
   ImagePayload,
@@ -14,9 +17,12 @@ import {
   shouldIncludeAssistantInContext
 } from '../utils/generationText'
 import { ImagePayloadService } from './ImagePayloadService'
-import { NativeInferenceService } from './NativeInferenceService'
+import { NativeInferenceService, ChatRequestExecution } from './NativeInferenceService'
 
 export interface GenerationWorkflowRequest {
+  execution?: ChatRequestExecution
+  environment?: GenerationEnvironment
+  modelIdentity?: GenerationModelIdentity
   turns: ChatTurn[]
   imageUri: string
   imagePayload?: ImagePayload
@@ -60,7 +66,16 @@ export class GenerationWorkflow {
     request: GenerationWorkflowRequest,
     callbacks: GenerationWorkflowCallbacks
   ): Promise<GenerationWorkflowResult> {
-    const generationStartedAt = request.requestedAt ?? Date.now()
+    const settings: GenerationSettings = {
+      temperature: request.settings.temperature, topP: request.settings.topP, topK: request.settings.topK,
+      repetitionPenalty: request.settings.repetitionPenalty, frequencyPenalty: request.settings.frequencyPenalty,
+      presencePenalty: request.settings.presencePenalty, penaltyWindow: request.settings.penaltyWindow,
+      thinkingEnabled: request.settings.thinkingEnabled, kvCacheScope: request.settings.kvCacheScope
+    }
+    const maxNewTokens = request.maxNewTokens
+    const configuration = captureGenerationConfiguration(maxNewTokens, settings, request.modelIdentity,
+      request.environment, request.requestedAt ?? Date.now())
+    const generationStartedAt = configuration.startedAt ?? Date.now()
     let firstChunkAt = 0
     let streamedText = ''
     let streamFinished = false
@@ -98,20 +113,22 @@ export class GenerationWorkflow {
           result = await this.nativeService.generateImage(
             request.turns,
             payload,
-            request.maxNewTokens,
-            request.settings,
-            onChunk
+            maxNewTokens,
+            settings,
+            onChunk,
+            request.execution
           )
         }
       } else if (request.preparedPrompt !== undefined) {
-        result = await this.nativeService.generateRawPrompt(request.preparedPrompt, request.maxNewTokens,
-          '', request.settings, onChunk)
+        result = await this.nativeService.generateRawPrompt(request.preparedPrompt, maxNewTokens,
+          '', settings, onChunk, request.execution)
       } else {
         result = await this.nativeService.generateText(
           request.turns,
-          request.maxNewTokens,
-          request.settings,
-          onChunk
+          maxNewTokens,
+          settings,
+          onChunk,
+          request.execution
         )
       }
 
@@ -132,6 +149,8 @@ export class GenerationWorkflow {
       result.generatedTokens,
       result.generatedTokensEstimated ?? false
     )
+    configuration.finishedAt = Date.now()
+    perfMetrics.configuration = configuration
     perfMetrics.inputTokens = result.inputTokens
     perfMetrics.reusedInputTokens = result.reusedInputTokens
     perfMetrics.nativeTiming = result.nativeTiming

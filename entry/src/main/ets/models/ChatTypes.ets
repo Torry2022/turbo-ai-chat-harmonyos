@@ -43,6 +43,36 @@ export interface PerfMetrics {
   inputTokens?: number
   reusedInputTokens?: number
   nativeTiming?: NativeGenerationTiming
+  configuration?: GenerationConfiguration
+}
+
+// Configuration captured before asynchronous input preparation; no prompt or cache identity.
+export interface GenerationEnvironment {
+  appVersion: string
+  appVersionCode: number
+  deviceModel: string
+  osVersion: string
+}
+
+export interface GenerationConfiguration {
+  environment?: GenerationEnvironment
+  maxNewTokens: number
+  settings: GenerationSettings
+  model?: GenerationModelIdentity
+  startedAt?: number
+  finishedAt?: number
+}
+
+export interface GenerationModelIdentity {
+  sourceRepository?: string
+  sourceRevision?: string
+  runtimeLibrarySha256?: string
+  configurationSha256?: string
+  fileManifestSha256?: string
+  id: string
+  name: string
+  requestedThreads: number
+  actualThreads: number
 }
 
 export interface NativeGenerationTiming {

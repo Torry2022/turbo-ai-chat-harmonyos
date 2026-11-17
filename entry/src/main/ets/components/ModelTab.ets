@@ -1,7 +1,7 @@
 import { LAYA_MODEL_ID } from '../models/LayaModelConfig'
 import { RerankerModels } from './RerankerModels'
 import { InputFieldStyle, ParameterSliderStyle } from './ControlStyles'
-import { ActionButtonStyle } from './ButtonStyles'
+import { ActionButtonStyle, CompactActionStyle } from './ButtonStyles'
 import {
   DEFAULT_FREQUENCY_PENALTY,
   DEFAULT_MAX_NEW_TOKENS,
@@ -13,7 +13,7 @@ import {
   DEFAULT_TOP_P,
   ModelProfile
 } from '../models/ModelProfile'
-import { ChatViewModel } from '../state/ChatViewModel'
+import { ChatViewModel, LoadedModelEntry } from '../state/ChatViewModel'
 import { ModelDragFrame, resolveModelDragPreview } from '../utils/modelDrag'
 import { ModelType, ModelTypeSelector } from './ModelTypeSelector'
 
@@ -420,7 +420,9 @@ export struct ModelTab {
         .alignItems(VerticalAlign.Center)
         .width('100%')
         .margin({ bottom: 4 })
-        Button(this.viewModel.loaded ? '释放当前模型' : '加载当前模型')
+        Text(this.viewModel.recentModelLoadText())
+          .fontSize(12).lineHeight(18).fontColor($r('app.color.text_muted')).width('100%')
+        Button(this.viewModel.loaded ? '释放当前模型'  : '加载当前模型')
           .attributeModifier(new ActionButtonStyle(this.viewModel.loaded ? $r('app.color.button_secondary_background') : $r('app.color.button_primary_background'), this.viewModel.loaded ? $r('app.color.button_secondary_text') : $r('app.color.button_primary_text')))
           .enabled(this.controlsEnabled())
           .width('100%')
@@ -468,6 +470,8 @@ export struct ModelTab {
           $r('app.color.selected_background') : $r('app.color.list_background'))
         .onClick(() => this.viewModel.selectDecisionModel(model.id))
       }, (model: ModelProfile) => model.id)
+      Text(this.viewModel.recentModelLoadText(this.viewModel.decisionSelectedId))
+        .fontSize(12).lineHeight(18).fontColor($r('app.color.text_muted')).width('100%')
       if (this.decisionReady || this.viewModel.loadedDecision()) {
         Button(this.viewModel.loadedDecision() ? '释放当前模型' : this.decisionStatus === '正在加载决策模型' ? '加载中…' : '加载当前模型')
           .attributeModifier(new ActionButtonStyle(this.viewModel.loadedDecision() ? $r('app.color.button_secondary_background') : $r('app.color.button_primary_background'),
@@ -1087,6 +1091,28 @@ export struct ModelTab {
     .borderRadius($r('app.float.card_radius'))
   }
 
+  @Builder
+  private LoadedModelsCard() {
+    Column({ space: 12 }) {
+      this.SectionTitle('已加载模型')
+      ForEach(this.viewModel.loadedModelEntries(), (entry: LoadedModelEntry) => {
+        Row({ space: 12 }) {
+          Column({ space: 3 }) {
+            Text(entry.category).fontSize(12).fontColor($r('app.color.text_muted')).width('100%')
+            Text(entry.name).fontSize(14).fontColor($r('app.color.text_body'))
+              .maxLines(1).textOverflow({ overflow: TextOverflow.MARQUEE }).width('100%')
+          }.layoutWeight(1)
+          Button('释放模型', { type: ButtonType.Normal })
+            .attributeModifier(new CompactActionStyle())
+            .enabled(this.viewModel.canReleaseLoadedModels())
+            .onClick(() => { this.viewModel.releaseLoadedModel(entry.type) })
+        }.width('100%')
+      }, (entry: LoadedModelEntry) => `${entry.type}-${entry.name}`)
+      Text(`应用内存 ${this.viewModel.stats.appRss}，系统 ${this.viewModel.stats.systemMemAvailable}`)
+        .fontSize(12).lineHeight(18).fontColor($r('app.color.text_muted')).width('100%')
+    }.width('100%').padding(12).backgroundColor($r('app.color.card')).borderRadius($r('app.float.card_radius'))
+  }
+
   build() {
     Scroll(this.scroller) {
       Flex({ direction: this.contentWidth >= 800 ? FlexDirection.Row : FlexDirection.Column }) {
@@ -1098,6 +1124,7 @@ export struct ModelTab {
         .zIndex(this.draggingModelId.length > 0 ? 10 : 0)
         .margin({ right: this.contentWidth >= 800 ? 16 : 0, bottom: this.contentWidth >= 800 ? 0 : 12 })
         Column({ space: 12 }) {
+          if (this.viewModel.loadedModelEntries().length > 0) { this.LoadedModelsCard() }
           if (this.viewModel.modelPageCategory === 'chat') {
             this.GenerationSettingsCard()
             this.RuntimeSettingsCard()

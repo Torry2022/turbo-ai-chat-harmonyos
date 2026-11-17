@@ -133,7 +133,8 @@ const { RuntimeStatsService } = compile('entry/src/main/ets/services/RuntimeStat
   const server = new context.exports.OpenAiApiServer({
     onLog: () => {}, runtimeSnapshot: async () => {
       snapshots++; if (unavailable) throw new Error('failed');
-      return { chatModel: { id: 'test', name: 'Test', loaded: false, loading: false, generating: false }, metrics: first, storage: a };
+      return { chatModel: { id: 'test', name: 'Test', loaded: false, loading: false, generating: false },
+        rerankModel:{id:'rank',loaded:true}, lastChatGeneration:{stopReason:'eos',perfMetrics:{tokens:12}}, metrics: first, storage: a };
     }
   });
   server.config = { port: 8080, target: 'chat', requireApiKey: true, apiKey: 'secret' };
@@ -149,6 +150,8 @@ const { RuntimeStatsService } = compile('entry/src/main/ets/services/RuntimeStat
   assert.equal(status, 200); assert.equal(payload.service.inferenceBusy, true);
   assert.equal(payload.chatModel.loaded, false, 'Metrics route does not require a loaded model');
   assert.equal(payload.metrics.appCpuPercent, 12.5);
+  assert.equal(payload.lastChatGeneration.perfMetrics.tokens,12);
+  assert.equal(payload.rerankModel.id,'rank');
   assert.ok(!JSON.stringify(payload).includes('secret'));
   server.route(state, request('POST')); await tick(); assert.equal(status, 404);
   unavailable = true;

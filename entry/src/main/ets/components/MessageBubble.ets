@@ -1,3 +1,5 @@
+import { GenerationDetailsDialog } from './GenerationDetailsDialog'
+import { ChatDataService } from '../services/ChatDataService'
 import fileUri from '@ohos.file.fileuri'
 import { StreamingText } from './StreamingText'
 import { EditQuestionConfirmDialog } from './EditQuestionConfirmDialog'
@@ -50,6 +52,20 @@ export struct MessageBubble {
     autoCancel: true,
     maskColor: $r('app.color.scrim')
   })
+  private detailsDialog: CustomDialogController = new CustomDialogController({
+    builder: GenerationDetailsDialog({ message: this.message,
+      onClose: (): void => { this.detailsDialog.close() }, onExport: (): void => { this.exportRun() } }),
+    alignment: DialogAlignment.Center, customStyle: true, autoCancel: true,
+    maskColor: $r('app.color.scrim')
+  })
+
+  private async exportRun(): Promise<void> {
+    try {
+      const context = this.getUIContext().getHostContext() as common.UIAbilityContext
+      if (await new ChatDataService().exportGeneration(context, this.message)) this.showLinkToast('运行记录已导出')
+    } catch (_) { this.showLinkToast('导出失败，请重试') }
+  }
+
   @Prop highlighted: boolean = false
   onRegenerate: () => void = () => {}
   @State private selectionSnapshot: string = ''
@@ -77,6 +93,7 @@ export struct MessageBubble {
 
   aboutToDisappear(): void {
     this.editDialog.close()
+    this.detailsDialog.close()
     if (this.copiedTimer >= 0) clearTimeout(this.copiedTimer)
   }
 
@@ -176,6 +193,14 @@ export struct MessageBubble {
           this.clearAnswerSelection()
           this.onRegenerate()
         })
+      }
+      if (this.message.role === 'assistant' && this.message.perfMetrics !== undefined &&
+        this.message.generationState !== 'generating') {
+        Button('⋯', { type: ButtonType.Normal })
+          .width(20).height(20).padding(0).fontSize(18)
+          .fontColor($r('app.color.text_muted')).backgroundColor(Color.Transparent)
+          .borderRadius($r('app.float.button_radius')).accessibilityText('更多操作')
+          .bindMenu([{ value: '运行详情', action: () => this.detailsDialog.open() }])
       }
       if (this.canBranch) {
         this.MessageAction($r('app.media.icon_message_branch'), '新建分支', () => {
@@ -644,7 +669,8 @@ export struct MessageBubble {
                 .fontColor($r('app.color.chat_user_text'))
             }
           }
-          if (this.message.role === 'assistant' && this.message.perfMetrics !== undefined) {
+          if (this.message.role === 'assistant' && this.message.perfMetrics !== undefined &&
+            this.message.stopReason !== 'user_stop') {
             Text(formatPerfMetrics(this.message.perfMetrics))
               .fontSize(10)
               .fontColor($r('app.color.text_stats'))

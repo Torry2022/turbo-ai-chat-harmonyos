@@ -1253,7 +1253,7 @@ napi_value ModelThreadInfo(napi_env env, napi_callback_info) {
     // must not wait for an active generation or create another CPU backend.
     const long logicalCpus = sysconf(_SC_NPROCESSORS_CONF);
     const int maximum = static_cast<int>(std::clamp(logicalCpus, 1L, 16L));
-    const std::string json = "{\"maxThreads\":" + std::to_string(maximum) + ",\"chat\":{\"requested\":" + std::to_string(g_runner.requestedThreads()) +
+    const std::string json = "{\"runtimeLibrarySha256\":\"" MNN_LIBRARY_SHA256 "\",\"maxThreads\":" + std::to_string(maximum) + ",\"chat\":{\"requested\":" + std::to_string(g_runner.requestedThreads()) +
         ",\"actual\":" + std::to_string(g_runner.actualCpuThreads()) +
         "},\"rerank\":{\"requested\":" + std::to_string(rerankerRequestedThreads()) +
         ",\"actual\":" + std::to_string(rerankerActualCpuThreads()) + "}}";

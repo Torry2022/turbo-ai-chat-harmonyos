@@ -695,6 +695,36 @@ add('API status reflects the actual end reason and never calls a stopped request
   assert.equal(failed.status, 'API 生成失败，请查看服务日志');
   assert.equal(failed.busy, false);
 });
+add('API run snapshots retain the applied settings and identity without prompt or cache identity', async () => {
+  const view = await actionView('api-run-snapshot');
+  const model = view.currentModel();
+  view.appVersion = '2.0.0';
+  let finish, sent;
+  view.nativeService.generateText = (_turns, limit, settings, onChunk) => {
+    sent = { limit, settings };
+    onChunk('private-output');
+    return new Promise(resolve => { finish = resolve; });
+  };
+  const input = { turns:[{role:'user',content:'private-prompt'}], maxNewTokens:16,
+    settings:{temperature:0.7,topP:0.8,topK:20,kvCacheScope:'private-scope'} };
+  const generation = view.runApiGeneration(input, () => {});
+  input.settings.temperature=1.8;input.maxNewTokens=2048;view.appVersion='changed-version';
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(sent.settings.temperature,0.7);assert.equal(sent.limit,16);
+  assert.equal(sent.settings.kvCacheScope,undefined);
+  finish({text:'private-output',generatedTokens:3,inputTokens:10,reusedInputTokens:0,
+    nativeTiming:{prefillMs:2,decodeMs:3,visionMs:0},stopReason:'eos'});
+  await generation;
+  const saved=view.lastApiGeneration;
+  assert.equal(saved.stopReason,'eos');
+  assert.equal(saved.perfMetrics.configuration.model.id,model.id);
+  assert.equal(saved.perfMetrics.configuration.environment.appVersion,'2.0.0');
+  assert.equal(saved.perfMetrics.configuration.settings.temperature,0.7);
+  assert.equal(saved.perfMetrics.inputTokens,10);
+  assert.ok(saved.perfMetrics.configuration.finishedAt>=saved.perfMetrics.configuration.startedAt);
+  const text=JSON.stringify(saved);
+  for(const secret of ['private-prompt','private-output','private-scope']) assert.ok(!text.includes(secret));
+});
 add('ability background saves with a short delay and foreground resumes lifecycle work', async () => {
   const view = await actionView('ability-background');
   const events = [];
@@ -927,7 +957,9 @@ add('version selection restores metadata, thinking state and metrics across a re
   const first = view.session.lastAnswer();
   view.session.updateMessage(first.id, '<think>原思考</think>原回答。', true,
     { ttft: 10, tpot: 20, tokensPerSec: 30, tokens: 40, tokensEstimated: true,
-      inputTokens: 17, nativeTiming: { prefillMs: 12.345, decodeMs: 23.456, visionMs: 0 } });
+      inputTokens: 17, nativeTiming: { prefillMs: 12.345, decodeMs: 23.456, visionMs: 0 },
+      configuration: { maxNewTokens: 128, settings: { temperature: 0.7, topP: 0.8, topK: 20,
+        repetitionPenalty: 1.05, frequencyPenalty: 0, presencePenalty: 0, penaltyWindow: 64 } } });
   view.session.toggleThinkingExpanded(first.id);
   const original = JSON.parse(JSON.stringify(view.session.lastAnswer()));
   view.generationWorkflow = { run: () => Promise.resolve(finished('第二版回答。')) };
@@ -950,6 +982,7 @@ add('version selection restores metadata, thinking state and metrics across a re
   assert.equal(session.lastAnswer().content, original.content);
   assert.equal(session.lastAnswer().perfMetrics.tokensEstimated, true);
   assert.equal(session.lastAnswer().perfMetrics.inputTokens, 17);
+  assert.equal(JSON.stringify(session.lastAnswer().perfMetrics.configuration), JSON.stringify(original.perfMetrics.configuration));
   assert.equal(JSON.stringify(session.lastAnswer().perfMetrics.nativeTiming), JSON.stringify(original.perfMetrics.nativeTiming));
   assert.equal(session.selectAnswerVersion(first.id, 1), true);
   assert.equal(session.lastAnswer().content, '第二版回答。');
@@ -957,6 +990,7 @@ add('version selection restores metadata, thinking state and metrics across a re
   assert.equal(session.lastAnswer().perfMetrics.tokens, 3);
   assert.equal(session.lastAnswer().perfMetrics.tokensEstimated, undefined);
   assert.equal(session.lastAnswer().perfMetrics.nativeTiming, undefined);
+  assert.equal(session.lastAnswer().perfMetrics.configuration, undefined);
 });
 add('regenerating from an older selection appends a version rather than replacing alternatives', async () => {
   const view = await actionView('version-append');
@@ -1818,6 +1852,28 @@ add('generated Markdown survives finalization, storage and answer extraction', a
   assert.equal(parseAssistantText(restored.messages[1].content).answer, text);
 });
 
+add('run export excludes conversation content and private cache identity while retaining saved settings', async () => {
+  const { generationDetailsJson, generationDetailRows } = load(path.join(ets, 'utils/generationDetails.ets'));
+  const message = { id: 1, role: 'assistant', content: 'private-answer', imageUri: '/private/image',
+    modelName: 'saved-model', stopReason: 'user_stop', perfMetrics: {
+      ttft: 12, tpot: 2, tokensPerSec: 500, tokens: 6,
+      nativeTiming:{prefillMs:1,decodeMs:2,visionMs:0,privateNote:'private-native'},
+      configuration: { maxNewTokens: 64,
+        environment:{appVersion:'2.0.0',appVersionCode:2000000,deviceModel:'test',osVersion:'test',privateNote:'private-env'},
+        model:{id:'saved-id',name:'saved-model',requestedThreads:6,actualThreads:6,
+          sourceRepository:'MNN/Test',sourceRevision:'commit',fileManifestSha256:'manifest',privateNote:'private-model'}, settings: { temperature: 0.3, kvCacheScope: 'private-scope',
+        topP: 0.8, topK: 20, repetitionPenalty: 1.05, frequencyPenalty: 0, presencePenalty: 0, penaltyWindow: 64 } }
+    } };
+  const exported = generationDetailsJson(message);
+  assert.equal(exported.includes('private'), false);
+  assert.equal(JSON.parse(exported).metrics.configuration.settings.temperature, 0.3);
+  assert.equal(JSON.parse(exported).stopReason, 'user_stop');
+  const old = generationDetailRows({modelName:'old-model'});
+  assert.equal(old.find(row => row.label === '模型').value, 'old-model');
+  assert.equal(old.find(row => row.label === '生成配置').value, '此条历史回答未保存');
+  assert.equal(old.some(row => row.label === '实际线程'),false);
+});
+
 add('model load records survive restart and replace only the same model', async () => {
   const { ModelUsageService } = load(path.join(ets, 'services/ModelUsageService.ets'));
   const folder = path.join(temporary, 'model-usage');
@@ -1853,7 +1909,6 @@ add('model load failures retain the last success and a later success clears the 
   assert.equal(restarted.latestAttempt('a').loadedAt,300);
   assert.equal(JSON.parse(fs.readFileSync(path.join(folder,'model-usage.json'),'utf8')).length,1);
 });
-
 add('model identity separates configuration contents from file metadata and excludes private paths', async () => {
   const {ModelIdentityService}=load(path.join(ets,'services/ModelIdentityService.ets'));
   const folder=path.join(temporary,'identity-fixture');fs.mkdirSync(folder);
@@ -1875,7 +1930,6 @@ add('model identity separates configuration contents from file metadata and excl
   const missing=await service.read(path.join(folder,'missing','config.json'));
   assert.equal(missing.configurationSha256,undefined);assert.equal(missing.fileManifestSha256,undefined);
 });
-
 add('normal model loading records failures and detects changed files without replacing history', async () => {
   const {ModelLifecycleService}=load(path.join(ets,'services/ModelLifecycleService.ets'));
   const folder=path.join(temporary,'lifecycle-records');const modelDir=path.join(folder,'model');
@@ -1907,6 +1961,20 @@ add('normal model loading records failures and detects changed files without rep
   assert.equal(lifecycle.sourceRepository(),'MNN/Test');assert.equal(lifecycle.sourceRevision(),revision);
   model.source='imported';await lifecycle.loadModel(folder,model,model.configPath,4,16,{});
   assert.equal(lifecycle.sourceRepository(),undefined);assert.equal(lifecycle.sourceRevision(),undefined);
+});
+add('one execution permit covers all runtime owners and an old release cannot clear a new task', async () => {
+  const {ModelExecutionService} = load(path.join(ets,'services/ModelExecutionService.ets'));
+  for(const owner of ['chat','decision','rerank','title']) {
+    const release = ModelExecutionService.acquire(owner);
+    for(const competing of ['chat','decision','rerank','title']) assert.throws(()=>ModelExecutionService.acquire(competing));
+    assert.equal(ModelExecutionService.current(),owner);
+    release();
+    const next = ModelExecutionService.acquire('chat');
+    release();
+    assert.equal(ModelExecutionService.current(),'chat');
+    next();
+    assert.equal(ModelExecutionService.current(),undefined);
+  }
 });
 
 for (const name of ['ChatSession', 'Thinking', 'Markdown', 'GenerationWorkflow', 'GenerationMetrics', 'OpenAiApiServer', 'Knowledge', 'KnowledgeRelations']) {

@@ -30,6 +30,11 @@ add_library(entry SHARED
     "${CMAKE_CURRENT_LIST_DIR}/../../../../scripts/laya/laya_decision.cpp"
 )
 
+# Identify the exact staged runtime linked into this build, including local patches.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${MNN_STAGED_LIB_DIR}/libMNN.so")
+file(SHA256 "${MNN_STAGED_LIB_DIR}/libMNN.so" MNN_LIBRARY_SHA256)
+target_compile_definitions(entry PRIVATE MNN_LIBRARY_SHA256="${MNN_LIBRARY_SHA256}")
+
 set_target_properties(entry PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/native-output/${OHOS_ARCH}"
 )

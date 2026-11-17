@@ -104,6 +104,8 @@ export struct RerankerModels {
         } else {
           ForEach(this.viewModel.rerankProfiles, (model: ModelProfile) => { this.ModelOption(model) },
             (model: ModelProfile) => model.id)
+          Text(this.viewModel.recentModelLoadText(this.viewModel.rerankSelectedId))
+            .fontSize(12).lineHeight(18).fontColor($r('app.color.text_muted')).width('100%')
           if (this.viewModel.rerankLoading) {
             LoadingProgress().width(24).height(24).color($r('app.color.status_good'))
           }

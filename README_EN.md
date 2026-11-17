@@ -289,6 +289,7 @@ With a physical keyboard, Enter sends from the chat input and Shift+Enter insert
 - Streaming display and scrolling: progressively reveals generated text with a brief fade-in for new content, caches Markdown / thinking-block parsing, and pauses auto-follow while the user is scrolling
 - Generation parameter controls: temperature, Top-P/K and penalties take effect on the next generation request. Zero temperature selects the highest-scoring token; a zero penalty window includes all recorded tokens.
 - Performance metrics: TTFT, TPOT, tokens/s, and token counts for completed responses
+- Open run details from a response’s more menu to inspect its saved model, threads, generation settings and timings, or export them as JSON. The Models page shows local load history, loaded models and memory usage, with controls to release models.
 - Model management: download from the Model Gallery, reorder or delete installed models, and optionally load the current model when the app starts
 - Import local MNN models by selecting a folder (where supported), importing a zip, or pushing a directory and scanning it in the app; standard MNN export directories use `jinja.chat_template` from `llm_config.json`
 - OpenAI-compatible API: serve the currently loaded model to Cherry Studio and other LAN clients with streaming output and Bearer authentication
@@ -373,7 +374,7 @@ At the output limit, Chat Completions returns `finish_reason: length`, while Res
 
 ### Runtime status
 
-`GET /turbo/runtime` exposes CPU, memory, temperature, threads, storage and chat-model state using the same server authentication. It remains available during generation without opening the Monitor page. Numeric fields have explicit units and sample timestamps; see the [runtime API reference](docs/runtime-api_EN.md). Both the Monitor page and chat memory indicator use RSS (resident memory).
+`GET /turbo/runtime` exposes CPU, memory, temperature, threads, storage and chat-model state using the same server authentication. It remains available during generation without opening the Monitor page. It also exposes the latest API chat generation configuration and timings without conversation content. Numeric fields have explicit units and sample timestamps; see the [runtime API reference](docs/runtime-api_EN.md). Both the Monitor page and chat memory indicator use RSS (resident memory).
 
 ### Decision API
 
