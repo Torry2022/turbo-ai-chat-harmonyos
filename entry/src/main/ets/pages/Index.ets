@@ -465,6 +465,7 @@ struct Index {
   @Builder
   private ModelsPage() {
     ModelTab({
+      active: this.appInForeground && this.activeTab === 1,
       onContentScroll: (yOffset: number): void => {
         this.handleLongPageScroll(yOffset)
       },

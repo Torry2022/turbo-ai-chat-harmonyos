@@ -1,3 +1,5 @@
+import { EMPTY_RUNTIME_STATS, RuntimeStats } from '../models/RuntimeStats'
+import { RuntimeStatsService } from '../services/RuntimeStatsService'
 import { LAYA_MODEL_ID } from '../models/LayaModelConfig'
 import { RerankerModels } from './RerankerModels'
 import { InputFieldStyle, ParameterSliderStyle } from './ControlStyles'
@@ -20,6 +22,12 @@ import { ModelType, ModelTypeSelector } from './ModelTypeSelector'
 @Component
 export struct ModelTab {
   private scroller: Scroller = new Scroller()
+  @Prop @Watch('updateResourceSampling') active: boolean = false
+  @State private resourceStats: RuntimeStats = EMPTY_RUNTIME_STATS
+  private resourceTimer: number = -1
+  private resourceReading: boolean = false
+  private resourceGeneration: number = 0
+  private resourceStatsService: RuntimeStatsService = new RuntimeStatsService()
   onContentScroll: (yOffset: number) => void = (_yOffset: number) => {}
   @Prop extendBottom: boolean = false
   @Prop bottomOverlayInset: number = 0
@@ -60,6 +68,37 @@ export struct ModelTab {
   private onRenderVersionChange(): void {
     this.syncGenerationSlidersFromViewModel()
     this.refreshModelProfiles()
+    this.updateResourceSampling()
+  }
+
+  aboutToDisappear(): void {
+    this.stopResourceSampling()
+  }
+
+  private updateResourceSampling(): void {
+    if (!this.active || this.viewModel.loadedModelEntries().length === 0) {
+      this.stopResourceSampling()
+      return
+    }
+    if (this.resourceTimer >= 0) return
+    this.refreshResourceStats()
+    this.resourceTimer = setInterval(() => { this.refreshResourceStats() }, 2000)
+  }
+
+  private refreshResourceStats(): void {
+    if (this.resourceReading) return
+    this.resourceReading = true
+    const generation = this.resourceGeneration
+    this.resourceStatsService.readStatsAsync().then((stats: RuntimeStats) => {
+      if (this.active && generation === this.resourceGeneration) this.resourceStats = stats
+    }).finally(() => { this.resourceReading = false })
+  }
+
+  private stopResourceSampling(): void {
+    this.resourceGeneration++
+    if (this.resourceTimer < 0) return
+    clearInterval(this.resourceTimer)
+    this.resourceTimer = -1
   }
 
   private refreshModelProfiles(): void {
@@ -1108,7 +1147,7 @@ export struct ModelTab {
             .onClick(() => { this.viewModel.releaseLoadedModel(entry.type) })
         }.width('100%')
       }, (entry: LoadedModelEntry) => `${entry.type}-${entry.name}`)
-      Text(`应用内存 ${this.viewModel.stats.appRss}，系统 ${this.viewModel.stats.systemMemAvailable}`)
+      Text(`应用内存 ${this.resourceStats.appRss}，系统 ${this.resourceStats.systemMemAvailable}`)
         .fontSize(12).lineHeight(18).fontColor($r('app.color.text_muted')).width('100%')
     }.width('100%').padding(12).backgroundColor($r('app.color.card')).borderRadius($r('app.float.card_radius'))
   }
