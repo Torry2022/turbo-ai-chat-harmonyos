@@ -52,6 +52,12 @@ export class BuiltinModelInstallService {
     return this.catalogService.findInstallItem(profile.downloadId)
   }
 
+  getInstalledDownloadSpec(profile: ModelProfile): BuiltinModelDownloadSpec | undefined {
+    const id = profile.catalogItemId ?? profile.downloadId
+    return id !== undefined && this.catalogService.hasInstalledSnapshot(id) ?
+      this.catalogService.findInstallItem(id) : undefined
+  }
+
   getCatalogItem(catalogItemId: string): ModelCatalogItem | undefined {
     return this.catalogService.findMarketItem(catalogItemId)
   }

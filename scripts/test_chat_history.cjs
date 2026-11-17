@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const vm = require('node:vm');
+const crypto = require('node:crypto');
 const ts = require(process.argv[2] || 'typescript');
 const project = path.resolve(__dirname, '..');
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'turbo-chat-history-'));
@@ -17,10 +18,12 @@ const fileIo = {
   listFile: async name => fs.readdirSync(name),
   access: async name => fs.existsSync(name),
   mkdir: async name => fs.mkdirSync(name, { recursive: true }),
-  stat: async name => fs.statSync(name),
+  stat: async name => { const stat=fs.statSync(name); stat.mtime=stat.mtimeMs/1000; return stat; },
   statSync: name => fs.statSync(name),
   write: async (fd, value) => fs.writeSync(fd, typeof value === 'string' ? value : Buffer.from(value)),
   fsync: async fd => fs.fsyncSync(fd),
+  writeSync: (fd, value) => fs.writeSync(fd, typeof value === 'string' ? value : Buffer.from(value)),
+  fsyncSync: fd => fs.fsyncSync(fd),
   copyFile: async (fd, name) => fs.writeFileSync(name, fs.readFileSync(fd)),
   unlink: async name => fs.unlinkSync(name),
   rmdir: async name => fs.rmdirSync(name),
@@ -76,10 +79,18 @@ function load(filename) {
     } };
     if (name === '@ohos/hypium') return hypium;
     if (name === 'libentry.so') return { __esModule: true, default: new Proxy(sdkStub, {
-      get: (_target, key) => key === 'prepareChatInput' ?
+      get: (_target, key) => key === 'modelThreadInfo' ?
+        () => JSON.stringify({maxThreads:16,chat:{requested:4,actual:4},rerank:{requested:4,actual:4}}) :
+        key === 'generateChatStream' ?
+        async () => ({text:'Test title', generatedTokens:2, stopReason:'completed'}) :
+        key === 'prepareChatInput' ?
         async turns => ({ prompt: JSON.stringify(turns), inputTokens: 17, modelConfig: '{}' }) :
         key === 'then' ? undefined : sdkStub
     }) };
+    if (name === '@ohos.security.cryptoFramework') return {createMd:()=>{
+      const hash=crypto.createHash('sha256');
+      return {update:async value=>{hash.update(Buffer.from(value.data));},digest:async()=>({data:new Uint8Array(hash.digest())})};
+    }};
     if (name === '@kit.ArkTS') return { buffer: Buffer, util: { TextEncoder: class {
       encodeInto(value) { return new TextEncoder().encode(value); }
     } } };
@@ -670,7 +681,7 @@ add('API status reflects the actual end reason and never calls a stopped request
     ['internal_error', 'API 生成失败', 'error'], ['unknown', 'API 生成失败', 'error']
   ]) {
     const view = await actionView('api-status-' + stopReason);
-    view.nativeService = { generateText: async () => ({ text: '正文', generatedTokens: 3, stopReason }) };
+    view.nativeService.generateText = async () => ({ text: '正文', generatedTokens: 3, stopReason });
     await view.runApiGeneration({ turns: [], maxNewTokens: 8, settings: {} }, () => {});
     assert.ok(view.status.startsWith(expected), view.status);
     assert.equal(view.statusTone, tone);
@@ -679,7 +690,7 @@ add('API status reflects the actual end reason and never calls a stopped request
     assert.equal(view.generationStopping, false);
   }
   const failed = await actionView('api-status-rejected');
-  failed.nativeService = { generateText: () => Promise.reject(new Error('native code=123 timeout')) };
+  failed.nativeService.generateText = () => Promise.reject(new Error('native code=123 timeout'));
   await assert.rejects(failed.runApiGeneration({ turns: [], maxNewTokens: 8, settings: {} }, () => {}));
   assert.equal(failed.status, 'API 生成失败，请查看服务日志');
   assert.equal(failed.busy, false);
@@ -704,12 +715,13 @@ add('background API chunks preserve output without rendering progress and late c
   const view = await actionView('api-background-chunks');
   view.appForeground = false;
   let callback, finish;
-  view.nativeService = { generateText: (_turns, _limit, _settings, onChunk) => {
+  view.nativeService.generateText = (_turns, _limit, _settings, onChunk) => {
     callback = onChunk;
     return new Promise(resolve => { finish = resolve; });
-  } };
+  };
   const received = [];
   const generation = view.runApiGeneration({ turns: [], maxNewTokens: 8, settings: {} }, chunk => received.push(chunk));
+  await new Promise(resolve => setImmediate(resolve));
   callback('前半');
   assert.equal(view.status, '等待 API 首个输出片段...');
   assert.equal(view.streamingChars, 0);
@@ -1804,6 +1816,97 @@ add('generated Markdown survives finalization, storage and answer extraction', a
   const restored = await service.load(record.id);
   assert.equal(restored.messages[1].content, text);
   assert.equal(parseAssistantText(restored.messages[1].content).answer, text);
+});
+
+add('model load records survive restart and replace only the same model', async () => {
+  const { ModelUsageService } = load(path.join(ets, 'services/ModelUsageService.ets'));
+  const folder = path.join(temporary, 'model-usage');
+  fs.mkdirSync(folder);
+  const usage = new ModelUsageService();
+  await usage.initialize(folder);
+  assert.equal(usage.latest('a'), undefined);
+  const record = { modelId:'a', modelName:'Model A', loadedAt:100, loadDurationMs:50,
+    requestedThreads:8, actualThreads:6, configurationSha256:'config-a', runtimeLibrarySha256:'runtime-a' };
+  await usage.recordLoad(record);
+  await usage.recordLoad({...record, modelId:'b'});
+  await usage.recordLoad({...record, loadedAt:200, loadDurationMs:75});
+  const restarted = new ModelUsageService();
+  await restarted.initialize(folder);
+  assert.equal(restarted.latest('a').loadedAt, 200);
+  assert.equal(restarted.latest('a').configurationSha256, 'config-a');
+  assert.equal(restarted.latest('b').loadedAt, 100);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(folder,'model-usage.json'),'utf8')).length,2);
+});
+
+add('model load failures retain the last success and a later success clears the failure', async () => {
+  const {ModelUsageService}=load(path.join(ets,'services/ModelUsageService.ets'));
+  const folder=path.join(temporary,'model-usage-attempts');fs.mkdirSync(folder);
+  const usage=new ModelUsageService();await usage.initialize(folder);
+  const record={modelId:'a',modelName:'A',loadedAt:100,loadDurationMs:10,requestedThreads:4,actualThreads:4};
+  await usage.recordLoad(record);
+  await usage.recordLoad({...record,outcome:'failed',loadedAt:200,actualThreads:undefined});
+  const restarted=new ModelUsageService();await restarted.initialize(folder);
+  assert.equal(restarted.latestAttempt('a').outcome,'failed');
+  assert.equal(restarted.latest('a').loadedAt,100);
+  assert.equal(restarted.latestAttempt('a').actualThreads,undefined);
+  await restarted.recordLoad({...record,outcome:'loaded',loadedAt:300});
+  assert.equal(restarted.latestAttempt('a').loadedAt,300);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(folder,'model-usage.json'),'utf8')).length,1);
+});
+
+add('model identity separates configuration contents from file metadata and excludes private paths', async () => {
+  const {ModelIdentityService}=load(path.join(ets,'services/ModelIdentityService.ets'));
+  const folder=path.join(temporary,'identity-fixture');fs.mkdirSync(folder);
+  const config='{"llm_model":"llm.mnn"}';const llm='{"model_type":"test"}';
+  fs.writeFileSync(path.join(folder,'config.json'),config);
+  fs.writeFileSync(path.join(folder,'llm_config.json'),llm);
+  fs.writeFileSync(path.join(folder,'llm.mnn'),'weights-a');
+  const service=new ModelIdentityService();
+  const first=await service.read(path.join(folder,'config.json'));
+  assert.equal(first.configurationSha256,crypto.createHash('sha256').update(JSON.stringify([config,llm])).digest('hex'));
+  assert.equal(first.fileManifestSha256.length,64);
+  fs.writeFileSync(path.join(folder,'leftover.part'),'partial');
+  assert.equal((await service.read(path.join(folder,'config.json'))).fileManifestSha256,first.fileManifestSha256);
+  fs.writeFileSync(path.join(folder,'llm.mnn'),'weights-b');fs.utimesSync(path.join(folder,'llm.mnn'),1000,1000);
+  const changed=await service.read(path.join(folder,'config.json'));
+  assert.equal(changed.configurationSha256,first.configurationSha256);
+  assert.notEqual(changed.fileManifestSha256,first.fileManifestSha256);
+  assert.ok(!JSON.stringify(changed).includes(folder));
+  const missing=await service.read(path.join(folder,'missing','config.json'));
+  assert.equal(missing.configurationSha256,undefined);assert.equal(missing.fileManifestSha256,undefined);
+});
+
+add('normal model loading records failures and detects changed files without replacing history', async () => {
+  const {ModelLifecycleService}=load(path.join(ets,'services/ModelLifecycleService.ets'));
+  const folder=path.join(temporary,'lifecycle-records');const modelDir=path.join(folder,'model');
+  fs.mkdirSync(modelDir,{recursive:true});
+  fs.writeFileSync(path.join(modelDir,'config.json'),JSON.stringify({llm_model:'llm.mnn',tokenizer_file:'tokenizer.txt'}));
+  fs.writeFileSync(path.join(modelDir,'llm_config.json'),JSON.stringify({jinja:{chat_template:'{{ messages }}'}}));
+  fs.writeFileSync(path.join(modelDir,'llm.mnn'),'weights');fs.writeFileSync(path.join(modelDir,'tokenizer.txt'),'tokenizer');
+  let fail=true;
+  const native={loadModel:async()=>{if(fail)throw new Error('native failed');return true;},reset:async()=>{},
+    modelThreadInfo:()=>({chat:{requested:4,actual:4},runtimeLibrarySha256:'runtime'})};
+  let installedSpec;
+  const lifecycle=new ModelLifecycleService(native,{getDownloadSpec:()=>undefined,getInstalledDownloadSpec:()=>installedSpec},{loadImportedProfiles:async()=>[]});
+  await lifecycle.loadImportedProfiles(folder);
+  const model={id:'test',name:'Test',directoryName:'model',supportsImage:false,source:'imported',configPath:path.join(modelDir,'config.json')};
+  await assert.rejects(lifecycle.loadModel(folder,model,model.configPath,4,16,{}));
+  assert.equal(lifecycle.recentLoad(model.id).outcome,'failed');
+  assert.equal(lifecycle.configurationSha256(),undefined);
+  fail=false;await lifecycle.loadModel(folder,model,model.configPath,4,16,{});
+  assert.equal(lifecycle.recentLoad(model.id).outcome,'loaded');
+  assert.equal(lifecycle.modelFilesChanged(model.id),false);
+  const original=lifecycle.fileManifestSha256();assert.equal(original.length,64);
+  fs.utimesSync(path.join(modelDir,'llm.mnn'),1000,1000);
+  await lifecycle.refreshUsageIdentity(model,model.configPath);
+  assert.equal(lifecycle.modelFilesChanged(model.id),true);
+  assert.equal(lifecycle.recentLoad(model.id).fileManifestSha256,original);
+  const revision='a'.repeat(40);const source='https://modelscope.cn/models/MNN/Test';
+  installedSpec={directoryName:'model',sourceUrl:source,files:[{relativePath:'config.json',url:`${source}/resolve/${revision}/config.json`}]};
+  model.source='catalog';await lifecycle.loadModel(folder,model,model.configPath,4,16,{});
+  assert.equal(lifecycle.sourceRepository(),'MNN/Test');assert.equal(lifecycle.sourceRevision(),revision);
+  model.source='imported';await lifecycle.loadModel(folder,model,model.configPath,4,16,{});
+  assert.equal(lifecycle.sourceRepository(),undefined);assert.equal(lifecycle.sourceRevision(),undefined);
 });
 
 for (const name of ['ChatSession', 'Thinking', 'Markdown', 'GenerationWorkflow', 'GenerationMetrics', 'OpenAiApiServer', 'Knowledge', 'KnowledgeRelations']) {
