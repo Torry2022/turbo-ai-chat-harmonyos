@@ -12,6 +12,7 @@ import { InputFieldStyle } from './ControlStyles'
 
 @Component
 export struct ChatTab {
+  @StorageProp('darkAppearance') private darkAppearance: boolean = true
   @ObjectLink viewModel: ChatViewModel
   @Prop renderVersion: number
   @Prop @Watch('onActiveChange') active: boolean = false
@@ -437,12 +438,7 @@ export struct ChatTab {
   }
 
   @Builder
-  private ChatBody() {
-    Column({ space: 6 }) {
-      if (this.compactTicker) {
-        ChatRunTicker({ viewModel: this.viewModel, active: this.active, compact: true, topSpacing: 0 })
-          .margin({ left: -this.contentInset, right: -this.contentInset })
-      }
+  private ConversationHeader() {
       Row({ space: 8 }) {
         Button({ type: ButtonType.Normal }) {
           Image($r('app.media.icon_chat_history')).width(22).height(22)
@@ -505,7 +501,25 @@ export struct ChatTab {
               borderRadius: $r('app.float.button_radius'), outlineColor: $r('app.color.border'), outlineWidth: 1
             })
         }
-      }.width('100%').height(34)
+      }.width('100%').height(this.compactTicker ? 46 : 34)
+        .padding({ left: this.compactTicker ? this.contentInset : 0, right: this.compactTicker ? this.contentInset : 0,
+          top: this.compactTicker ? 6 : 0, bottom: this.compactTicker ? 6 : 0 })
+        .backgroundBlurStyle(this.compactTicker ? BlurStyle.Thin : BlurStyle.NONE, {
+          colorMode: this.darkAppearance ? ThemeColorMode.DARK : ThemeColorMode.LIGHT,
+          adaptiveColor: AdaptiveColor.DEFAULT,
+          scale: 1,
+          policy: BlurStyleActivePolicy.ALWAYS_ACTIVE
+        })
+
+  }
+
+  @Builder
+  private ChatBody() {
+    Column({ space: this.compactTicker ? 0 : 6 }) {
+      if (this.compactTicker) {
+        ChatRunTicker({ viewModel: this.viewModel, active: this.active, compact: true, topSpacing: 0 })
+      }
+      if (!this.compactTicker) { this.ConversationHeader() }
       if (this.viewModel.historyError.length > 0) {
         Row({ space: 8 }) {
           Text(this.viewModel.historyError).fontSize(12).lineHeight(18)
@@ -569,6 +583,7 @@ export struct ChatTab {
       }
       .layoutWeight(1)
       .clip(true)
+      .contentStartOffset(this.compactTicker ? 46 : 0)
       .id('chat-messages')
       .onSizeChange((oldSize: SizeOptions, newSize: SizeOptions) => this.onChatViewportResize(oldSize, newSize))
       .onAppear(() => {
@@ -597,7 +612,8 @@ export struct ChatTab {
         this.inputController.stopEditing()
       })
       }.width('100%').height('100%')
-        .padding({ bottom: this.collapsedComposerRegionHeight + 6 })
+        .padding({ left: this.compactTicker ? this.contentInset : 0, right: this.compactTicker ? this.contentInset : 0,
+          bottom: this.collapsedComposerRegionHeight + 6 })
 
       Column({ space: 6 }) {
       if (this.viewModel.selectedImageUri.length > 0) {
@@ -748,12 +764,17 @@ export struct ChatTab {
       .width('100%')
       .flexShrink(0)
       .justifyContent(FlexAlign.End)
-      }.width('100%').backgroundColor(this.compactPage ? $r('app.color.page_compact') : $r('app.color.page'))
+      }.width('100%').padding({ left: this.compactTicker ? this.contentInset : 0, right: this.compactTicker ? this.contentInset : 0 })
+        .backgroundColor(this.compactPage ? $r('app.color.page_compact') : $r('app.color.page'))
         .onAreaChange((_oldArea: Area, newArea: Area) => {
           if (!this.inputExpanded && this.animatedInputHeight < 0) {
             this.collapsedComposerRegionHeight = Number(newArea.height)
           }
         })
+      if (this.compactTicker) {
+        Column() { this.ConversationHeader() }
+          .width('100%').height(46).position({ x: 0, y: 0 }).zIndex(2)
+      }
       }.width('100%').layoutWeight(1).clip(true)
         .onAreaChange((_oldArea: Area, newArea: Area) => { this.editorRegionHeight = Number(newArea.height) })
     }
@@ -808,8 +829,8 @@ export struct ChatTab {
         Column() {
           this.ChatBody()
         }.layoutWeight(1).height('100%').alignItems(HorizontalAlign.Center)
-          .padding({ left: this.wideHistory() && this.historyOpen ? 12 : this.leadingInset + this.contentInset,
-            right: this.contentInset, bottom: this.contentBottomInset })
+          .padding({ left: this.compactTicker ? 0 : this.wideHistory() && this.historyOpen ? 12 : this.leadingInset + this.contentInset,
+            right: this.compactTicker ? 0 : this.contentInset, bottom: this.contentBottomInset })
       }.width('100%').height('100%')
       if (!this.compactHistoryManaged && !this.wideHistory() && this.historyOpen) {
         Column().width('100%').height('100%').backgroundColor('#66000000')

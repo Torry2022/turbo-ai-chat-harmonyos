@@ -71,3 +71,32 @@ instance.updateModalFocus(); flush();
 assert.equal(calls.at(-1), 'api-usage-dialog', 'Pending focus follows the current dialog');
 assert(source.includes(".focusable(!this.showLaunch && !this.dialogExitBlocking && this.modalFocusId() === 'app-content')"));
 console.log('PASS startup and dialog exit avoid input focus, user input and modal focus remain available');
+
+// Launch system bars can be dark while page materials already use the saved appearance.
+{
+  const stored = new Map();
+  const color = { COLOR_MODE_DARK: 0, COLOR_MODE_LIGHT: 1, COLOR_MODE_NOT_SET: -1 };
+  const themeContext = { exports: {}, AppStorage: { setOrCreate: (key, value) => stored.set(key,value) },
+    require: name => name === '@kit.AbilityKit' ? {ConfigurationConstant:{ColorMode:color}} :
+      name === '@kit.ArkData' ? {preferences:{getPreferencesSync:()=>({getSync:()=> 'light'})}} :
+      name === '@kit.PerformanceAnalysisKit' ? {hilog:{warn:()=>{}}} : {} };
+  const themeSource = fs.readFileSync(path.join(__dirname,'../entry/src/main/ets/services/ThemeService.ets'),'utf8');
+  vm.runInNewContext(ts.transpileModule(themeSource,{compilerOptions:{module:ts.ModuleKind.CommonJS,
+    target:ts.ScriptTarget.ES2021}}).outputText,themeContext);
+  const theme = themeContext.exports.themeService;
+  const config = {colorMode:color.COLOR_MODE_LIGHT};
+  theme.initialize({config,getApplicationContext:()=>({setColorMode:mode=>{config.colorMode=mode;}}),
+    resourceManager:{getColorByNameSync:()=>0xffeeeeee}});
+  const bars=[];
+  theme.attachWindow({setWindowBackgroundColor:()=>{},setWindowSystemBarProperties:value=>{
+    bars.push(value);return Promise.resolve();}});
+  assert.equal(stored.get('darkAppearance'),false);
+  assert.equal(bars.at(-1).isStatusBarLightIcon,true);
+  theme.finishLaunch();
+  assert.equal(stored.get('darkAppearance'),false);
+  assert.equal(bars.at(-1).isStatusBarLightIcon,false);
+  config.colorMode=color.COLOR_MODE_DARK;
+  theme.updateWindow();
+  assert.equal(stored.get('darkAppearance'),true);
+  console.log('PASS launch bar appearance cannot temporarily darken light page materials');
+}

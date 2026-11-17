@@ -69,8 +69,9 @@ class ThemeService {
       const background = resources.getColorByNameSync(this.launching ? 'start_window_background' : 'page')
       const backgroundColor = `#${(background >>> 0).toString(16).padStart(8, '0')}`
       const text = resources.getColorByNameSync(this.launching ? 'launch_text' : 'text_title')
-      const dark = this.launching || this.context.config.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK
-      AppStorage.setOrCreate<boolean>('darkAppearance', dark)
+      const contentDark = this.context.config.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK
+      const dark = this.launching || contentDark
+      AppStorage.setOrCreate<boolean>('darkAppearance', contentDark)
       this.mainWindow.setWindowBackgroundColor(backgroundColor)
       this.mainWindow.setWindowSystemBarProperties({
         // Background-only ArkUI layers extend beneath the bars; content retains its insets.
