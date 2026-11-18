@@ -299,6 +299,9 @@ export class ChatViewModel {
   private builtinModelInstallCancelRequested: boolean = false
   private readonly modelOrderPreferenceName: string = 'model-settings'
   private readonly modelOrderPreferenceKey: string = 'model-order'
+  private specializedModelOrder: string[] = []
+  private specializedOrderRevision: number = 0
+  private specializedOrderSave: Promise<void> = Promise.resolve()
   private readonly startupAutoLoadPreferenceKey: string = 'startup-auto-load'
   private readonly startupModelPreferenceKey: string = 'startup-model-id'
   private startupSettingsReady: boolean = false
@@ -379,6 +382,7 @@ export class ChatViewModel {
     this.decisionThreads = Math.min(this.decisionThreads, this.threadMax)
     this.context = context
     this.filesDir = context.filesDir
+    this.loadSpecializedModelOrder()
     this.embeddingThreads = Math.min(this.embeddingThreads, this.threadMax)
     this.initializeEmbeddingProfiles().catch((error: Error) => {
       this.embeddingMessage = error.message; this.notify()
@@ -499,7 +503,53 @@ export class ChatViewModel {
   decisionModels(): ModelProfile[] {
     const models: ModelProfile[] = [{ id: LAYA_MODEL_ID, name: LAYA_MODEL_ID, shortName: 'Laya', directoryName: LAYA_MODEL_DIRECTORY,
       description: '多语言决策模型，支持选择、评分与是非判断。', supportsImage: false, systemPrompt: '', source: 'builtin' }]
-    return models.concat(this.decisionProfiles)
+    return this.orderedSpecializedModels(models.concat(this.decisionProfiles))
+  }
+
+orderedSpecializedModels(profiles: ModelProfile[]): ModelProfile[] {
+    const ordered: ModelProfile[] = []
+    this.specializedModelOrder.forEach((id: string) => {
+      const profile = profiles.find((item: ModelProfile) => item.id === id)
+      if (profile !== undefined) ordered.push(profile)
+    })
+    return ordered.concat(profiles.filter((profile: ModelProfile) => !this.specializedModelOrder.includes(profile.id)))
+  }
+
+  moveSpecializedModel(type: CatalogModelType, id: string, index: number): void {
+    if (type !== 'decision' && type !== 'embedding' && type !== 'rerank') return
+    if (this.busy || this.modelLoading || this.builtinModelInstalling || this.decisionImporting ||
+      this.rerankImporting || this.embeddingImporting) return
+    const profiles = type === 'decision' ? this.decisionModels() :
+      this.orderedSpecializedModels(type === 'embedding' ? this.embeddingProfiles : this.rerankProfiles)
+    const ids = profiles.map((profile: ModelProfile) => profile.id)
+    if (!ids.includes(id) || !Number.isFinite(index)) return
+    const allIds = this.specializedModelOrder.concat(ids.filter((value: string) => !this.specializedModelOrder.includes(value)))
+    this.specializedModelOrder = reorderVisibleModelIds(allIds, ids, id, index)
+    this.specializedOrderRevision++
+    const snapshot = JSON.stringify(this.specializedModelOrder)
+    if (this.context !== undefined) {
+      const context = this.context
+      this.specializedOrderSave = this.specializedOrderSave.then(async () => {
+        const store = await preferences.getPreferences(context, this.modelOrderPreferenceName)
+        await store.put('specialized-model-order', snapshot)
+        await store.flush()
+      }).catch(() => { this.toastCallback('模型顺序未能保存，请重试') })
+    }
+    this.notify()
+  }
+
+  private async loadSpecializedModelOrder(): Promise<void> {
+    if (this.context === undefined) return
+    const revision = this.specializedOrderRevision
+    try {
+      const store = await preferences.getPreferences(this.context, this.modelOrderPreferenceName)
+      const value = await store.get('specialized-model-order', '')
+      if (typeof value !== 'string' || !value || revision !== this.specializedOrderRevision) return
+      const parsed = JSON.parse(value) as string[]
+      if (!Array.isArray(parsed) || parsed.some((id: string) => typeof id !== 'string')) return
+      this.specializedModelOrder = parsed.filter((id: string, index: number) => parsed.indexOf(id) === index)
+      this.notify()
+    } catch (_) {}
   }
 
   selectedDecisionModel(): ModelProfile {
@@ -994,6 +1044,7 @@ export class ChatViewModel {
   }
 
   modelMarketStatus(): string {
+    if (this.modelCatalogRefreshFailed) return this.modelCatalogStatus
     return this.modelMarketCategory === 'rerank' && !this.modelCatalogRefreshing ?
       this.modelCatalogService.rerankerStatus() : this.modelCatalogStatus
   }

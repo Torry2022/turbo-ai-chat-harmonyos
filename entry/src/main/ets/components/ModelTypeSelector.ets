@@ -24,7 +24,7 @@ export struct ModelTypeSelector {
       .fontSize(14)
       .fontWeight(this.selected === type ? FontWeight.Medium : FontWeight.Regular)
       .fontColor(this.selected === type ?
-        $r('app.color.nav_mobile_selected') : $r('app.color.text_muted'))
+        $r('app.color.nav_tab_selected') : $r('app.color.text_muted'))
       .borderRadius(8)
       .backgroundColor(Color.Transparent)
       .enabled(this.interactionEnabled)
@@ -42,7 +42,7 @@ export struct ModelTypeSelector {
         .width(this.indicatorWidth())
         .height(36)
         .borderRadius(8)
-        .backgroundColor($r('app.color.gallery_entry_background'))
+        .backgroundColor($r('app.color.selected_background'))
         .translate({ x: this.indicatorOffset(), y: 2 })
         .animation({ duration: 180, curve: Curve.EaseOut })
       Row({ space: 2 }) {

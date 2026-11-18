@@ -52,7 +52,7 @@ export class ModelCatalogService {
   private descriptionVersion: number = 0
   private descriptions: Record<string, string> = {}
   private rerankerItems: ModelCatalogItem[] = []
-  private rerankerCatalogStatus: string = '正在读取重排模型目录...'
+  private rerankerCatalogStatus: string = '正在读取模型目录...'
   private officialItems: ModelCatalogItem[] = []
   private resolvedItems: ModelCatalogItem[] = []
   private officialVersion: number = 0
@@ -166,9 +166,9 @@ export class ModelCatalogService {
     if (await this.exists(rerankerPath)) {
       try {
         this.rerankerItems = parseOfficialRerankerCatalog(await fs.readText(rerankerPath))
-        this.rerankerCatalogStatus = '已载入缓存的重排模型目录'
-      } catch (_) { this.rerankerCatalogStatus = '重排模型目录缓存无效，请刷新重试' }
-    } else { this.rerankerCatalogStatus = '尚未获取重排模型目录，请刷新' }
+        this.rerankerCatalogStatus = '已载入上次更新的模型目录'
+      } catch (_) { this.rerankerCatalogStatus = '目录缓存无效，请刷新重试' }
+    } else { this.rerankerCatalogStatus = '尚未获取模型目录，请刷新' }
     return this.result(this.source, this.officialVersion > 0 ? '已载入缓存的官方模型目录' :
       this.catalogVersion > 0 ? '已载入上次更新的模型目录' : '正在使用安装包内置模型目录')
   }
@@ -192,7 +192,7 @@ export class ModelCatalogService {
       this.refreshRerankers(filesDir).then((changed: boolean) => { updated = updated || changed })
         .catch((err: Error) => {
           rerankerError = err
-          this.rerankerCatalogStatus = this.rerankerItems.length > 0 ? '重排目录更新失败，已保留缓存' : '重排目录更新失败，请重试'
+          this.rerankerCatalogStatus = this.rerankerItems.length > 0 ? '暂时无法更新目录，当前目录仍可使用' : '暂时无法获取目录，请稍后重试'
           hilog.warn(0, 'TurboAIChat', 'Reranker catalog refresh failed: %{public}s', formatError(err))
         }),
       this.refreshDescriptions(filesDir).then((changed: boolean) => { updated = updated || changed })
@@ -239,7 +239,7 @@ export class ModelCatalogService {
     const changed = JSON.stringify(items) !== JSON.stringify(this.rerankerItems)
     await this.writeTextAtomically(`${filesDir}/${RERANKER_CATALOG_CACHE_FILE}`, text)
     this.rerankerItems = items
-    this.rerankerCatalogStatus = '重排模型目录已更新'
+    this.rerankerCatalogStatus = '模型广场已更新'
     return changed
   }
 

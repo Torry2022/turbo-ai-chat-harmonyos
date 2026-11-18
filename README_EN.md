@@ -287,9 +287,20 @@ With a physical keyboard, Enter sends from the chat input and Shift+Enter insert
 
 Phone screenshots from v2.0.0 in Light mode:
 
-| Chat | Models | API Service | Monitor |
-| --- | --- | --- | --- |
-| ![Chat](docs/images/chat.jpg) | ![Models](docs/images/models.jpg) | ![API Service](docs/images/service.jpg) | ![Monitor](docs/images/monitor.jpg) |
+<table width="100%">
+  <tr>
+    <th width="25%">Chat</th>
+    <th width="25%">Models</th>
+    <th width="25%">API Service</th>
+    <th width="25%">Monitor</th>
+  </tr>
+  <tr>
+    <td width="25%"><img src="docs/images/chat.jpg" alt="Chat" width="100%"></td>
+    <td width="25%"><img src="docs/images/models.jpg" alt="Models" width="100%"></td>
+    <td width="25%"><img src="docs/images/service.jpg" alt="API Service" width="100%"></td>
+    <td width="25%"><img src="docs/images/monitor.jpg" alt="Monitor" width="100%"></td>
+  </tr>
+</table>
 
 Maximized PC window, captured full-screen:
 

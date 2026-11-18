@@ -19,6 +19,7 @@ import {
 import { ChatViewModel, LoadedModelEntry } from '../state/ChatViewModel'
 import { ModelDragFrame, resolveModelDragPreview } from '../utils/modelDrag'
 import { ModelType, ModelTypeSelector } from './ModelTypeSelector'
+import { SortableModelList } from './SortableModelList'
 
 @Component
 export struct ModelTab {
@@ -53,6 +54,7 @@ export struct ModelTab {
   @State importedConfigExpanded: boolean = false
   @State visibleModelProfiles: ModelProfile[] = []
   @State draggingModelId: string = ''
+  @State private specializedDragging: boolean = false
   @State dragOffsetY: number = 0
   @State dragTargetIndex: number = -1
   @State private contentWidth: number = 0
@@ -100,6 +102,11 @@ export struct ModelTab {
     if (this.resourceTimer < 0) return
     clearInterval(this.resourceTimer)
     this.resourceTimer = -1
+  }
+
+  private setSpecializedDragging(dragging: boolean): void {
+    this.specializedDragging = dragging
+    this.onDragStateChange(dragging)
   }
 
   private refreshModelProfiles(): void {
@@ -406,9 +413,11 @@ export struct ModelTab {
       if (this.viewModel.modelPageCategory === 'decision') {
         this.DecisionModelCard()
       } else if (this.viewModel.modelPageCategory === 'embedding') {
-        EmbeddingModels({ viewModel: this.viewModel, renderVersion: this.renderVersion })
+        EmbeddingModels({ viewModel: this.viewModel, renderVersion: this.renderVersion,
+          onDragStateChange: (dragging: boolean) => this.setSpecializedDragging(dragging) })
       } else if (this.viewModel.modelPageCategory === 'rerank') {
-        RerankerModels({ viewModel: this.viewModel, renderVersion: this.renderVersion })
+        RerankerModels({ viewModel: this.viewModel, renderVersion: this.renderVersion,
+          onDragStateChange: (dragging: boolean) => this.setSpecializedDragging(dragging) })
       } else {
         Column({ space: 8 }) {
           ForEach(this.visibleModelProfiles, (profile: ModelProfile) => {
@@ -498,22 +507,13 @@ export struct ModelTab {
   @Builder
   private DecisionModelCard() {
     Column({ space: 10 }) {
-      ForEach(this.viewModel.decisionModels(), (model: ModelProfile) => {
-        Column({ space: 4 }) {
-          Row({ space: 6 }) {
-            Text(model.name).fontSize(14).fontWeight(FontWeight.Medium)
-              .fontColor($r('app.color.text_title')).layoutWeight(1)
-            if (model.id === this.viewModel.loadedDecision()?.id) {
-              this.CapabilityTag('已加载', $r('app.color.tag_green_text'), $r('app.color.tag_green_background'))
-            }
-          }.width('100%')
-          Text(model.description).fontSize(12).lineHeight(18)
-            .fontColor($r('app.color.text_note')).width('100%')
-        }.width('100%').padding(10).borderRadius(8)
-        .backgroundColor(model.id === this.viewModel.decisionSelectedId ?
-          $r('app.color.selected_background') : $r('app.color.list_background'))
-        .onClick(() => this.viewModel.selectDecisionModel(model.id))
-      }, (model: ModelProfile) => model.id)
+      SortableModelList({
+        profiles: this.viewModel.decisionModels(), selectedId: this.viewModel.decisionSelectedId,
+        loadedId: this.viewModel.loadedDecision()?.id ?? '', interactionEnabled: this.controlsEnabled(),
+        onSelect: (id: string) => this.viewModel.selectDecisionModel(id),
+        onMove: (id: string, index: number) => this.viewModel.moveSpecializedModel('decision', id, index),
+        onDragStateChange: (dragging: boolean) => this.setSpecializedDragging(dragging)
+      })
       Text(this.viewModel.recentModelLoadText(this.viewModel.decisionSelectedId))
         .fontSize(12).lineHeight(18).fontColor($r('app.color.text_muted')).width('100%')
       if (this.decisionReady || this.viewModel.loadedDecision()) {
@@ -1210,7 +1210,7 @@ export struct ModelTab {
       if (source !== ScrollSource.EDGE_EFFECT) this.onContentScroll(yOffset)
     })
     .edgeEffect(EdgeEffect.Spring)
-    .enableScrollInteraction(this.draggingModelId.length <= 0)
+    .enableScrollInteraction(this.draggingModelId.length <= 0 && !this.specializedDragging)
     .expandSafeArea([SafeAreaType.SYSTEM], this.extendBottom ? [SafeAreaEdge.BOTTOM] : [])
   }
 }

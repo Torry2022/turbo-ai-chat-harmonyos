@@ -287,9 +287,20 @@ App 和 HAP 均不内置模型权重。打开 App → 模型页 → 模型广场
 
 v2.0.0 手机浅色模式真机界面：
 
-| 聊天 | 模型 | API 服务 | 监控 |
-| --- | --- | --- | --- |
-| ![聊天](docs/images/chat.jpg) | ![模型](docs/images/models.jpg) | ![API 服务](docs/images/service.jpg) | ![监控](docs/images/monitor.jpg) |
+<table width="100%">
+  <tr>
+    <th width="25%">聊天</th>
+    <th width="25%">模型</th>
+    <th width="25%">API 服务</th>
+    <th width="25%">监控</th>
+  </tr>
+  <tr>
+    <td width="25%"><img src="docs/images/chat.jpg" alt="聊天" width="100%"></td>
+    <td width="25%"><img src="docs/images/models.jpg" alt="模型" width="100%"></td>
+    <td width="25%"><img src="docs/images/service.jpg" alt="API 服务" width="100%"></td>
+    <td width="25%"><img src="docs/images/monitor.jpg" alt="监控" width="100%"></td>
+  </tr>
+</table>
 
 PC 最大化窗口，全屏截图：
 

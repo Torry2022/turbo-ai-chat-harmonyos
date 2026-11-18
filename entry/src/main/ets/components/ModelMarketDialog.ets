@@ -6,13 +6,43 @@ import { ModelCatalogItem, formatBytes } from '../models/BuiltinModelDownloadTyp
 
 import { dialogFade, dialogScale } from './DialogMotion'
 
+interface ModelMarketRow { key: string; items: ModelCatalogItem[] }
+
+class ModelMarketRows implements IDataSource {
+  private rows: ModelMarketRow[] = []
+  private listeners: DataChangeListener[] = []
+  private signature: string = ''
+  totalCount(): number { return this.rows.length }
+  getData(index: number): ModelMarketRow { return this.rows[index] }
+  registerDataChangeListener(listener: DataChangeListener): void { this.listeners.push(listener) }
+  unregisterDataChangeListener(listener: DataChangeListener): void {
+    this.listeners = this.listeners.filter((item: DataChangeListener) => item !== listener)
+  }
+  replace(rows: ModelCatalogItem[][]): void {
+    const signature = JSON.stringify(rows)
+    if (signature === this.signature) return
+    this.signature = signature
+    this.rows = rows.map((items: ModelCatalogItem[]): ModelMarketRow => ({ key: JSON.stringify(items), items }))
+    this.listeners.forEach((listener: DataChangeListener) => listener.onDataReloaded())
+  }
+}
+
 @Component
 export struct ModelMarketDialog {
   @ObjectLink viewModel: ChatViewModel
-  @Prop availableWidth: number = 360
+  @Prop @Watch('refreshRows') availableWidth: number = 360
+  @Prop @Watch('refreshRows') renderVersion: number = 0
   @Prop availableHeight: number = 640
   @State isClosePressed: boolean = false
+  @State private hasRows: boolean = false
   private searchController: TextInputController = new TextInputController()
+  private rows: ModelMarketRows = new ModelMarketRows()
+
+  aboutToAppear(): void { this.refreshRows() }
+  private refreshRows(): void {
+    this.rows.replace(this.catalogRows())
+    this.hasRows = this.rows.totalCount() > 0
+  }
 
   private twoColumnCards(): boolean {
     return Math.min(840, this.availableWidth - 32) >= 720
@@ -39,9 +69,9 @@ export struct ModelMarketDialog {
     Button(label, { type: ButtonType.Normal })
       .attributeModifier(new ActionButtonStyle(
         this.viewModel.modelMarketCapabilityFilter === label ?
-          $r('app.color.gallery_entry_background') : $r('app.color.input_background'),
+          $r('app.color.selected_background') : $r('app.color.input_background'),
         this.viewModel.modelMarketCapabilityFilter === label ?
-          $r('app.color.nav_mobile_selected') : $r('app.color.text_secondary')))
+          $r('app.color.nav_tab_selected') : $r('app.color.text_secondary')))
       .height(32).fontSize(12).padding({ left: 12, right: 12 })
       .fontWeight(this.viewModel.modelMarketCapabilityFilter === label ? FontWeight.Medium : FontWeight.Normal)
       .responseRegion({ x: 0, y: -4, width: '100%', height: 40 })
@@ -256,7 +286,7 @@ export struct ModelMarketDialog {
             this.viewModel.updateModelMarketSearchText(value)
           })
 
-        if (this.viewModel.modelCatalogFilterTags().length > 1) {
+        if (this.viewModel.modelMarketCategory === 'chat' && this.viewModel.modelCatalogFilterTags().length > 1) {
           Scroll() {
             Row({ space: 6 }) {
               ForEach(this.viewModel.modelCatalogFilterTags(), (tag: string) => {
@@ -273,26 +303,26 @@ export struct ModelMarketDialog {
 
         }
 
-        Scroll() {
-          Column({ space: 8 }) {
-            if (this.viewModel.modelCatalogItems().length === 0) {
-              this.EmptyResults()
-            }
-            ForEach(this.catalogRows(), (items: ModelCatalogItem[]) => {
+        List({ space: 8 }) {
+          if (!this.hasRows) {
+            ListItem() { this.EmptyResults() }
+          }
+          LazyForEach(this.rows, (row: ModelMarketRow) => {
+            ListItem() {
               Row({ space: 8 }) {
-                ForEach(items, (item: ModelCatalogItem) => {
+                ForEach(row.items, (item: ModelCatalogItem) => {
                   Column() {
                     this.CatalogItemCard(item)
                   }.layoutWeight(1)
                 }, (item: ModelCatalogItem) => item.id)
-                if (this.twoColumnCards() && items.length === 1) {
+                if (this.twoColumnCards() && row.items.length === 1) {
                   Column().layoutWeight(1)
                 }
               }.width('100%').alignItems(VerticalAlign.Top)
-            }, (items: ModelCatalogItem[]) => items.map((item: ModelCatalogItem) => item.id).join('|'))
-          }
-          .width('100%')
+            }
+          }, (row: ModelMarketRow) => row.key)
         }
+        .cachedCount(1)
         .layoutWeight(1)
         .width('100%')
         .align(Alignment.Top)

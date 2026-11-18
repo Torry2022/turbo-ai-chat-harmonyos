@@ -714,6 +714,7 @@ struct Index {
       if (this.viewModel.showModelMarketDialog) {
         ModelMarketDialog({
           viewModel: this.viewModel,
+          renderVersion: this.stateVersion,
           availableWidth: this.windowWidth,
           availableHeight: this.windowHeight
         })

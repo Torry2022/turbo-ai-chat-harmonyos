@@ -1,0 +1,34 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const ts = require(process.argv[2] || 'typescript');
+const source = fs.readFileSync('entry/src/main/ets/components/ModelMarketDialog.ets', 'utf8');
+const ast = ts.createSourceFile('dialog.ts', source, ts.ScriptTarget.Latest, true);
+const declaration = ast.statements.find(node => ts.isClassDeclaration(node) && node.name.text === 'ModelMarketRows');
+assert(declaration);
+const code = ts.transpileModule(declaration.getText(ast), {
+  compilerOptions: { target: ts.ScriptTarget.ES2020 }
+}).outputText;
+const Rows = vm.runInNewContext(code + '\nModelMarketRows');
+const rows = new Rows();
+let reloads = 0;
+const listener = { onDataReloaded() { reloads++; } };
+rows.registerDataChangeListener(listener);
+rows.replace([[{ id: 'one', description: 'original' }], [{ id: 'two' }]]);
+assert.equal(rows.totalCount(), 2);
+assert.equal(rows.getData(1).items[0].id, 'two');
+const key = rows.getData(0).key;
+rows.replace([[{ id: 'one', description: 'original' }], [{ id: 'two' }]]);
+assert.equal(reloads, 1, 'Unchanged notifications preserve lazy-list contents');
+rows.replace([[{ id: 'one', description: 'updated' }], [{ id: 'two' }]]);
+assert.notEqual(rows.getData(0).key, key, 'Updated card metadata invalidates its cached row');
+rows.replace([[{ id: 'one' }, { id: 'two' }]]);
+assert.equal(rows.totalCount(), 1, 'Wide layout groups cards in the same row');
+assert.equal(rows.getData(0).items.length, 2);
+rows.replace([]);
+assert.equal(rows.totalCount(), 0, 'Empty search results clear old rows');
+rows.unregisterDataChangeListener(listener);
+const count = reloads;
+rows.replace([[{ id: 'new' }]]);
+assert.equal(reloads, count);
+console.log('PASS gallery lazy rows preserve unchanged content and update metadata, layout and empty results');
