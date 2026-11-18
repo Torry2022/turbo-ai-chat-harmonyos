@@ -1,3 +1,5 @@
+import { EmbeddingResult } from 'libentry.so'
+import { EmbeddingService } from '../services/EmbeddingService'
 import { captureGenerationConfiguration } from '../utils/generationSnapshot'
 import { ApiGenerationRun } from '../services/OpenAiApiServer'
 import { calculatePerfMetrics } from '../utils/generationText'
@@ -144,7 +146,7 @@ export class ChatViewModel {
   startupAutoLoadEnabled: boolean = false
   startupModelId: string = ''
   showModelLoadDialog: boolean = false
-  modelLoadTarget: 'chat' | 'decision' | 'rerank' = 'chat'
+  modelLoadTarget: 'chat' | 'decision' | 'rerank' | 'embedding' = 'chat'
   modelLoading: boolean = false
   modelLoadElapsedSeconds: number = 0
   modelLoadMessage: string = '准备加载本地模型'
@@ -245,6 +247,9 @@ export class ChatViewModel {
   private statsService: RuntimeStatsService = new RuntimeStatsService()
   private speechRecognitionService: SpeechRecognitionService = new SpeechRecognitionService()
   private apiServer: OpenAiApiServer = new OpenAiApiServer({
+    embeddingModel: () => this.loadedEmbedding(),
+    embeddings: (texts: string[]) => this.runApiEmbeddings(texts),
+    isEmbeddingBusy: () => this.busy || this.modelLoading || this.embedder.busy,
     rerankModel: () => this.loadedReranker(),
     rerank: (query: string, documents: string[]) => this.runApiRerank(query, documents),
     cancelRerank: () => this.reranker.cancel(),
@@ -374,6 +379,10 @@ export class ChatViewModel {
     this.decisionThreads = Math.min(this.decisionThreads, this.threadMax)
     this.context = context
     this.filesDir = context.filesDir
+    this.embeddingThreads = Math.min(this.embeddingThreads, this.threadMax)
+    this.initializeEmbeddingProfiles().catch((error: Error) => {
+      this.embeddingMessage = error.message; this.notify()
+    })
     this.decisionImport.loadImportedProfiles(this.filesDir).then((profiles: ModelProfile[]) => {
       this.decisionProfiles = profiles
       this.refreshDecisionReady()
@@ -561,6 +570,162 @@ export class ChatViewModel {
 
   private rerankImport: ModelImportService = new ModelImportService(true)
   private deletingReranker: boolean = false
+
+  embeddingProfiles: ModelProfile[] = []
+  embeddingSelectedId: string = ''
+  embeddingThreads: number = 4
+  embeddingMessage: string = ''
+  embeddingLoading: boolean = false
+  embeddingImporting: boolean = false
+  readonly embedder: EmbeddingService = new EmbeddingService()
+  private embeddingImport: ModelImportService = new ModelImportService(false, false, true)
+  private deletingEmbedding: boolean = false
+
+  private async initializeEmbeddingProfiles(): Promise<void> {
+    this.embeddingProfiles = await this.embeddingImport.loadImportedProfiles(this.filesDir)
+    this.embeddingSelectedId = this.embeddingProfiles[0]?.id ?? ''
+    if (this.context) {
+      try {
+        const store = await preferences.getPreferences(this.context, this.modelOrderPreferenceName)
+        const saved = await store.get('embedding-selected-id', '')
+        if (typeof saved === 'string' && this.embeddingProfiles.some((model: ModelProfile) => model.id === saved)) {
+          this.embeddingSelectedId = saved
+        }
+      } catch (_) {}
+    }
+    this.notify()
+  }
+
+  private saveEmbeddingSelection(): void {
+    if (!this.context) return
+    const selected = this.embeddingSelectedId
+    preferences.getPreferences(this.context, this.modelOrderPreferenceName).then((store: preferences.Preferences) => {
+      return store.put('embedding-selected-id', selected).then(() => store.flush())
+    }).catch(() => { this.embeddingMessage = '未能保存向量模型选择'; this.notify() })
+  }
+
+  embeddingRuntimeChanged(): boolean {
+    return this.embedder.loadedId.length > 0 && this.embedder.threads !== this.embeddingThreads
+  }
+
+  embeddingRuntimeHint(): string {
+    if (!this.embedder.loadedId) return '下次加载时使用此配置'
+    return this.embeddingRuntimeChanged() ? '重新加载后生效' : ''
+  }
+
+  async reloadEmbeddingModel(): Promise<void> {
+    const model = this.selectedEmbeddingModel()
+    if (!model || this.busy || this.embedder.busy) return
+    await this.releaseEmbeddingModel()
+    if (!this.embedder.loadedId) await this.loadEmbeddingModel(model, true)
+  }
+
+  private async runApiEmbeddings(texts: string[]): Promise<EmbeddingResult> {
+    if (this.busy || this.modelLoading || this.embedder.busy) throw new Error('当前模型任务尚未结束')
+    this.busy = true
+    this.notify()
+    try { return await this.embedder.encode(texts) }
+    finally { this.busy = false; this.notify() }
+  }
+
+  selectedEmbeddingModel(): ModelProfile | undefined {
+    return this.embeddingProfiles.find((model: ModelProfile) => model.id === this.embeddingSelectedId)
+  }
+
+  loadedEmbedding(): ModelProfile | undefined {
+    return this.embeddingProfiles.find((model: ModelProfile) => model.id === this.embedder.loadedId)
+  }
+
+  selectEmbeddingModel(id: string): void {
+    if (this.embeddingImporting) return
+    this.embeddingSelectedId = id
+    this.saveEmbeddingSelection()
+    const model = this.selectedEmbeddingModel()
+    if (model !== undefined) this.refreshModelUsage(model)
+    this.notify()
+  }
+
+  async loadEmbeddingModel(model: ModelProfile | undefined = this.selectedEmbeddingModel(), reloading: boolean = false): Promise<void> {
+    if (model === undefined || this.decisionRuntimeState === 'loading' || this.decisionRuntimeState === 'running' || this.decisionRuntimeState === 'releasing' || this.busy || this.modelLoading || this.embedder.busy || this.embeddingImporting) return
+    this.busy = true
+    this.embeddingLoading = true
+    this.modelLoadTarget = 'embedding'
+    this.showModelLoadDialog = true
+    this.modelLoadMessage = `正在加载 ${model.shortName}，请保持应用在前台。`
+    this.embeddingMessage = '正在加载向量模型...'
+    this.setStatus(`正在加载 ${model.shortName}...`, 'neutral')
+    this.startModelLoadTimer()
+    this.notify()
+    try {
+      await this.nativeService.cancelTitleGeneration()
+      await this.embedder.load(model, this.embeddingThreads)
+      const loadedAt = Date.now()
+      await this.modelLifecycleService.recordSuccessfulLoad(model, this.modelLoadStartedAt, loadedAt,
+        this.embeddingThreads, 'embedding', this.embedder.threads)
+      if (reloading) this.toastCallback('运行配置已应用')
+      this.embeddingMessage = ''
+      this.setStatus(`${model.shortName} 已加载`, 'success')
+      this.modelLoadMessage = `${model.shortName} 加载完成，可以用于向量请求。`
+      this.stopModelLoadTimer()
+      this.modelLoadElapsedSeconds = Math.floor((Date.now() - this.modelLoadStartedAt) / 1000)
+      setTimeout(() => {
+        if (this.modelLoadTarget === 'embedding' && !this.embeddingLoading) {
+          this.showModelLoadDialog = false
+          this.notify()
+        }
+      }, 450)
+    } catch (error) {
+      await this.modelLifecycleService.recordFailedLoad(model, this.modelLoadStartedAt, this.embeddingThreads)
+      const message = formatError(error as Object)
+      this.embeddingMessage = `加载失败：${message}`
+      this.setStatus(`向量模型加载失败：${message}`, 'error')
+      this.modelLoadMessage = `${model.shortName} 加载失败。\n\n${message}`
+      this.stopModelLoadTimer()
+      this.modelLoadElapsedSeconds = 0
+    } finally { this.embeddingLoading = false; this.busy = false; this.notify() }
+  }
+
+  async releaseEmbeddingModel(): Promise<void> {
+    if (this.embedder.busy || this.embeddingLoading) return
+    try {
+      await this.embedder.release()
+      this.embeddingMessage = ''
+      this.setStatus('向量模型已释放', 'neutral')
+    }
+    catch (error) { this.embeddingMessage = `释放失败：${formatError(error as Object)}` }
+    this.notify()
+  }
+
+  requestDeleteEmbedding(): void {
+    if (this.busy || this.modelLoading || this.embedder.busy || this.embeddingLoading || this.embeddingImporting || !this.selectedEmbeddingModel()) return
+    this.deletingEmbedding = true
+    this.pendingDeleteModelId = this.embeddingSelectedId
+    this.showDeleteModelDialog = true
+    this.notify()
+  }
+
+  private async deleteEmbedding(): Promise<void> {
+    if (this.busy || this.modelLoading || this.embedder.busy || this.embeddingLoading || this.embeddingImporting) return
+    const id = this.pendingDeleteModelId
+    this.showDeleteModelDialog = false
+    this.embeddingImporting = true
+    this.notify()
+    try {
+      if (id === this.embedder.loadedId) await this.embedder.release()
+      const profile = this.embeddingProfiles.find((item: ModelProfile) => item.id === id)
+      this.embeddingProfiles = await this.embeddingImport.deleteImportedProfile(this.filesDir, id)
+      if (profile?.catalogItemId) await this.removeInstalledCatalogState(profile)
+      this.embeddingSelectedId = this.embeddingProfiles[0]?.id ?? ''
+      this.saveEmbeddingSelection()
+      this.embeddingMessage = ''
+    } catch (error) { this.embeddingMessage = `删除失败：${formatError(error as Object)}` }
+    finally {
+      this.deletingEmbedding = false
+      this.pendingDeleteModelId = ''
+      this.embeddingImporting = false
+      this.notify()
+    }
+  }
 
   selectedReranker(): ModelProfile | undefined {
     return this.rerankProfiles.find((model: ModelProfile) => model.id === this.rerankSelectedId)
@@ -1497,6 +1662,7 @@ export class ChatViewModel {
   cancelDeleteModel(): void {
     this.deletingDecision = false
     this.deletingReranker = false
+    this.deletingEmbedding = false
     this.pendingDeleteModelId = ''
     this.showDeleteModelDialog = false
     this.notify()
@@ -1504,6 +1670,7 @@ export class ChatViewModel {
 
   confirmDeleteModel(): void {
     if (this.deletingDecision) { this.deleteDecisionModel(); return }
+    if (this.deletingEmbedding) { this.deleteEmbedding(); return }
     if (this.deletingReranker) { this.deleteReranker(); return }
     if (this.rejectWhileModelScanning()) {
       return
@@ -1613,6 +1780,7 @@ export class ChatViewModel {
       return undefined
     }
     if (this.deletingDecision) return this.decisionProfiles.find((model: ModelProfile) => model.id === this.pendingDeleteModelId)
+    if (this.deletingEmbedding) return this.selectedEmbeddingModel()
     if (this.deletingReranker) return this.selectedReranker()
     return this.findProfile(this.pendingDeleteModelId)
   }
@@ -1723,7 +1891,8 @@ export class ChatViewModel {
     if (profile.downloadId !== undefined && profile.downloadId.length > 0) {
       return profile.downloadId
     }
-    return ''
+    return this.modelCatalogService.knownItems().find(item =>
+      item.directoryName.toLowerCase() === profile.directoryName.toLowerCase())?.id ?? ''
   }
 
   clearSelectedImage(): void {
@@ -2371,17 +2540,20 @@ export class ChatViewModel {
 
   modelLoadDialogName(): string {
     if (this.modelLoadTarget === 'decision') return `${this.selectedDecisionModel().shortName}（决策模型）`
+    if (this.modelLoadTarget === 'embedding') return `${this.selectedEmbeddingModel()?.shortName ?? '向量模型'}（向量模型）`
     if (this.modelLoadTarget === 'rerank') return `${this.selectedReranker()?.shortName ?? '重排模型'}（重排模型）`
     return `${this.currentModel().shortName}（MNN）`
   }
 
   modelLoadDialogBusy(): boolean {
+    if (this.modelLoadTarget === 'embedding') return this.embeddingLoading
     if (this.modelLoadTarget === 'decision') return this.decisionRuntimeState === 'loading'
     if (this.modelLoadTarget === 'rerank') return this.rerankLoading
     return this.modelLoading
   }
 
   modelLoadDialogComplete(): boolean {
+    if (this.modelLoadTarget === 'embedding') return this.loadedEmbedding() !== undefined
     if (this.modelLoadTarget === 'decision') return isDecisionLoaded()
     if (this.modelLoadTarget === 'rerank') return this.loadedReranker() !== undefined
     return this.loaded
@@ -2443,6 +2615,12 @@ export class ChatViewModel {
         loaded: this.loaded,
         loading: this.modelLoading,
         generating: this.generating
+      },
+      embeddingModel: {
+        id: this.embedder.loadedId, name: this.loadedEmbedding()?.name ?? '',
+        loaded: this.embedder.loadedId.length > 0, loading: this.embeddingLoading,
+        generating: this.embedder.busy && !this.embeddingLoading,
+        requestedThreads: this.embeddingThreads, actualCpuThreads: this.embedder.threads
       },
       rerankModel: {
         requestedThreads: threads.rerank.requested,
@@ -2557,6 +2735,8 @@ export class ChatViewModel {
     if (this.loaded) entries.push({ type: 'chat', category: '对话', name: this.currentModel().name })
     const decision = loadedDecisionModel()
     if (decision !== undefined) entries.push({ type: 'decision', category: '决策', name: decision.name })
+    const embedding = this.loadedEmbedding()
+    if (embedding !== undefined) entries.push({ type: 'embedding', category: '向量', name: embedding.name })
     const rerank = this.loadedReranker()
     if (rerank !== undefined) entries.push({ type: 'rerank', category: '重排', name: rerank.name })
     return entries
@@ -2577,11 +2757,12 @@ export class ChatViewModel {
     if (type === 'chat') await this.unloadModel()
     else if (type === 'decision') await this.releaseDecisionModel()
     else if (type === 'rerank') await this.releaseRerankModel()
+    else if (type === 'embedding') await this.releaseEmbeddingModel()
   }
 
   recentModelLoadText(modelId: string = this.selectedModelId): string {
     const record = this.modelLifecycleService.recentLoad(modelId)
-    if (record === undefined) return '本机尚无加载记录'
+    if (record === undefined) return '此模型暂无加载记录'
     const date = new Date(record.loadedAt)
     const day = `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`
     if (this.modelLifecycleService.modelFilesChanged(modelId)) return '模型文件已变化，之前的加载记录仅供参考'
@@ -2820,6 +3001,12 @@ export class ChatViewModel {
       if (installedItem !== undefined) {
         await this.modelCatalogService.recordInstalled(this.filesDir, installedItem)
         this.modelManager.updateCatalogProfiles(this.modelCatalogService.profiles(), this.filesDir)
+        if (installedItem.modelType === 'embedding') {
+          this.embeddingProfiles = await this.embeddingImport.registerCatalogModel(this.filesDir, installedItem)
+          this.embeddingSelectedId = this.embeddingProfiles.find((profile: ModelProfile) => profile.catalogItemId === installedItem.id)?.id ?? this.embeddingSelectedId
+          this.saveEmbeddingSelection()
+          this.embeddingMessage = ''
+        }
         if (installedItem.modelType === 'rerank') {
           const profiles = await this.rerankImport.registerCatalogModel(this.filesDir, installedItem)
           this.rerankProfiles = profiles

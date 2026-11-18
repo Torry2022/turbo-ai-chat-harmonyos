@@ -12,6 +12,7 @@ import {
   RemoteModelCatalogManifest
 } from '../models/ModelCatalogTypes'
 import { LAYA_DOWNLOAD_SPEC } from '../models/LayaModelConfig'
+import { BGE_EMBEDDING_DOWNLOAD } from '../models/EmbeddingModelConfig'
 import { H2O_DOWNLOAD_SPEC } from '../models/H2oModelConfig'
 import { ModelProfile } from '../models/ModelProfile'
 import { ModelDescriptionManifest, descriptionRepo, parseModelDescriptions } from '../utils/modelDescriptions'
@@ -63,7 +64,7 @@ export class ModelCatalogService {
 
   items(): ModelCatalogItem[] {
     const official = this.officialItems.concat(this.rerankerItems)
-    return mergeCatalogItems(mergeCatalogItems(official, this.marketItems), [LAYA_DOWNLOAD_SPEC, H2O_DOWNLOAD_SPEC])
+    return mergeCatalogItems(mergeCatalogItems(official, this.marketItems), [LAYA_DOWNLOAD_SPEC, H2O_DOWNLOAD_SPEC, BGE_EMBEDDING_DOWNLOAD])
       .map((item: ModelCatalogItem): ModelCatalogItem => {
         const provider = item.provider
         const resolved = this.findItem(this.resolvedItems, item.id)

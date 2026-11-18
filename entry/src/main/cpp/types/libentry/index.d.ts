@@ -92,3 +92,6 @@ export const modelThreadInfo: () => string;
 export const h2oLoadAsync: (config: string, threads?: number) => Promise<string>;
 export const h2oReleaseAsync: () => Promise<string>;
 export const h2oDecideAsync: (state: string, type: string, instruction: string, names: string[], descriptions: string[], rgba: ArrayBuffer, width: number, height: number) => Promise<string>;
+
+export interface EmbeddingResult { vectors: number[][]; inputTokens: number; dimension: number; threads: number; }
+export const embeddingAsync: (operation: string, config: string, threads: number, texts: string[]) => Promise<EmbeddingResult>;

@@ -21,6 +21,7 @@ export interface ExpectedModelFile {
 
 export interface ModelDirectorySnapshot {
   requireChatTemplate?: boolean
+  isEmbedding?: boolean
   configText: string
   llmConfigText: string
   files: ModelFileSnapshot[]
@@ -116,7 +117,13 @@ export function validateModelDirectorySnapshot(snapshot: ModelDirectorySnapshot)
     return failure(MODEL_PREFLIGHT_FILE_MISSING, '模型目录缺少有效的 tokenizer 文件。')
   }
 
-  const referencedFiles = configFileReferences(config, hasTiedEmbeddings(llmConfig))
+  const referencedFiles = configFileReferences(config, hasTiedEmbeddings(llmConfig)).filter((path: string) =>
+    !snapshot.isEmbedding || path !== config.llm_weight || hasPositiveFile(snapshot.files, path))
+  if (snapshot.isEmbedding && !hasTiedEmbeddings(llmConfig) && !snapshot.files.some((file: ModelFileSnapshot) =>
+    /^embeddings_[A-Za-z0-9]+\.bin$/.test(file.relativePath) && file.sizeBytes > 0) &&
+    !(config.embedding_file && hasPositiveFile(snapshot.files, config.embedding_file))) {
+    return failure(MODEL_PREFLIGHT_FILE_MISSING, '向量模型目录缺少词嵌入文件。')
+  }
   for (let index = 0; index < referencedFiles.length; index++) {
     if (!hasPositiveFile(snapshot.files, referencedFiles[index])) {
       return failure(

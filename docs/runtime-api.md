@@ -14,11 +14,12 @@ curl http://设备IP:8080/turbo/runtime -H "Authorization: Bearer <API Key>"
 | --- | --- |
 | `object` | 固定为 `turbo.runtime` |
 | `service.target` | `all`：各接口同时开放，分别使用对应模型 |
-| `service.inferenceBusy` | API 是否正在处理聊天生成或决策请求 |
+| `service.inferenceBusy` | API 是否正在处理对话、决策、向量或重排请求 |
 | `chatModel.id`、`name` | 当前选择的聊天模型，不代表 Laya 决策模型 |
 | `chatModel.loaded`、`loading`、`generating` | 聊天模型是否已加载、正在加载、正在生成 |
-| `chatModel.requestedThreads`、`rerankModel.requestedThreads` | 对应已加载模型请求的推理线程数；未加载时为 0 |
-| `chatModel.actualCpuThreads`、`rerankModel.actualCpuThreads` | 加载完成时从现有 CPU runtime 读取的最大并行宽度；未加载时为 0。不是每个算子同时运行的线程数，也不是 App 线程总数 |
+| `chatModel.requestedThreads`、`rerankModel.requestedThreads`、`embeddingModel.requestedThreads` | 对应已加载模型请求的推理线程数；未加载时为 0 |
+| `chatModel.actualCpuThreads`、`rerankModel.actualCpuThreads`、`embeddingModel.actualCpuThreads` | 加载完成时从现有 CPU runtime 读取的最大并行宽度；未加载时为 0。不是每个算子同时运行的线程数，也不是 App 线程总数 |
+| `embeddingModel` | 向量模型的 ID、名称、加载与运行状态，以及请求线程数和实际 CPU 并行上限 |
 | `lastChatGeneration` | 最近一次返回结果的 API 对话生成记录，含结束原因、耗时、Token 和实际请求配置；新请求开始时清空，应用重启后不保留 |
 | `metrics.sampledAt` | 本次运行指标的采样时间，Unix 毫秒 |
 | `metrics.appCpuPercent`、`systemCpuPercent` | 应用与系统 CPU 使用率，百分数；例如 `12.5` 表示 12.5% |

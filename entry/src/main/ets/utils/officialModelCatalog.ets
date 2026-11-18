@@ -102,25 +102,25 @@ export function parseOfficialModelCatalog(text: string, existing: ModelCatalogIt
     const sourceUrl = `${MODEL_SCOPE_ROOT}${repo}`
     if (knownSources.includes(sourceUrl.toLowerCase()) || directories.includes(directoryName.toLowerCase())) continue
     const tags: string[] = Array.isArray(entry.tags) ? entry.tags.filter((tag: string) => typeof tag === 'string') : []
+    const embedding = tags.includes('Embedding') || /^(?:bge|gte)[-_]/i.test(directoryName) || /embedding/i.test(directoryName)
     if (tags.includes('ImageGen') || tags.includes('AudioGen') || tags.includes('NPU') ||
-      tags.includes('Embedding') || tags.includes('Rerank') || tags.includes('Safety') ||
+      tags.includes('Rerank') || tags.includes('Safety') || /rerank/i.test(directoryName) ||
       (tags.includes('Audio') && !tags.includes('Vision')) || (tags.includes('Video') && !tags.includes('Vision')) ||
-      /^(?:bge|gte)[-_]/i.test(directoryName) ||
       /^(?:mobilellm-\d+(?:\.\d+)?[mb]|codegeex2-\d+(?:\.\d+)?b)-mnn$/i.test(directoryName) ||
-      /(?:embedding|rerank|guard|omni|diffusion|qnn|eagle|dflash|(?:^|-)base(?:-|$))/i.test(directoryName)) continue
+      (!embedding && /(?:rerank|guard|omni|diffusion|qnn|eagle|dflash|(?:^|-)base(?:-|$))/i.test(directoryName))) continue
     const displayName = directoryName.replace(/-mnn$/i, '')
     const id = `official-${directoryName.toLowerCase()}`
     if (existing.some((item: ModelCatalogItem) => item.id === id)) continue
     const supportsImage = tags.includes('Vision')
     const translations = parsed.tagTranslations
-    const capabilities: string[] = [translatedTag(translations, 'Chat', '对话')]
+    const capabilities: string[] = [embedding ? '向量' : translatedTag(translations, 'Chat', '对话')]
     if (supportsImage) capabilities.push(translatedTag(translations, 'Vision', '图像理解'))
     if (tags.includes('Think')) capabilities.push(translatedTag(translations, 'Think', '深度思考'))
     if (tags.includes('Code')) capabilities.push(translatedTag(translations, 'Code', '代码'))
     if (tags.includes('Math')) capabilities.push(translatedTag(translations, 'Math', '数学'))
     items.push({
-      id, modelId: id, directoryName, displayName, shortName: displayName,
-      description: supportsImage ? '支持文本与图片输入的多模态对话模型。' : '文本对话模型。',
+      id, modelId: id, modelType: embedding ? 'embedding' : 'chat', directoryName, displayName, shortName: displayName,
+      description: embedding ? '将文本转换为向量，用于语义检索和相似度计算。' : supportsImage ? '支持文本与图片输入的多模态对话模型。' : '文本对话模型。',
       provider: modelCatalogBrand(displayName, typeof entry.vendor === 'string' ? entry.vendor : ''),
       sourceName: 'ModelScope', sourceUrl, supportsImage, capabilities, recommended: false,
       files: [], totalBytes: entry.file_size
@@ -197,7 +197,7 @@ export function resolveOfficialCatalogItem(
     return { relativePath: file.relativePath, sizeBytes: file.sizeBytes }
   })
   const result = validateModelDirectorySnapshot({ configText, llmConfigText, files: snapshots,
-    expectedFiles: [], supportsImage, requireChatTemplate: item.modelType !== 'rerank' })
+    expectedFiles: [], supportsImage, requireChatTemplate: item.modelType !== 'rerank' && item.modelType !== 'embedding', isEmbedding: item.modelType === 'embedding' })
   if (!result.compatible) throw new Error(`模型目录预检失败：${result.message}`)
   const config = JSON.parse(configText) as Record<string, Object>
   const defaults: CatalogGenerationDefaults = {}
@@ -218,9 +218,9 @@ export function resolveOfficialCatalogItem(
     displayName: item.displayName, shortName: item.shortName, description: item.description,
     provider: item.provider, sourceName: item.sourceName, sourceUrl: item.sourceUrl,
     recommended: item.recommended, minAppVersionCode: item.minAppVersionCode, files, totalBytes, supportsImage,
-    capabilities: supportsImage ? ['对话', '图像理解', ...catalogCapabilityLabels(item.capabilities).filter((value: string) => value !== '对话' && value !== '图像理解')] :
+    capabilities: item.modelType === 'embedding' ? ['向量'] : supportsImage ? ['对话', '图像理解', ...catalogCapabilityLabels(item.capabilities).filter((value: string) => value !== '对话' && value !== '图像理解')] :
       catalogCapabilityLabels(item.capabilities).filter((value: string) => value !== '图像理解'),
-    runtime: item.modelType === 'rerank' ? undefined : item.runtime ??
+    runtime: item.modelType === 'rerank' || item.modelType === 'embedding' ? undefined : item.runtime ??
       { systemPrompt: '你是一个有帮助的助手。请使用简体中文回答。', contextMessageLimit: 6, generationDefaults: defaults } }
 }
 

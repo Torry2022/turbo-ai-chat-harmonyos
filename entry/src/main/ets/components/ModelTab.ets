@@ -1,3 +1,4 @@
+import { EmbeddingModels } from './EmbeddingModels'
 import { EMPTY_RUNTIME_STATS, RuntimeStats } from '../models/RuntimeStats'
 import { RuntimeStatsService } from '../services/RuntimeStatsService'
 import { LAYA_MODEL_ID } from '../models/LayaModelConfig'
@@ -390,18 +391,22 @@ export struct ModelTab {
         showReranker: true,
         onChange: (type: ModelType): void => {
           this.cancelModelDrag()
-          if (type === 'chat' || type === 'decision' || type === 'rerank') this.viewModel.updateModelPageCategory(type)
+          if (type === 'chat' || type === 'decision' || type === 'rerank' || type === 'embedding') this.viewModel.updateModelPageCategory(type)
         }
       })
       .width('100%')
       Text(this.viewModel.modelPageCategory === 'decision' ?
         '加载后可点“进入决策”试用；在“API 服务”页开启服务后，可按调用说明从其他应用发起决策请求。' :
+        this.viewModel.modelPageCategory === 'embedding' ?
+          '将文本转换为向量。在“API 服务”页开启服务后，可按调用说明从其他应用提交文本。' :
         this.viewModel.modelPageCategory === 'rerank' ?
           '加载模型后，在“API 服务”页开启服务，并按调用说明提交查询和待排序文本。' :
           '各类模型独立加载，切换分类不影响已加载模型。')
         .fontSize(11).lineHeight(17).fontColor($r('app.color.text_muted')).width('100%')
       if (this.viewModel.modelPageCategory === 'decision') {
         this.DecisionModelCard()
+      } else if (this.viewModel.modelPageCategory === 'embedding') {
+        EmbeddingModels({ viewModel: this.viewModel, renderVersion: this.renderVersion })
       } else if (this.viewModel.modelPageCategory === 'rerank') {
         RerankerModels({ viewModel: this.viewModel, renderVersion: this.renderVersion })
       } else {
@@ -1170,6 +1175,10 @@ export struct ModelTab {
             this.ImportedModelConfigCard()
             this.ContextCard()
             this.ModelManagementCard()
+          } else if (this.viewModel.modelPageCategory === 'embedding') {
+            Column() {
+              EmbeddingModels({ viewModel: this.viewModel, renderVersion: this.renderVersion, settings: true })
+            }.width('100%').padding(12).backgroundColor($r('app.color.inset')).borderRadius($r('app.float.card_radius'))
           } else if (this.viewModel.modelPageCategory === 'rerank') {
             Column() {
               RerankerModels({ viewModel: this.viewModel, renderVersion: this.renderVersion, settings: true })

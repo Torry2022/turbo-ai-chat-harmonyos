@@ -77,14 +77,16 @@ export struct ApiUsageDialog {
                 this.Endpoint('POST', '/v1/chat/completions', '聊天生成，支持流式输出')
                 this.Endpoint('POST', '/v1/responses', 'Responses 格式的聊天生成')
                 this.Endpoint('POST', '/v1/decisions', '选择、评分与布尔判断')
+                this.Endpoint('POST', '/v1/embeddings', '将文本转换为向量')
                 this.Endpoint('POST', '/v1/rerank', '按问题与候选文本的相关性排序')
                 this.Endpoint('GET', '/v1/models', '查询可调用的模型')
                 this.Endpoint('GET', '/turbo/runtime', '查询模型状态与设备运行指标')
               } else {
-                Text(this.mode === 'rerank' ? '本地重排 API' : this.mode === 'decision' ? '本地决策 API' : 'OpenAI 兼容聊天 API')
+                Text(this.mode === 'embedding' ? '本地向量 API' : this.mode === 'rerank' ? '本地重排 API' : this.mode === 'decision' ? '本地决策 API' : 'OpenAI 兼容聊天 API')
                   .fontSize(14).fontWeight(FontWeight.Medium)
                   .fontColor($r('app.color.text_title')).width('100%')
-                Text(this.mode === 'rerank' ?
+                Text(this.mode === 'embedding' ?
+                  '向 /v1/embeddings 发送 POST 请求。input 可为文本或最多 64 条文本的数组，encoding_format 支持 float。返回顺序与输入一致，每条输入最多 512 tokens。需先在模型页加载向量模型。' : this.mode === 'rerank' ?
                   '向 /v1/rerank 发送 POST 请求。query 为问题，documents 为候选文本数组，top_n 为可选的返回数量。结果按相关性降序排列，index 对应输入位置（从 0 开始）。需先在模型页加载重排模型。' : this.mode === 'decision' ?
                   '向 API 地址后的 /v1/decisions 发送 POST 请求，Content-Type 设为 application/json。需先在模型页安装并加载决策模型。省略 model 时使用已加载的决策模型。H2O-Lightning 可用 image 传入 PNG、JPEG 或 WebP 的 Base64 数据 URI，请求体上限 1 MiB。下方为选择题示例。' :
                     '在 Cherry Studio 等客户端中选择 OpenAI 兼容服务，填入本页 API 地址和 API Key，通过 GET /v1/models 获取模型列表。聊天需先在模型页加载模型，支持 Chat Completions 和 Responses 请求。图片模型每次请求可接收一张图片，支持 Base64 图片或公网图片地址。多轮提问需携带原图与历史消息。')
@@ -96,10 +98,10 @@ export struct ApiUsageDialog {
                     .width('100%').padding(14)
                     .backgroundColor($r('app.color.inset')).borderRadius($r('app.float.card_radius'))
                 }
-                Text('运行状态：GET /turbo/runtime 返回 CPU、内存、温度、存储占用及聊天、重排模型状态。生成期间也可查询，无需切换到监控页。')
+                Text('运行状态：GET /turbo/runtime 返回 CPU、内存、温度、存储占用及聊天、向量、重排模型状态。生成期间也可查询，无需切换到监控页。')
                   .fontSize(13).lineHeight(21).fontColor($r('app.color.text_secondary')).width('100%')
               }
-              Text('聊天、决策和重排请求一次处理一个；忙碌时返回 HTTP 409，不进入等待队列。模型列表与运行状态仍可查询。')
+              Text('聊天、决策、向量和重排请求一次处理一个；忙碌时返回 HTTP 409，不进入等待队列。模型列表与运行状态仍可查询。')
                 .fontSize(12).lineHeight(20).fontColor($r('app.color.text_muted')).width('100%')
               Text('启用 API 认证时，请使用服务页的 API Key。请求头格式为 Authorization: Bearer <API Key>。')
                 .fontSize(12).lineHeight(20).fontColor($r('app.color.text_muted')).width('100%')

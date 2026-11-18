@@ -1,4 +1,4 @@
-export type ModelTaskOwner = 'chat' | 'title' | 'decision' | 'rerank'
+export type ModelTaskOwner = 'chat' | 'title' | 'decision' | 'rerank' | 'embedding'
 
 interface ModelTaskTicket { owner: ModelTaskOwner }
 

@@ -13,7 +13,7 @@ export struct ApiServerTab {
   @Prop renderVersion: number = 0
   @Prop loaded: boolean = false
   @Prop decisionStatus: string = '未安装'
-  onApiHelp: (mode: 'log' | 'rerank' | 'chat' | 'decision', example: string) => void = () => {}
+  onApiHelp: (mode: 'log' | 'rerank' | 'chat' | 'decision' | 'embedding', example: string) => void = () => {}
   @Prop busy: boolean = false
   @Prop apiRequestKind: string = ''
   @Prop currentModelName: string = ''
@@ -121,6 +121,7 @@ export struct ApiServerTab {
   private capabilityModel(mode: string): string {
     if (mode === 'chat') return this.loaded ? this.currentModelName : ''
     if (mode === 'decision') return this.viewModel.loadedDecision()?.name ?? ''
+    if (mode === 'embedding') return this.viewModel.loadedEmbedding()?.name ?? ''
     if (mode === 'rerank') return this.viewModel.loadedReranker()?.name ?? ''
     return '本地资料'
   }
@@ -134,6 +135,10 @@ export struct ApiServerTab {
       if (this.viewModel.decisionRuntimeState === 'running') return '处理中'
       return this.viewModel.decisionRuntimeState === 'loaded' ? '已加载' : '未加载'
     }
+    if (mode === 'embedding') {
+      if (this.viewModel.embeddingLoading) return '加载中'
+      return this.viewModel.loadedEmbedding() ? this.viewModel.embedder.busy ? '处理中' : '已加载' : '未加载'
+    }
     if (mode === 'rerank') {
       if (this.viewModel.rerankLoading) return '加载中'
       if (this.viewModel.loadedReranker()) return this.viewModel.reranker.busy ? '处理中' : '已加载'
@@ -143,7 +148,7 @@ export struct ApiServerTab {
   }
 
   @Builder
-  private CapabilityHeader(title: string, mode: 'chat' | 'decision' | 'rerank', example: string = '') {
+  private CapabilityHeader(title: string, mode: 'chat' | 'decision' | 'rerank' | 'embedding', example: string = '') {
     Row({ space: 8 }) {
       Text(title).fontSize(13).fontWeight(FontWeight.Medium).fontColor($r('app.color.text_body')).width(52).flexShrink(0)
       Text(this.capabilityModel(mode)).fontSize(12).fontColor($r('app.color.text_muted')).layoutWeight(1)
@@ -172,6 +177,8 @@ export struct ApiServerTab {
       this.CapabilityHeader('聊天', 'chat')
       Divider().color($r('app.color.divider')).opacity(0.6)
       this.CapabilityHeader('决策', 'decision', this.decisionExample())
+      Divider().color($r('app.color.divider')).opacity(0.6)
+      this.CapabilityHeader('向量', 'embedding', '{"input":["你好，世界","本地语义检索"],"encoding_format":"float"}')
       Divider().color($r('app.color.divider')).opacity(0.6)
       this.CapabilityHeader('重排', 'rerank',
         '{"query":"中国的首都是哪里？","documents":["北京是中国的首都。","上海位于长江入海口。"],"top_n":2}')

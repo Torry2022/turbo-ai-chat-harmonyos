@@ -1,4 +1,4 @@
-export type ModelType = 'chat' | 'decision' | 'rerank'
+export type ModelType = 'chat' | 'decision' | 'rerank' | 'embedding'
 
 @Component
 export struct ModelTypeSelector {
@@ -9,11 +9,11 @@ export struct ModelTypeSelector {
   @State private contentWidth: number = 0
 
   private indicatorWidth(): number {
-    return Math.max(0, (this.contentWidth - (this.showReranker ? 8 : 6)) / (this.showReranker ? 3 : 2))
+    return Math.max(0, (this.contentWidth - (this.showReranker ? 10 : 6)) / (this.showReranker ? 4 : 2))
   }
 
   private indicatorOffset(): number {
-    return 2 + (this.selected === 'rerank' ? 2 : this.selected === 'decision' ? 1 : 0) * (this.indicatorWidth() + 2)
+    return 2 + (this.selected === 'embedding' ? 2 : this.selected === 'rerank' ? 3 : this.selected === 'decision' ? 1 : 0) * (this.indicatorWidth() + 2)
   }
 
   @Builder
@@ -31,9 +31,7 @@ export struct ModelTypeSelector {
       .hoverEffect(HoverEffect.Auto)
       .onClick(() => {
         if (type !== this.selected) {
-          this.getUIContext().animateTo({ duration: 180, curve: Curve.EaseOut }, () => {
-            this.onChange(type)
-          })
+          this.onChange(type)
         }
       })
   }
@@ -46,11 +44,13 @@ export struct ModelTypeSelector {
         .borderRadius(8)
         .backgroundColor($r('app.color.gallery_entry_background'))
         .translate({ x: this.indicatorOffset(), y: 2 })
+        .animation({ duration: 180, curve: Curve.EaseOut })
       Row({ space: 2 }) {
-        this.Segment('对话模型', 'chat')
-        this.Segment('决策模型', 'decision')
+        this.Segment('对话', 'chat')
+        this.Segment('决策', 'decision')
         if (this.showReranker) {
-          this.Segment('重排模型', 'rerank')
+          this.Segment('向量', 'embedding')
+          this.Segment('重排', 'rerank')
         }
       }
       .height(40)

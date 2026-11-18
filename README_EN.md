@@ -54,20 +54,21 @@ The project can serve as a development and integration reference for local AI ap
 
 ## Recent Highlights
 
+**Embedding models and text embeddings API (v2.1.0)**
+
+- Run embedding models on your device to turn text into vectors for semantic search, text similarity and related applications.
+- Download and load an embedding model from the Model Gallery, then provide text embeddings to other apps through the OpenAI-compatible API, with batch processing support.
+
 **Conversation management and local inference (v2.0.0)**
 
-- Use the permanent bundle name `com.torry.turbochat` while retaining the Turbo AI Chat name.
-- Export the current conversation as Markdown or a ZIP containing its images. Back up and restore complete history, including images, all answer versions and branch origins.
-- Create an independent branch from an assistant answer, retain the history through that answer and return to the source conversation.
-- Inspect the context used for an answer and why messages were omitted. When the model declares a context limit, reserve space for the reply and trim older complete exchanges.
-- Preserve generated content after stopping, timeout or output-limit termination so later questions can use it. Keep images in multi-turn context for follow-up questions about the original image.
-- Support image input and remote image URLs through the conversation API, with stronger request validation, context budgeting and connection resource limits.
-- Reuse matching context caches in text conversations to reduce repeated computation. Coordinate conversation generation, automatic titles, decisions and reranking, with state recovery after rejected or failed operations.
-- Inspect and export the generation settings, model source, effective threads and runtime-library information for each answer version. The runtime API provides the latest API chat generation record, and Settings offers temporary local diagnostic logging.
-- View loading outcomes, the last successful load, loaded models and live process memory on the Model tab, with individual model release controls.
-- Check model file information before downloading, improve failure messages and resume interrupted downloads. Manage download and supported-device compute background tasks as needed.
-- Update the H2O-Lightning model download package to reduce loading memory and storage requirements.
-- Standardize model vendor and family labels. Scroll long history titles on mouse hover, and improve phone conversation headers, disabled-action feedback and startup system-bar coverage.
+- **Export, backup and restore.** Export conversations as Markdown or ZIP files with images. Full-history backups preserve images, every answer version and branch origins.
+- **Conversation branches.** Create an independent conversation from an assistant answer, retain its history and return to the source conversation.
+- **Context management and inspection.** Inspect the messages included in each answer and why others were omitted. Use the model's declared context limit to trim older complete exchanges and reserve space for the reply.
+- **Multi-turn image conversations and API input.** Ask follow-up questions about the original image. The OpenAI-compatible conversation API accepts image inputs and remote image URLs.
+- **KV cache reuse and interrupted answers.** Reuse matching history in consecutive text conversations to reduce repeated prefill. Preserve generated text after stopping, timeout or output-limit termination for later questions.
+- **Run details and model management.** Inspect and export generation settings, model source, effective threads and timings for each answer version, and retrieve inference records through the runtime API. View loaded models, loading records and process memory, with individual release controls.
+- **Downloads and resource optimization.** Resolve complete model revisions before downloading, improve file validation and failure messages, and resume interrupted downloads. Improve background task management on supported devices and reduce H2O-Lightning loading memory and storage requirements.
+- **Interface improvements.** Scroll truncated history titles on mouse hover, clarify model sources and disabled actions, and improve phone conversation headers and startup system-bar coverage.
 
 **Decision models and runtime settings (v1.22.0)**
 
@@ -264,8 +265,8 @@ With a physical keyboard, Enter sends from the chat input and Shift+Enter insert
 
 ### Models and runtime settings
 
-- Browse conversation, decision and reranking models in the Model Gallery, with independent loading and management. Conversation models also support folder, ZIP and pushed-directory imports.
-- Adjust CPU threads for all three categories and reload to apply runtime changes. Generation parameters and thinking settings take effect on the next generation.
+- Browse conversation, decision, embedding and reranking models in the Model Gallery, with independent loading and management. Conversation models also support folder, ZIP and pushed-directory imports.
+- Adjust CPU threads for all four categories and reload to apply runtime changes. Generation parameters and thinking settings take effect on the next generation.
 - View local loading records, loaded models and current memory on the Models page. Release models individually and select a conversation model to load at startup.
 - Try choice, score and boolean tasks in the decision dialog or through the API. Use reranking models through the API to rank candidate passages.
 
@@ -278,7 +279,7 @@ With a physical keyboard, Enter sends from the chat input and Shift+Enter insert
 
 ### APIs and runtime monitoring
 
-- Expose an OpenAI-compatible LAN chat API, plus decision, reranking and runtime endpoints, with streaming and optional Bearer authentication.
+- Expose an OpenAI-compatible LAN chat API, plus decision, embedding, reranking and runtime endpoints, with streaming and optional Bearer authentication.
 - View CPU, RSS resident memory, temperature and other metrics in the chat status bar and Monitor page. Inspect and export the model source, threads, generation settings and timings saved with each answer version.
 - Content diagnostics are off by default and can be enabled temporarily in Settings. Turning them off, restarting the app or deleting a conversation clears the record. See [Development checks](#development-checks).
 
@@ -317,7 +318,7 @@ v2.0.0 in Light mode, captured on a MatePad Edge.
 
 ## OpenAI-Compatible API Server
 
-On the Service page, set the port and optionally enable the app-generated API key, then start the server. The page shows a LAN address such as `http://192.168.1.126:8080`. Chat, decision and reranking endpoints share this address without switching service modes. Load the corresponding model before using chat or reranking. Switching or releasing a model leaves the server running; requests report when their model is unavailable.
+On the Service page, set the port and optionally enable the app-generated API key, then start the server. The page shows a LAN address such as `http://192.168.1.126:8080`. Chat, decision, embedding and reranking endpoints share this address without switching service modes. Load the corresponding model before using an inference endpoint. Switching or releasing a model leaves the server running; requests report when their model is unavailable.
 
 When adding an OpenAI-compatible provider in Cherry Studio, enter the displayed base URL without appending an endpoint. If API-key authentication is enabled, enter the same key, then fetch the model list. The server provides:
 
@@ -326,6 +327,7 @@ When adding an OpenAI-compatible provider in Cherry Studio, enter the displayed 
 - `POST /v1/responses`
 - `POST /v1/decisions`
 - `POST /v1/rerank`
+- `POST /v1/embeddings`
 - `GET /turbo/runtime`
 
 Inference requests are handled one at a time. While busy, the server returns HTTP 409 without queuing the request; model-list and runtime queries remain available.
@@ -379,6 +381,16 @@ At the output limit, Chat Completions returns `finish_reason: length`, while Res
 
 `GET /turbo/runtime` exposes CPU, memory, temperature, threads, storage and chat-model state using the same server authentication. It remains available during generation without opening the Monitor page. It also exposes the latest API chat generation configuration and timings without conversation content. Numeric fields have explicit units and sample timestamps; see the [runtime API reference](docs/runtime-api_EN.md). Both the Monitor page and chat memory indicator use RSS (resident memory).
 
+### Embeddings API
+
+Select “向量” (Embeddings) on the Models page, download a model from the Model Gallery and load it before calling `POST /v1/embeddings`. Sources include the official MNN catalog and the supplemental BGE-small-zh-v1.5 package.
+
+`input` accepts one string or an array of up to 64 strings, with at most 512 tokens per string. The response contains floating-point vectors in input order and actual input token counts in `usage.prompt_tokens`. Vector dimensions depend on the model. The supported encoding format is `float`.
+
+```json
+{ "input": ["Local semantic search", "Convert text to vectors"], "encoding_format": "float" }
+```
+
 ### Decision API
 
 Select and load a model in the Decision Model category, then call `/v1/decisions`. One decision model can be loaded at a time. Release it before switching to another. Chat, decision, and reranking models are managed separately while the API server remains running.
@@ -407,7 +419,7 @@ Download a reranking model from the Model Gallery and load it under Models → R
 
 The recommended path is to install models from the in-app Model Gallery. Conversation models also support folder and ZIP imports, or a complete directory pushed through hdc for large models.
 
-- **Model Gallery**: browse and download conversation, decision or reranking models, starting in the category selected on the Model tab. Cards use two columns in wide windows and one column on phones and in narrow windows. Conversation models come from the official MNN gallery, Qwen3-Reranker models from the MNN organization on ModelScope, and Laya and H2O-Lightning are provided for decisions. The conversation catalog filters out embedding, safety-classification, pretrained completion and other non-conversation models. Package versions with confirmed configuration problems are rejected with an explanation before weights are downloaded. Before downloading weights, the app validates the configuration and pins the file revision. Cached and bundled catalogs remain available offline. Capability tags support filtering; they do not mean every listed model has been tested in this app on a device. Card summaries update from a separate online description file and are cached with the gallery; models without a curated entry keep their default description.
+- **Model Gallery**: browse and download conversation, decision, embedding or reranking models, starting in the category selected on the Model tab. Cards use two columns in wide windows and one column on phones and in narrow windows. Conversation and embedding models come from the official MNN gallery, with bge-small-zh-v1.5 retained as a supplemental embedding source. Qwen3-Reranker models come from the MNN organization on ModelScope, and Laya and H2O-Lightning are provided for decisions. The conversation catalog filters out embedding, safety-classification, pretrained completion and other non-conversation models. Package versions with confirmed configuration problems are rejected with an explanation before weights are downloaded. Before downloading weights, the app validates the configuration and pins the file revision. Cached and bundled catalogs remain available offline. Capability tags support filtering; they do not mean every listed model has been tested in this app on a device. Card summaries update from a separate online description file and are cached with the gallery; models without a curated entry keep their default description.
 - **Folder import**: select a complete MNN model directory through the system picker. The app checks available storage, then copies and validates the files without changing the source directory. If the picker cannot open, retry or use zip import.
 - **Zip import**: select a ZIP containing a complete MNN model directory. The app checks space for the staging copy; extraction needs additional space. Error messages identify the failed stage: copying, extraction, validation, or saving. The app does not impose a 2 GB limit, but large imports still depend on system support and available storage.
 - **Manual directory push**: useful for large models, offline imports, or when zip import fails; push the directory and scan it from the Model tab.

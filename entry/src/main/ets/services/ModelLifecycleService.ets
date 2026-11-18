@@ -45,7 +45,7 @@ export class ModelLifecycleService {
   recentLoad(modelId: string): ModelLoadRecord | undefined { return this.usage.latestAttempt(modelId) }
 
   async recordSuccessfulLoad(profile: ModelProfile, startedAt: number, finishedAt: number,
-    requestedThreads: number, type: 'chat' | 'decision' | 'rerank', actualThreads?: number,
+    requestedThreads: number, type: 'chat' | 'decision' | 'rerank' | 'embedding', actualThreads?: number,
     configurationSha256?: string, fileManifestSha256?: string): Promise<void> {
     try {
       const runtime = this.nativeService.modelThreadInfo()
@@ -175,7 +175,7 @@ export class ModelLifecycleService {
     await this.preflightService.requireCompatible(
       `${modelInstallDirectory(context.filesDir, spec)}/config.json`,
       supportsImage,
-      spec.files, spec.modelType !== 'rerank'
+      spec.files, spec.modelType !== 'rerank' && spec.modelType !== 'embedding', spec.modelType === 'embedding'
     )
   }
 

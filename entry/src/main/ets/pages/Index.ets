@@ -499,7 +499,7 @@ struct Index {
         this.handleLongPageScroll(yOffset)
       },
       decisionStatus: this.viewModel.decisionStatusText(),
-      onApiHelp: (mode: 'log' | 'rerank' | 'chat' | 'decision', example: string) => {
+      onApiHelp: (mode: 'log' | 'rerank' | 'chat' | 'decision' | 'embedding', example: string) => {
         this.apiUsageMode = mode
         this.apiUsageExample = example
       },

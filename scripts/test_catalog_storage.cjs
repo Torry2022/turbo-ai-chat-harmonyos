@@ -424,7 +424,8 @@ async function main() {
         ({ ...entry, tags: [], sources: { ModelScope: `MNN/${name}` } })),
       { ...entry, sources: { ModelScope: MODEL_CATALOG_ITEMS[0].sourceUrl.split('/models/')[1] } }];
     const items = parseOfficialModelCatalog(raw(official('21', models)), MODEL_CATALOG_ITEMS).items;
-    assert.equal(items.length, 2);
+    assert.equal(items.length, 6);
+    assert.equal(items.filter(item => item.modelType === 'embedding').length, 4);
     assert.equal(items[1].minAppVersionCode, undefined);
     assert.equal(items[0].files.length, 0);
     assert.equal(items[0].runtime, undefined);
@@ -495,7 +496,7 @@ async function main() {
     assert.equal(requests.length, 3);
     assert.equal(files.get(current), saved);
   });
-  await check('cached embedding entries stay out of the gallery without deleting existing installation records', async () => {
+  await check('cached embedding entries join the vector gallery without rewriting existing installation records', async () => {
     const repo = 'MNN/bge-large-zh-MNN';
     const entry = {...official().models[0], tags: [], sources: {ModelScope: repo}};
     const installed = {...MODEL_CATALOG_ITEMS[0], id: 'official-bge-large-zh-mnn', modelId: 'official-bge-large-zh-mnn',
@@ -505,7 +506,8 @@ async function main() {
     files.set('/test/model-catalog-official-files.json', saved);
     files.set(current, saved);
     const service = new ModelCatalogService(); await service.load('/test');
-    assert.equal(service.findMarketItem(installed.id), undefined);
+    assert.equal(service.findMarketItem(installed.id).modelType, 'embedding');
+    assert.equal(service.profiles().some(profile => profile.id === installed.id), false);
     assert.equal(service.findInstallItem(installed.id).directoryName, installed.directoryName);
     assert.equal(files.get(current), saved, 'catalog filtering must not remove a user installation');
     assert.equal(requests.length, 0, 'the cached catalog is filtered while offline');

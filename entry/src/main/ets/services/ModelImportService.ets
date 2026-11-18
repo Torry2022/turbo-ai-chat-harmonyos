@@ -39,9 +39,12 @@ interface DecisionPackageConfig {
 }
 
 export class ModelImportService {
+  private embedding: boolean = false
   private reranker: boolean = false
   private decision: boolean = false
-  constructor(reranker: boolean = false, decision: boolean = false) { this.reranker = reranker; this.decision = decision }
+  constructor(reranker: boolean = false, decision: boolean = false, embedding: boolean = false) {
+    this.reranker = reranker; this.decision = decision; this.embedding = embedding
+  }
   private preflightService: ModelDirectoryPreflightService = new ModelDirectoryPreflightService()
 
   async pickAndImport(context: common.UIAbilityContext, existingProfiles: ModelProfile[], folder: boolean = false): Promise<ModelImportResult | undefined> {
@@ -252,7 +255,7 @@ export class ModelImportService {
   }
 
   async registerCatalogModel(filesDir: string, item: ModelCatalogItem): Promise<ModelProfile[]> {
-    if (!(this.reranker && item.modelType === 'rerank' || this.decision && item.modelType === 'decision') ||
+    if (!(this.reranker && item.modelType === 'rerank' || this.decision && item.modelType === 'decision' || this.embedding && item.modelType === 'embedding') ||
       !this.isSafeImportedDirectoryName(item.directoryName)) {
       throw new Error('模型分类或安装目录无效')
     }
@@ -260,7 +263,7 @@ export class ModelImportService {
     const configPath = `${this.importRoot(filesDir)}/${item.directoryName}/config.json`
     if (profiles.some((profile: ModelProfile) => profile.configPath === configPath)) return profiles
     if (this.decision) await this.requireDecisionPackage(configPath)
-    await this.preflightService.requireCompatible(configPath, item.supportsImage, item.files, false)
+    await this.preflightService.requireCompatible(configPath, item.supportsImage, item.files, false, this.embedding)
     profiles.push({ id: uniqueModelId(`catalog-${item.id}`, profiles), name: item.displayName,
       shortName: item.shortName, directoryName: item.directoryName, description: item.description,
       supportsImage: item.supportsImage, systemPrompt: '', source: IMPORTED_MODEL_SOURCE, configPath,
@@ -405,7 +408,7 @@ export class ModelImportService {
   }
 
   private importRoot(filesDir: string): string {
-    return `${filesDir}/${this.decision ? 'decision-models' : this.reranker ? 'rerank-models' : IMPORTED_MODELS_DIR}`
+    return `${filesDir}/${this.embedding ? 'embedding-models' : this.decision ? 'decision-models' : this.reranker ? 'rerank-models' : IMPORTED_MODELS_DIR}`
   }
 
   private storePath(filesDir: string): string {
@@ -517,7 +520,7 @@ export class ModelImportService {
   }
 
   private async normalizeImportedProfile(profile: ModelProfile): Promise<ModelProfile> {
-    if (this.reranker) return profile
+    if (this.reranker || this.embedding) return profile
     let normalizedSupportsImage = profile.supportsImage
     if (profile.configPath !== undefined && profile.configPath.length > 0) {
       try {

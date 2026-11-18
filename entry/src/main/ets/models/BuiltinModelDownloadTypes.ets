@@ -1,4 +1,4 @@
-export type CatalogModelType = 'chat' | 'decision' | 'rerank'
+export type CatalogModelType = 'chat' | 'decision' | 'rerank' | 'embedding'
 
 export interface BuiltinModelFileSpec {
   relativePath: string

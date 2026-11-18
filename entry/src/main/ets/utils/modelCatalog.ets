@@ -40,6 +40,8 @@ const REVISION_PATTERN: RegExp = /^[A-Za-z0-9._-]+$/
 
 // Older catalogs used the package uploader as provider. Normalize display metadata only.
 export function modelCatalogBrand(name: string, provider: string): string {
+  if (/^bge[-_]/i.test(name)) return 'BGE'
+  if (/^gte[-_]/i.test(name)) return 'GTE'
   const brand = provider.trim()
   if (brand.length > 0 && brand.toLowerCase() !== 'mnn' && brand.toLowerCase() !== 'torryji') return brand
   if (/^qwen(?:[0-9._ -]|$)/i.test(name)) return 'Qwen'
@@ -181,6 +183,11 @@ export function parseInstalledCatalog(text: string): ModelCatalogItem[] {
     validateInstalledItem(item)
     requireCondition(findCatalogItemIndex(result, item.id) < 0, `已安装市场模型 ID 重复：${item.id}`)
     item.provider = modelCatalogBrand(item.displayName, item.provider)
+    if (/^(?:bge|gte)[-_]|embedding/i.test(item.directoryName) && !/rerank/i.test(item.directoryName)) {
+      item.modelType = 'embedding'
+      item.capabilities = ['向量']
+      item.runtime = undefined
+    }
     result.push(item)
   }
   return result
@@ -269,7 +276,7 @@ function validateOptionalNumber(value: number | undefined, message: string, mini
 }
 
 function validateInstalledItem(item: ModelCatalogItem): void {
-  requireCondition(item.modelType === undefined || ['chat', 'decision', 'rerank'].includes(item.modelType),
+  requireCondition(item.modelType === undefined || ['chat', 'decision', 'rerank', 'embedding'].includes(item.modelType),
     '已安装模型分类无效')
   validateMinAppVersionCode(item.minAppVersionCode)
   requireCondition(isValidId(item.id), '已安装市场模型 ID 无效')
@@ -387,7 +394,7 @@ function requireCondition(condition: boolean, message: string): void {
 }
 
 export function modelInstallDirectory(filesDir: string, spec: BuiltinModelDownloadSpec): string {
-  const root = spec.modelType === 'rerank' ? 'rerank-models/' :
+  const root = spec.modelType === 'embedding' ? 'embedding-models/' : spec.modelType === 'rerank' ? 'rerank-models/' :
     spec.modelType === 'decision' && spec.directoryName !== LAYA_MODEL_DIRECTORY ? 'decision-models/' : ''
   return `${filesDir}/${root}${spec.directoryName}`
 }

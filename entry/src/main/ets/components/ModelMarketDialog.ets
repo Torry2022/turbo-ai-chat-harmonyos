@@ -29,7 +29,7 @@ export struct ModelMarketDialog {
   }
 
   private catalogWarning(): string {
-    if (this.viewModel.modelMarketCategory === 'decision' || this.viewModel.modelCatalogRefreshing) return ''
+    if (this.viewModel.modelCatalogRefreshing) return ''
     const status = this.viewModel.modelMarketStatus()
     return /失败|不可用|无效|尚未获取/.test(status) ? status : ''
   }
@@ -197,7 +197,6 @@ export struct ModelMarketDialog {
             .layoutWeight(1)
           Button(this.viewModel.modelCatalogRefreshing ? '更新中' : '刷新', { type: ButtonType.Normal })
             .attributeModifier(new CompactActionStyle())
-            .visibility(this.viewModel.modelMarketCategory === 'decision' ? Visibility.None : Visibility.Visible)
             .height($r('app.float.button_height'))
             .responseRegion({ x: 0, y: 0, width: '100%', height: '100%' })
             .constraintSize({ minWidth: 64 })
@@ -236,7 +235,7 @@ export struct ModelMarketDialog {
         ModelTypeSelector({ selected: this.viewModel.modelMarketCategory, showReranker: true,
           onChange: (type: ModelType): void => {
             this.searchController.stopEditing()
-            if (type === 'chat' || type === 'decision' || type === 'rerank') this.viewModel.updateModelMarketCategory(type)
+            if (type === 'chat' || type === 'decision' || type === 'rerank' || type === 'embedding') this.viewModel.updateModelMarketCategory(type)
           } })
           .width('100%')
 

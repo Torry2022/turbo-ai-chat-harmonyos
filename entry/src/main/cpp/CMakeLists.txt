@@ -23,6 +23,8 @@ add_library(entry SHARED
     h2o_napi.cpp
     "${CMAKE_CURRENT_LIST_DIR}/../../../../scripts/h2o/h2o_decision.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../../../scripts/h2o/h2o_protocol.cpp"
+    embedding_runner.cpp
+    embedding_napi.cpp
     reranker_runner.cpp
     napi_init.cpp
     mnn_llm_runner.cpp

@@ -72,7 +72,7 @@ export class BuiltinModelInstallService {
     const result = await this.preflightService.validate(
       `${modelInstallDirectory(filesDir, item)}/config.json`,
       item.supportsImage,
-      item.files, item.modelType !== 'rerank'
+      item.files, item.modelType !== 'rerank' && item.modelType !== 'embedding', item.modelType === 'embedding'
     )
     return result.compatible
   }

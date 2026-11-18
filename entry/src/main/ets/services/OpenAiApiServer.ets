@@ -1,3 +1,5 @@
+import { EmbeddingRequest, EmbeddingResponse, EmbeddingObject, embeddingInputs } from '../utils/embeddings'
+import { EmbeddingResult } from 'libentry.so'
 import { decisionProbabilities, DecisionOutput } from '../utils/decisionOutput'
 import { LAYA_MODEL_ID } from '../models/LayaModelConfig'
 import { RerankResponse, RerankRequest, validateRerankRequest, rankScores } from '../utils/rerank'
@@ -45,6 +47,7 @@ export interface ApiRuntimeSnapshot {
   lastChatGeneration?: ApiGenerationRun
   chatModel: ApiRuntimeModel
   rerankModel?: ApiRuntimeModel
+  embeddingModel?: ApiRuntimeModel
   metrics: RuntimeSample
   storage: StorageSample
 }
@@ -66,6 +69,9 @@ export interface ApiGenerationRequest {
 }
 
 export interface ApiServerCallbacks {
+  embeddingModel?: () => ApiServerModel | undefined
+  embeddings?: (texts: string[]) => Promise<EmbeddingResult>
+  isEmbeddingBusy?: () => boolean
   rerankModel: () => ApiServerModel | undefined
   rerank: (query: string, documents: string[]) => Promise<number[]>
   cancelRerank: () => void
@@ -533,6 +539,7 @@ export class OpenAiApiServer {
   private server?: socket.TCPSocketServer
   private config: ApiServerConfig = { port: 8080, requireApiKey: true, apiKey: '' }
   private connections: Map<number, HttpConnectionState> = new Map()
+  private embeddingConnection?: HttpConnectionState
   private rerankConnection?: HttpConnectionState
   private activeClientId: number = -1
   private activeConnection?: HttpConnectionState
@@ -706,6 +713,10 @@ export class OpenAiApiServer {
       this.sendRuntime(state)
       return
     }
+    if (request.method === 'POST' && request.path === '/v1/embeddings') {
+      this.handleEmbeddings(state, request.body)
+      return
+    }
     if (request.method === 'POST' && request.path === '/v1/rerank') {
       this.handleRerank(state, request.body)
       return
@@ -724,6 +735,60 @@ export class OpenAiApiServer {
     }
     this.sendError(state, 404, 'not_found', '不支持该 API 路径。')
     this.callbacks.onLog('ERROR', `404 ${request.method} ${request.path}`)
+  }
+
+  private handleEmbeddings(state: HttpConnectionState, body: string): void {
+    let request: EmbeddingRequest
+    let texts: string[]
+    try {
+      request = JSON.parse(body) as EmbeddingRequest
+      texts = embeddingInputs(request)
+    } catch (error) {
+      this.sendError(state, 400, 'invalid_request', errorMessage(error as Error))
+      return
+    }
+    const model = this.callbacks.embeddingModel?.()
+    if (!model || !this.callbacks.embeddings) {
+      this.sendError(state, 503, 'model_not_loaded', '请先在模型页加载向量模型。')
+      return
+    }
+    if (request.model !== undefined && request.model !== model.id) {
+      this.sendError(state, 400, 'model_not_found', 'model 与已加载的向量模型不匹配。')
+      return
+    }
+    if (this.embeddingConnection !== undefined || this.rerankConnection !== undefined || this.activeClientId >= 0 || this.callbacks.isEmbeddingBusy?.()) {
+      this.sendError(state, 409, 'model_busy', '正在处理其他推理请求，请稍后重试。')
+      return
+    }
+    this.embeddingConnection = state
+    this.callbacks.onRequestState('embedding', true)
+    this.callbacks.embeddings(texts).then((result: EmbeddingResult) => {
+      if (result.vectors.length !== texts.length || result.dimension < 1) throw new Error('向量结果数量或维度异常')
+      if (request.dimensions !== undefined && request.dimensions !== result.dimension) {
+        if (!state.closed) this.sendError(state, 400, 'invalid_dimensions', `当前模型输出 ${result.dimension} 维向量。`)
+        return
+      }
+      const data: EmbeddingObject[] = result.vectors.map((embedding: number[], index: number): EmbeddingObject => {
+        return { object: 'embedding', index, embedding }
+      })
+      const response: EmbeddingResponse = { object: 'list', data, model: model.id,
+        usage: { prompt_tokens: result.inputTokens, total_tokens: result.inputTokens } }
+      if (!state.closed) this.sendJson(state, 200, response)
+      this.callbacks.onLog('RESP', '200 POST /v1/embeddings')
+    }).catch((error: Error) => {
+      const message = errorMessage(error)
+      const invalid = message.includes('512 tokens') || message.includes('输入不能为空')
+      const busy = message.includes('当前模型任务尚未结束')
+      if (!state.closed) this.sendError(state, busy ? 409 : invalid ? 400 : 500,
+        busy ? 'model_busy' : invalid ? 'invalid_input' : 'embedding_failed',
+        busy ? '正在处理其他推理请求，请稍后重试。' : invalid ? message : '向量生成未完成，请检查模型状态后重试。')
+      this.callbacks.onLog('ERROR', busy ? '向量请求暂忙' : invalid ? '向量输入无效' : '向量生成未完成')
+    }).finally(() => {
+      if (this.embeddingConnection === state) {
+        this.embeddingConnection = undefined
+        this.callbacks.onRequestState('embedding', false)
+      }
+    })
   }
 
   private handleRerank(state: HttpConnectionState, body: string): void {
@@ -745,7 +810,7 @@ export class OpenAiApiServer {
       this.sendError(state, 400, 'model_not_found', 'model 与已加载的重排模型不匹配。')
       return
     }
-    if (this.rerankConnection !== undefined || this.activeClientId >= 0 || this.callbacks.isRerankBusy()) {
+    if (this.rerankConnection !== undefined || this.embeddingConnection !== undefined || this.activeClientId >= 0 || this.callbacks.isRerankBusy()) {
       this.sendError(state, 409, 'model_busy', '正在处理其他推理请求，请稍后重试。')
       return
     }
@@ -780,6 +845,8 @@ export class OpenAiApiServer {
   private sendModels(state: HttpConnectionState): void {
     const model = this.callbacks.currentModel()
     const data: ApiModelObject[] = []
+    const embedding = this.callbacks.embeddingModel?.()
+    if (embedding !== undefined) data.push({ id: embedding.id, object: 'model', created: 0, owned_by: SERVER_OWNER })
     const reranker = this.callbacks.rerankModel()
     if (reranker !== undefined) data.push({ id: reranker.id, object: 'model', created: 0, owned_by: SERVER_OWNER })
     if (this.callbacks.isModelLoaded()) {
@@ -798,9 +865,10 @@ export class OpenAiApiServer {
       if (state.closed) return
       const payload: ApiRuntimeResponse = {
         object: 'turbo.runtime',
-        service: { target: 'all', inferenceBusy: this.activeClientId >= 0 || this.rerankConnection !== undefined },
+        service: { target: 'all', inferenceBusy: this.activeClientId >= 0 || this.rerankConnection !== undefined || this.embeddingConnection !== undefined },
         chatModel: snapshot.chatModel,
         rerankModel: snapshot.rerankModel,
+        embeddingModel: snapshot.embeddingModel,
         lastChatGeneration: snapshot.lastChatGeneration,
         metrics: snapshot.metrics,
         storage: snapshot.storage
@@ -866,7 +934,7 @@ export class OpenAiApiServer {
       this.sendError(state, 503, 'model_not_loaded', '请先在模型页加载决策模型。')
       return
     }
-    if (this.activeClientId >= 0 || this.rerankConnection !== undefined) {
+    if (this.activeClientId >= 0 || this.rerankConnection !== undefined || this.embeddingConnection !== undefined) {
       this.callbacks.onLog('ERROR', '409 POST /v1/decisions · 当前已有 API 请求')
       this.sendError(state, 409, 'server_busy', '正在处理其他推理请求，请稍后重试。')
       return
@@ -940,7 +1008,7 @@ export class OpenAiApiServer {
       this.sendError(state, 503, 'model_not_ready', '请先在模型页加载对话模型。')
       return
     }
-    if (this.activeClientId >= 0 || this.rerankConnection !== undefined || !this.callbacks.isGenerationReady()) {
+    if (this.activeClientId >= 0 || this.rerankConnection !== undefined || this.embeddingConnection !== undefined || !this.callbacks.isGenerationReady()) {
       this.callbacks.onLog('ERROR', `409 POST ${apiPath} · 当前已有模型任务`)
       this.sendError(state, 409, 'server_busy', '当前有模型任务正在执行，请稍后重试。')
       return

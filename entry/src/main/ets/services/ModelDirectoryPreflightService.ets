@@ -14,7 +14,8 @@ export class ModelDirectoryPreflightService {
     configPath: string,
     supportsImage: boolean,
     expectedFiles: BuiltinModelFileSpec[] = [],
-    requireChatTemplate: boolean = true
+    requireChatTemplate: boolean = true,
+    isEmbedding: boolean = false
   ): Promise<ModelPreflightResult> {
     const modelRoot = this.modelRoot(configPath)
     const files = modelRoot.length > 0 ? await this.listFilesRecursive(modelRoot, modelRoot) : []
@@ -33,7 +34,7 @@ export class ModelDirectoryPreflightService {
       files,
       expectedFiles: expected,
       supportsImage,
-      requireChatTemplate
+      requireChatTemplate, isEmbedding
     } as ModelDirectorySnapshot)
 
     if (requireChatTemplate && result.compatible && result.legacyTemplate) {
@@ -45,7 +46,7 @@ export class ModelDirectoryPreflightService {
         files,
         expectedFiles: expected,
         supportsImage,
-        requireChatTemplate
+        requireChatTemplate, isEmbedding
       } as ModelDirectorySnapshot)
     }
     return result
@@ -55,9 +56,10 @@ export class ModelDirectoryPreflightService {
     configPath: string,
     supportsImage: boolean,
     expectedFiles: BuiltinModelFileSpec[] = [],
-    requireChatTemplate: boolean = true
+    requireChatTemplate: boolean = true,
+    isEmbedding: boolean = false
   ): Promise<void> {
-    const result = await this.validate(configPath, supportsImage, expectedFiles, requireChatTemplate)
+    const result = await this.validate(configPath, supportsImage, expectedFiles, requireChatTemplate, isEmbedding)
     if (!result.compatible) {
       throw new Error(result.message)
     }

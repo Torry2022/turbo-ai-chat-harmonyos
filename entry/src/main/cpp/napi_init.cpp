@@ -1,3 +1,4 @@
+#include "embedding_napi.h"
 #include "reranker_runner.h"
 // Derived from Turbo1123/turbo-ai-chat-harmonyos and subsequently modified.
 // See README.md and Git history for provenance and change details.
@@ -1261,6 +1262,7 @@ napi_value ModelThreadInfo(napi_env env, napi_callback_info) {
 }
 
 static napi_value Init(napi_env env, napi_value exports) {
+    RegisterEmbeddingApi(env, exports);
     napi_property_descriptor desc[] = {
         {"modelThreadInfo", nullptr, ModelThreadInfo, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"rerankerAsync", nullptr, RerankerAsync, nullptr, nullptr, nullptr, napi_default, nullptr},
