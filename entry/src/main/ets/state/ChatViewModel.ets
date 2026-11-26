@@ -20,6 +20,7 @@ import { ChatDataService, PendingChatRestore } from '../services/ChatDataService
 import { bundleManager, common } from '@kit.AbilityKit'
 import preferences from '@ohos.data.preferences'
 import statvfs from '@ohos.file.statvfs'
+import { LocalModelBenchmark, LocalBenchmarkResult } from '../services/LocalModelBenchmark'
 import cryptoFramework from '@ohos.security.cryptoFramework'
 import { ChatContextSnapshot, ChatMessage, ChatTurn, ImagePayload, GenerationResult, GenerationSettings, PerfMetrics } from '../models/ChatTypes'
 import { declaredContextTokens, prepareChatContext, PreparedChatContext } from '../utils/chatContext'
@@ -163,6 +164,11 @@ export class ChatViewModel {
   builtinModelInstallError: string = ''
   builtinModelInstallCanceled: boolean = false
   modelDownloadTaskActive: boolean = false
+  localBenchmarkModelId: string = ''
+  localBenchmarkMessage: string = ''
+  localBenchmarkRunning: boolean = false
+  localBenchmarkResult?: LocalBenchmarkResult
+  private localBenchmarkCanceled: boolean = false
   modelDownloadDiscarding: boolean = false
   thinkingSupported: boolean = false
   thinkingEnabled: boolean = true
@@ -233,6 +239,7 @@ export class ChatViewModel {
   private session: ChatSession = new ChatSession()
   private modelManager: ModelManager = new ModelManager()
   private nativeService: NativeInferenceService = new NativeInferenceService()
+  private localBenchmark: LocalModelBenchmark = new LocalModelBenchmark()
   private titleForeground: boolean = true
   private titleService: ConversationTitleService = new ConversationTitleService(
     () => this.canGenerateConversationTitle(),
@@ -2132,6 +2139,7 @@ orderedSpecializedModels(profiles: ModelProfile[]): ModelProfile[] {
       this.backgroundTasks.refresh()
       return
     }
+    this.stopLocalBenchmark()
     this.backgroundTasks.saveBeforeSuspend(() => this.flushHistory()).catch((error: Error) => {
       this.historyError = this.historyFailure('保存对话失败', error)
       console.error(`Background history save failed: ${formatError(error as Object)}`)
@@ -2803,6 +2811,73 @@ orderedSpecializedModels(profiles: ModelProfile[]): ModelProfile[] {
     const rerank = this.loadedReranker()
     if (rerank !== undefined) entries.push({ type: 'rerank', category: '重排', name: rerank.name })
     return entries
+  }
+
+  showLocalBenchmark(): boolean {
+    return this.loaded && this.localBenchmarkModelId === this.currentModel().id && this.modelPageCategory === 'chat'
+  }
+
+  async toggleLocalBenchmark(): Promise<void> {
+    if (!this.loaded || this.localBenchmarkRunning || this.context === undefined) return
+    if (this.showLocalBenchmark()) {
+      this.localBenchmarkModelId = ''
+      this.notify()
+      return
+    }
+    const modelId = this.currentModel().id
+    this.localBenchmarkModelId = modelId
+    this.localBenchmarkResult = undefined
+    this.localBenchmarkMessage = ''
+    this.notify()
+    try {
+      const saved = await this.localBenchmark.read(this.context, modelId)
+      if (this.localBenchmarkModelId === modelId && !this.localBenchmarkRunning) {
+        this.localBenchmarkResult = saved
+        this.notify()
+      }
+    } catch (_) {}
+  }
+
+  async startLocalBenchmark(): Promise<void> {
+    const context = this.context
+    if (context === undefined || !this.showLocalBenchmark() || !this.canReleaseLoadedModels()) return
+    const modelId = this.localBenchmarkModelId
+    this.localBenchmarkCanceled = false
+    this.localBenchmarkRunning = true
+    this.busy = true
+    this.localBenchmarkMessage = '正在准备测速'
+    this.notify()
+    let measured = false
+    try {
+      const result = await this.localBenchmark.run(this.nativeService, this.thinkingSupported,
+        () => this.localBenchmarkCanceled, (message: string) => {
+          this.localBenchmarkMessage = message
+          this.notify()
+        })
+      if (result !== undefined && !this.localBenchmarkCanceled) {
+        measured = true
+        this.localBenchmarkResult = result
+        this.localBenchmarkMessage = ''
+        await this.localBenchmark.save(context, modelId, result)
+      }
+    } catch (_) {
+      if (!this.localBenchmarkCanceled) {
+        this.localBenchmarkMessage = measured ? '测速结果未能保存' : '测速未完成，请重试'
+      }
+    } finally {
+      if (this.localBenchmarkCanceled) this.localBenchmarkMessage = '测速已停止'
+      this.localBenchmarkRunning = false
+      this.busy = false
+      this.notify()
+    }
+  }
+
+  stopLocalBenchmark(): void {
+    if (!this.localBenchmarkRunning || this.localBenchmarkCanceled) return
+    this.localBenchmarkCanceled = true
+    this.localBenchmarkMessage = '正在停止测速'
+    this.nativeService.stopGeneration()
+    this.notify()
   }
 
   canReleaseLoadedModels(): boolean {

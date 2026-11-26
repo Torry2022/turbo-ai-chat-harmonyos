@@ -1,6 +1,7 @@
 import { EmbeddingModels } from './EmbeddingModels'
 import { EMPTY_RUNTIME_STATS, RuntimeStats } from '../models/RuntimeStats'
 import { RuntimeStatsService } from '../services/RuntimeStatsService'
+import { LOCAL_BENCHMARK_OUTPUT_LIMIT, LOCAL_BENCHMARK_RUNS, LocalBenchmarkResult } from '../services/LocalModelBenchmark'
 import { LAYA_MODEL_ID } from '../models/LayaModelConfig'
 import { RerankerModels } from './RerankerModels'
 import { InputFieldStyle, ParameterSliderStyle } from './ControlStyles'
@@ -1138,21 +1139,119 @@ export struct ModelTab {
   }
 
   @Builder
+  private BenchmarkMetric(label: string, value: string) {
+    Column({ space: 3 }) {
+      Text(value).fontSize(16).fontWeight(FontWeight.Medium)
+        .fontColor($r('app.color.text_body'))
+      Text(label).fontSize(11).fontColor($r('app.color.text_stat_label'))
+    }.alignItems(HorizontalAlign.Start).layoutWeight(1)
+  }
+
+  @Builder
+  private LocalBenchmarkResults(result: LocalBenchmarkResult) {
+    Column({ space: 10 }) {
+      Row({ space: 10 }) {
+        Text('上次测速').layoutWeight(1).fontSize(12).fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.text_secondary'))
+        Text(this.benchmarkDate(result.completedAt)).fontSize(11).fontColor($r('app.color.text_muted'))
+        Text(`${result.threads} 线程`).fontSize(11).fontColor($r('app.color.text_muted'))
+      }.width('100%')
+      Row({ space: 12 }) {
+        this.BenchmarkMetric('首段等待中位数', this.benchmarkTime(result.runs.map((run) => run.firstOutputMs)))
+        this.BenchmarkMetric('预填充中位数', this.benchmarkTime(result.runs.map((run) => run.prefillMs)))
+      }.width('100%').alignItems(VerticalAlign.Top)
+      Row({ space: 12 }) {
+        this.BenchmarkMetric('解码中位数', this.benchmarkTime(result.runs.map((run) => run.decodeMs)))
+        this.BenchmarkMetric('常驻内存采样峰值',
+          result.peakRssBytes > 0 ? `${(result.peakRssBytes / 1048576).toFixed(0)} MB` : '未取得')
+      }.width('100%').alignItems(VerticalAlign.Top)
+      Row({ space: 12 }) {
+        this.BenchmarkMetric('输入 Token', this.benchmarkTokens(result.runs.map((run) => run.inputTokens)))
+        this.BenchmarkMetric('输出 Token', this.benchmarkTokens(result.runs.map((run) => run.outputTokens)))
+      }.width('100%').alignItems(VerticalAlign.Top)
+    }.width('100%')
+  }
+
+  @Builder
+  private LocalBenchmarkSection() {
+    Column({ space: 10 }) {
+      Divider().color($r('app.color.divider')).opacity(0.6)
+      Row({ space: 12 }) {
+        Column({ space: 3 }) {
+          Text(`固定文本，预热 1 次，测量 ${LOCAL_BENCHMARK_RUNS} 次`)
+            .fontSize(11).fontColor($r('app.color.text_muted')).width('100%')
+          Text(`每次最多生成 ${LOCAL_BENCHMARK_OUTPUT_LIMIT} 个 Token`)
+            .fontSize(11).fontColor($r('app.color.text_muted')).width('100%')
+        }.layoutWeight(1)
+        if (this.viewModel.localBenchmarkRunning) {
+          Button('停止测速', { type: ButtonType.Normal }).attributeModifier(new CompactActionStyle())
+            .onClick(() => this.viewModel.stopLocalBenchmark())
+        } else {
+          Button(this.viewModel.localBenchmarkResult === undefined ? '开始测速' : '重新测速', { type: ButtonType.Normal })
+            .attributeModifier(new CompactActionStyle())
+            .enabled(this.viewModel.canReleaseLoadedModels())
+            .onClick(() => { this.viewModel.startLocalBenchmark() })
+        }
+      }.width('100%')
+      if (this.viewModel.localBenchmarkMessage.length > 0) {
+        Text(this.viewModel.localBenchmarkMessage)
+          .fontSize(12).fontColor($r('app.color.text_secondary')).width('100%')
+      }
+      if (this.viewModel.localBenchmarkResult !== undefined &&
+        this.viewModel.localBenchmarkResult.runs.length === LOCAL_BENCHMARK_RUNS) {
+        this.LocalBenchmarkResults(this.viewModel.localBenchmarkResult)
+      }
+    }
+    .width('100%')
+    .clip(true)
+    .transition(TransitionEffect.OPACITY.animation({ duration: 220, curve: Curve.EaseInOut }))
+  }
+
+  private benchmarkDate(completedAt: number): string {
+    const date = new Date(completedAt)
+    return `${date.getMonth() + 1}/${date.getDate()} ${date.toTimeString().slice(0, 5)}`
+  }
+
+  private benchmarkTime(values: number[]): string {
+    const sorted = values.sort((left, right) => left - right)
+    return `${sorted[Math.floor(sorted.length / 2)].toFixed(0)} ms`
+  }
+
+  private benchmarkTokens(values: number[]): string {
+    return values.every((value: number) => value === values[0]) ? `${values[0]}` : values.join(' / ')
+  }
+
+  @Builder
   private LoadedModelsCard() {
     Column({ space: 12 }) {
       this.SectionTitle('已加载模型')
       ForEach(this.viewModel.loadedModelEntries(), (entry: LoadedModelEntry) => {
-        Row({ space: 12 }) {
-          Column({ space: 3 }) {
-            Text(entry.category).fontSize(12).fontColor($r('app.color.text_muted')).width('100%')
-            Text(entry.name).fontSize(14).fontColor($r('app.color.text_body'))
-              .maxLines(1).textOverflow({ overflow: TextOverflow.MARQUEE }).width('100%')
-          }.layoutWeight(1)
-          Button('释放模型', { type: ButtonType.Normal })
-            .attributeModifier(new CompactActionStyle())
-            .enabled(this.viewModel.canReleaseLoadedModels())
-            .onClick(() => { this.viewModel.releaseLoadedModel(entry.type) })
-        }.width('100%')
+        Column({ space: 12 }) {
+          Row({ space: 12 }) {
+            Column({ space: 3 }) {
+              Text(entry.category).fontSize(12).fontColor($r('app.color.text_muted')).width('100%')
+              Text(entry.name).fontSize(14).fontColor($r('app.color.text_body'))
+                .maxLines(1).textOverflow({ overflow: TextOverflow.MARQUEE }).width('100%')
+            }.layoutWeight(1)
+            if (entry.type === 'chat' && this.viewModel.modelPageCategory === 'chat') {
+              Button(this.viewModel.showLocalBenchmark() ? '收起测速' : '本机测速', { type: ButtonType.Normal })
+                .attributeModifier(new CompactActionStyle())
+                .enabled(!this.viewModel.localBenchmarkRunning)
+                .onClick(() => {
+                  this.getUIContext().animateTo({ duration: 220, curve: Curve.EaseInOut }, () => {
+                    this.viewModel.toggleLocalBenchmark()
+                  })
+                })
+            }
+            Button('释放模型', { type: ButtonType.Normal })
+              .attributeModifier(new CompactActionStyle())
+              .enabled(this.viewModel.canReleaseLoadedModels())
+              .onClick(() => { this.viewModel.releaseLoadedModel(entry.type) })
+          }.width('100%')
+          if (entry.type === 'chat' && this.viewModel.showLocalBenchmark()) {
+            this.LocalBenchmarkSection()
+          }
+        }.width('100%').clip(true)
       }, (entry: LoadedModelEntry) => `${entry.type}-${entry.name}`)
       Text(`应用内存 ${this.resourceStats.appRss}，系统 ${this.resourceStats.systemMemAvailable}`)
         .fontSize(12).lineHeight(18).fontColor($r('app.color.text_muted')).width('100%')
