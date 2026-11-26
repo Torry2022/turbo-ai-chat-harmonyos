@@ -638,6 +638,35 @@ async function main() {
     assert.equal(subject.builtinModelInstallCanceled, true);
     assert.equal(subject.builtinModelInstallMessage, '下载已暂停，可继续下载。关闭窗口将清除未完成文件。');
   });
+  await check('installed variant state accepts the current manifest after a package was replaced locally', async () => {
+    const source = fs.readFileSync(path.join(sourceRoot, 'state/ChatViewModel.ets'), 'utf8');
+    const ast = ts.createSourceFile('ChatViewModel.ts', source, ts.ScriptTarget.Latest, true);
+    const declaration = ast.statements.find(node => ts.isClassDeclaration(node) && node.name.text === 'ChatViewModel');
+    const method = declaration.members.find(node => node.name?.getText(ast) === 'refreshModelMarketInstallStates');
+    const code = ts.transpileModule(`class Subject { ${method.getText(ast)} }`, {
+      compilerOptions: { target: ts.ScriptTarget.ES2020 }
+    }).outputText;
+    const Subject = vm.runInNewContext(code + '\nSubject');
+    const old = { id: 'int8' }, current = { id: 'int8', variantGroup: 'decision' };
+    const other = { id: 'int4', variantGroup: 'decision' };
+    const subject = new Subject();
+    let checks = [];
+    Object.assign(subject, {
+      modelCatalogService: {
+        knownItems: () => [old, other],
+        hasInstalledSnapshot: id => id === old.id,
+        findMarketItem: id => id === old.id ? current : other
+      },
+      builtinModelInstallService: {
+        isCatalogItemInstalled: async (_dir, item) => { checks.push(item); return item === current; }
+      },
+      notify: () => {}
+    });
+    subject.refreshModelMarketInstallStates();
+    await new Promise(setImmediate);
+    assert.deepEqual(Array.from(subject.modelMarketInstalledIds), ['int8']);
+    assert.deepEqual(checks, [old, other, current]);
+  });
   await check('specialized catalogs stay out of conversation profiles and resolve rerankers without chat templates', async () => {
     const { parseOfficialRerankerCatalog } = load(path.join(sourceRoot, 'utils/officialModelCatalog.ets'));
     const { modelInstallDirectory, catalogItemToProfile } = load(path.join(sourceRoot, 'utils/modelCatalog.ets'));

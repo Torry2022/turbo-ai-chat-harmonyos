@@ -1779,13 +1779,16 @@ orderedSpecializedModels(profiles: ModelProfile[]): ModelProfile[] {
 
   refreshModelMarketInstallStates(): void {
     const installedIds: string[] = []
-    const checks = this.modelCatalogService.knownItems().map((item: ModelCatalogItem) => {
-      return this.builtinModelInstallService.isCatalogItemInstalled(this.filesDir, item).then((installed: boolean) => {
-        if (installed) {
+    const checks = this.modelCatalogService.knownItems().map(async (item: ModelCatalogItem) => {
+      try {
+        const installed = await this.builtinModelInstallService.isCatalogItemInstalled(this.filesDir, item)
+        const current = !installed && this.modelCatalogService.hasInstalledSnapshot(item.id) ?
+          this.modelCatalogService.findMarketItem(item.id) : undefined
+        if (installed || (current !== undefined && current.variantGroup !== undefined &&
+          await this.builtinModelInstallService.isCatalogItemInstalled(this.filesDir, current))) {
           installedIds.push(item.id)
         }
-      }).catch((_err: Error) => {
-      })
+      } catch (_) {}
     })
     Promise.all(checks).then(() => {
       this.modelMarketInstalledIds = installedIds

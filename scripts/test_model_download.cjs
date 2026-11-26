@@ -103,6 +103,20 @@ function checkpoint(target, file, bytes = 4, validator = '"v1"') {
   fs.writeFileSync(target + '.meta', JSON.stringify({ url: file.url, size: file.sizeBytes, bytes, validator, sha256: file.sha256 }));
 }
 (async () => {
+  await check('installed decision package accepts a pinned config with equivalent Windows line endings', async ({ installer }) => {
+    const filesDir = path.join(temporary, 'decision-models-test');
+    const modelDir = path.join(filesDir, 'decision-models', 'H2O-fixture');
+    fs.mkdirSync(modelDir, { recursive: true });
+    const config = '{\n  "memory": "low"\n}\n';
+    const item = { modelType: 'decision', directoryName: 'H2O-fixture',
+      files: [{ relativePath: 'config.json', sizeBytes: Buffer.byteLength(config),
+        sha256: createHash('sha256').update(config).digest('hex') }] };
+    const installedConfig = path.join(modelDir, 'config.json');
+    fs.writeFileSync(installedConfig, config.replace(/\n/g, '\r\n'));
+    assert.equal(await installer.isCatalogItemInstalled(filesDir, item), true);
+    fs.writeFileSync(installedConfig, config.replace('low', 'new').replace(/\n/g, '\r\n'));
+    assert.equal(await installer.isCatalogItemInstalled(filesDir, item), false);
+  });
   await check('trusted SHA-256 is verified after download', async ({ target, file, download }) => {
     file.sha256 = createHash('sha256').update('ABCDEFGH').digest('hex');
     reply = { code: 200, body: 'ABCDEFGH' };

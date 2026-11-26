@@ -406,7 +406,7 @@ Select “向量” (Embeddings) on the Models page, download a model from the M
 
 Select and load a model in the Decision Model category, then call `/v1/decisions`. One decision model can be loaded at a time. Release it before switching to another. Chat, decision, and reranking models are managed separately while the API server remains running.
 
-Download Laya and H2O-Lightning from the Decision Models category in the Model Gallery, then select and load them on the Model page. Model weights are downloaded separately.
+Download Laya and H2O-Lightning from the Decision Models category in the Model Gallery, then select and load them on the Model page. Choose between H2O-Lightning INT4 and INT8 to see each package's download size and installation status.
 
 H2O-Lightning supports model packages retaining only the 255 candidate-label outputs to reduce loading memory. The package's output format must match the decision wrapper. See the [H2O decision wrapper](scripts/h2o/README_EN.md) for conversion instructions.
 

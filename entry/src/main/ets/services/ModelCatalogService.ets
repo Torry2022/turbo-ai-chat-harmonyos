@@ -13,7 +13,7 @@ import {
 } from '../models/ModelCatalogTypes'
 import { LAYA_DOWNLOAD_SPEC } from '../models/LayaModelConfig'
 import { BGE_EMBEDDING_DOWNLOAD } from '../models/EmbeddingModelConfig'
-import { H2O_DOWNLOAD_SPEC } from '../models/H2oModelConfig'
+import { H2O_DOWNLOAD_SPEC, H2O_INT4_DOWNLOAD_SPEC } from '../models/H2oModelConfig'
 import { ModelProfile } from '../models/ModelProfile'
 import { ModelDescriptionManifest, descriptionRepo, parseModelDescriptions } from '../utils/modelDescriptions'
 import { OfficialCatalog, officialModelRepo, officialPackageCompatibilityMessage, parseOfficialModelCatalog, parseOfficialRerankerCatalog, parseOfficialRepoFiles, resolveOfficialCatalogItem } from '../utils/officialModelCatalog'
@@ -64,7 +64,8 @@ export class ModelCatalogService {
 
   items(): ModelCatalogItem[] {
     const official = this.officialItems.concat(this.rerankerItems)
-    return mergeCatalogItems(mergeCatalogItems(official, this.marketItems), [LAYA_DOWNLOAD_SPEC, H2O_DOWNLOAD_SPEC, BGE_EMBEDDING_DOWNLOAD])
+    return mergeCatalogItems(mergeCatalogItems(official, this.marketItems),
+      [LAYA_DOWNLOAD_SPEC, H2O_DOWNLOAD_SPEC, H2O_INT4_DOWNLOAD_SPEC, BGE_EMBEDDING_DOWNLOAD])
       .map((item: ModelCatalogItem): ModelCatalogItem => {
         const provider = item.provider
         const resolved = this.findItem(this.resolvedItems, item.id)
@@ -74,6 +75,7 @@ export class ModelCatalogService {
         const description = this.descriptions[descriptionRepo(item.sourceUrl)]
         if (description === undefined && provider === item.provider) return item
         return { id: item.id, modelId: item.modelId, modelType: item.modelType,
+          variantGroup: item.variantGroup, variantLabel: item.variantLabel,
           minAppVersionCode: item.minAppVersionCode, directoryName: item.directoryName,
           displayName: item.displayName, shortName: item.shortName, description: description ?? item.description,
           provider, sourceName: item.sourceName, sourceUrl: item.sourceUrl,

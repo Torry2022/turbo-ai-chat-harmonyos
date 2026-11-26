@@ -25,6 +25,13 @@ assert.notEqual(rows.getData(0).key, key, 'Updated card metadata invalidates its
 rows.replace([[{ id: 'one' }, { id: 'two' }]]);
 assert.equal(rows.totalCount(), 1, 'Wide layout groups cards in the same row');
 assert.equal(rows.getData(0).items.length, 2);
+const grouped = { id: 'four', variantGroup: 'group' };
+const groupedRows = new Map([['group', [grouped, { id: 'eight', variantLabel: 'INT8' }]]]);
+rows.replace([[grouped]], groupedRows);
+const variantKey = rows.getData(0).key;
+groupedRows.set('group', [grouped]);
+rows.replace([[grouped]], groupedRows);
+assert.notEqual(rows.getData(0).key, variantKey, 'A change to available variants invalidates its card');
 rows.replace([]);
 assert.equal(rows.totalCount(), 0, 'Empty search results clear old rows');
 rows.unregisterDataChangeListener(listener);

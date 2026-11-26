@@ -65,7 +65,9 @@ export class BuiltinModelInstallService {
   async isCatalogItemInstalled(filesDir: string, item: ModelCatalogItem): Promise<boolean> {
     if (item.modelType === 'decision') {
       for (const file of item.files) {
-        if (!await this.isInstalledFile(this.filePath(filesDir, item, file), file)) return false
+        const path = this.filePath(filesDir, item, file)
+        if (await this.isInstalledFile(path, file)) continue
+        if (file.relativePath !== 'config.json' || !await this.matchesConfigWithWindowsLineEndings(path, file)) return false
       }
       return item.files.length > 0
     }
@@ -445,6 +447,20 @@ export class BuiltinModelInstallService {
     }
     const stat = await fs.stat(path)
     return stat.isFile() && stat.size > 0
+  }
+
+  private async matchesConfigWithWindowsLineEndings(path: string, file: BuiltinModelFileSpec): Promise<boolean> {
+    if (file.sha256 === undefined || !await this.exists(path)) return false
+    const stat = await fs.stat(path)
+    if (!stat.isFile() || stat.size <= file.sizeBytes || stat.size > file.sizeBytes * 2) return false
+    const text = (await fs.readText(path)).replace(/\r\n/g, '\n')
+    const data = new util.TextEncoder().encodeInto(text)
+    if (data.byteLength !== file.sizeBytes) return false
+    const digest = cryptoFramework.createMd('SHA256')
+    await digest.update({ data })
+    const result = await digest.digest()
+    const actual = Array.from(result.data).map((byte: number) => byte.toString(16).padStart(2, '0')).join('')
+    return actual === file.sha256.toLowerCase()
   }
 
   private async exists(path: string): Promise<boolean> {

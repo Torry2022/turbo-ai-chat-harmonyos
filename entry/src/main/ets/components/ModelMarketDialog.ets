@@ -18,11 +18,13 @@ class ModelMarketRows implements IDataSource {
   unregisterDataChangeListener(listener: DataChangeListener): void {
     this.listeners = this.listeners.filter((item: DataChangeListener) => item !== listener)
   }
-  replace(rows: ModelCatalogItem[][]): void {
-    const signature = JSON.stringify(rows)
+  replace(rows: ModelCatalogItem[][], variants: Map<string, ModelCatalogItem[]> = new Map()): void {
+    const keys = rows.map((items: ModelCatalogItem[]): string => JSON.stringify(items.map((item: ModelCatalogItem) =>
+      item.variantGroup === undefined ? item : variants.get(item.variantGroup) ?? [item])))
+    const signature = JSON.stringify(keys)
     if (signature === this.signature) return
     this.signature = signature
-    this.rows = rows.map((items: ModelCatalogItem[]): ModelMarketRow => ({ key: JSON.stringify(items), items }))
+    this.rows = rows.map((items: ModelCatalogItem[], index: number): ModelMarketRow => ({ key: keys[index], items }))
     this.listeners.forEach((listener: DataChangeListener) => listener.onDataReloaded())
   }
 }
@@ -35,12 +37,23 @@ export struct ModelMarketDialog {
   @Prop availableHeight: number = 640
   @State isClosePressed: boolean = false
   @State private hasRows: boolean = false
+  @State private expandedVariantGroup: string = ''
   private searchController: TextInputController = new TextInputController()
   private rows: ModelMarketRows = new ModelMarketRows()
+  private variantGroups: Map<string, ModelCatalogItem[]> = new Map()
 
   aboutToAppear(): void { this.refreshRows() }
   private refreshRows(): void {
-    this.rows.replace(this.catalogRows())
+    const items = this.viewModel.modelCatalogItems()
+    const groups: Map<string, ModelCatalogItem[]> = new Map()
+    for (const item of items) {
+      if (item.variantGroup === undefined) continue
+      const group = groups.get(item.variantGroup)
+      if (group === undefined) groups.set(item.variantGroup, [item])
+      else group.push(item)
+    }
+    this.variantGroups = groups
+    this.rows.replace(this.catalogRows(items), groups)
     this.hasRows = this.rows.totalCount() > 0
   }
 
@@ -48,14 +61,26 @@ export struct ModelMarketDialog {
     return Math.min(840, this.availableWidth - 32) >= 720
   }
 
-  private catalogRows(): ModelCatalogItem[][] {
-    const items = this.viewModel.modelCatalogItems()
+  private catalogRows(items: ModelCatalogItem[]): ModelCatalogItem[][] {
+    const groups: Set<string> = new Set()
+    const cards = items.filter((item: ModelCatalogItem): boolean => {
+      const group = item.variantGroup
+      if (group === undefined) return true
+      if (groups.has(group)) return false
+      groups.add(group)
+      return true
+    })
     const columns = this.twoColumnCards() ? 2 : 1
     const rows: ModelCatalogItem[][] = []
-    for (let index = 0; index < items.length; index += columns) {
-      rows.push(items.slice(index, index + columns))
+    for (let index = 0; index < cards.length; index += columns) {
+      rows.push(cards.slice(index, index + columns))
     }
     return rows
+  }
+
+  private variants(item: ModelCatalogItem): ModelCatalogItem[] {
+    if (item.variantGroup === undefined) return []
+    return this.variantGroups.get(item.variantGroup) ?? []
   }
 
   private catalogWarning(): string {
@@ -131,10 +156,23 @@ export struct ModelMarketDialog {
   }
 
   @Builder
+  private DownloadVersion(item: ModelCatalogItem) {
+    Button(this.viewModel.isCatalogItemInstalled(item.id) ? '已安装' : '下载', { type: ButtonType.Normal })
+      .attributeModifier(new CompactActionStyle())
+      .enabled(!this.viewModel.isCatalogItemInstalled(item.id) &&
+        this.viewModel.catalogCompatibilityMessage(item).length === 0 &&
+        !this.viewModel.busy && !this.viewModel.modelLoading && !this.viewModel.modelImporting &&
+        !this.viewModel.modelCatalogRefreshing)
+      .accessibilityText(`${this.viewModel.isCatalogItemInstalled(item.id) ? '已安装' : '下载'} ${item.displayName}`)
+      .id(`model-market-download-${item.id}`)
+      .onClick(() => { this.viewModel.installCatalogItem(item.id) })
+  }
+
+  @Builder
   private CatalogItemCard(item: ModelCatalogItem) {
     Column({ space: 5 }) {
       Row({ space: 6 }) {
-        Text(item.displayName)
+        Text(this.variants(item).length > 1 ? item.variantGroup : item.displayName)
           .fontSize(14).fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.text_title'))
           .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).layoutWeight(1)
@@ -157,7 +195,8 @@ export struct ModelMarketDialog {
 
       Row({ space: 10 }) {
         Column({ space: 3 }) {
-          Text(`${item.files.length === 0 ? '约 ' : ''}${formatBytes(item.totalBytes)}  ${item.provider} / ${item.sourceName}`)
+          Text(this.variants(item).length > 1 ? `${item.provider} / ${item.sourceName}` :
+            `${item.files.length === 0 ? '约 ' : ''}${formatBytes(item.totalBytes)}  ${item.provider} / ${item.sourceName}`)
             .fontSize(11).lineHeight(16).fontColor($r('app.color.text_muted'))
             .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).width('100%')
           Row({ space: 4 }) {
@@ -166,7 +205,14 @@ export struct ModelMarketDialog {
             }, (capability: string) => capability)
           }
         }.layoutWeight(1).alignItems(HorizontalAlign.Start)
-        if (this.viewModel.isCatalogItemInstalled(item.id)) {
+        if (this.variants(item).length > 1) {
+          Button(this.expandedVariantGroup === item.variantGroup ? '收起版本' : '选择版本', { type: ButtonType.Normal })
+            .attributeModifier(new CompactActionStyle())
+            .id(`model-market-versions-${item.id}`)
+            .onClick(() => {
+              this.expandedVariantGroup = this.expandedVariantGroup === item.variantGroup ? '' : (item.variantGroup ?? '')
+            })
+        } else if (this.viewModel.isCatalogItemInstalled(item.id)) {
           Row({ space: 4 }) {
             Image($r('app.media.icon_message_check')).width(16).height(16)
               .fillColor($r('app.color.tag_green_text'))
@@ -200,6 +246,15 @@ export struct ModelMarketDialog {
             .onClick(() => { this.viewModel.installCatalogItem(item.id) })
         }
       }.width('100%')
+      if (this.variants(item).length > 1 && this.expandedVariantGroup === item.variantGroup) {
+        ForEach(this.variants(item), (variant: ModelCatalogItem) => {
+          Row({ space: 6 }) {
+            Text(`${variant.variantLabel} · ${formatBytes(variant.totalBytes)}`)
+              .fontSize(12).fontColor($r('app.color.text_body')).layoutWeight(1)
+            this.DownloadVersion(variant)
+          }.width('100%').padding({ top: 4 })
+        }, (variant: ModelCatalogItem) => variant.id)
+      }
     }
     .width('100%').alignItems(HorizontalAlign.Start).padding(10)
     .backgroundColor($r('app.color.input_background'))

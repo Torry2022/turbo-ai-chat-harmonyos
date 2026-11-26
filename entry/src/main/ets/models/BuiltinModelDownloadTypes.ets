@@ -38,6 +38,8 @@ export interface BuiltinModelDownloadSpec {
 }
 
 export interface ModelCatalogItem extends BuiltinModelDownloadSpec {
+  variantGroup?: string
+  variantLabel?: string
   shortName: string
   description: string
   // Model vendor or family; the download repository remains in sourceUrl.
