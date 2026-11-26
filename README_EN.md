@@ -233,6 +233,8 @@ The app and HAP do not include model weights. Open the app → Model tab → Mod
 
 Interrupted downloads resume from verified blocks, with the unfinished block downloaded again. When the model source provides a SHA-256 checksum, the app verifies the completed file before installation. Unverified partial files from older app versions are downloaded again. Installed models remain available.
 
+You can minimize the download window and reopen it from the floating button on the Model tab to check progress or pause.
+
 | Model | Size | Capability |
 |------|------|------|
 | Qwen3-4B-Instruct | ~2.5 GB | Text |

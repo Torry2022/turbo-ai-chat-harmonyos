@@ -19,6 +19,7 @@ import { ChatHistoryService } from '../services/ChatHistoryService'
 import { ChatDataService, PendingChatRestore } from '../services/ChatDataService'
 import { bundleManager, common } from '@kit.AbilityKit'
 import preferences from '@ohos.data.preferences'
+import statvfs from '@ohos.file.statvfs'
 import cryptoFramework from '@ohos.security.cryptoFramework'
 import { ChatContextSnapshot, ChatMessage, ChatTurn, ImagePayload, GenerationResult, GenerationSettings, PerfMetrics } from '../models/ChatTypes'
 import { declaredContextTokens, prepareChatContext, PreparedChatContext } from '../utils/chatContext'
@@ -161,6 +162,8 @@ export class ChatViewModel {
   builtinModelInstallTotalBytes: number = 0
   builtinModelInstallError: string = ''
   builtinModelInstallCanceled: boolean = false
+  modelDownloadTaskActive: boolean = false
+  modelDownloadDiscarding: boolean = false
   thinkingSupported: boolean = false
   thinkingEnabled: boolean = true
   private thinkingDefaultEnabled: boolean = true
@@ -294,6 +297,7 @@ export class ChatViewModel {
     this.modelImportService
   )
   private pendingInstallCatalogItemId: string = ''
+  private modelDownloadSpec?: BuiltinModelDownloadSpec
   private autoLoadAfterInstall: boolean = false
   private apiServerStartAfterModelLoad: boolean = false
   private builtinModelInstallCancelRequested: boolean = false
@@ -1261,6 +1265,11 @@ orderedSpecializedModels(profiles: ModelProfile[]): ModelProfile[] {
   }
 
   installCatalogItem(catalogItemId: string): void {
+    if (this.modelDownloadTaskActive) {
+      this.showModelMarketDialog = false
+      this.openModelDownloadTask()
+      return
+    }
     if (this.rejectWhileModelScanning()) {
       return
     }
@@ -1843,6 +1852,10 @@ orderedSpecializedModels(profiles: ModelProfile[]): ModelProfile[] {
     if (!this.hasVisibleDialog()) {
       return false
     }
+    if (this.showBuiltinModelInstallDialog) {
+      this.closeBuiltinModelInstallDialog()
+      return true
+    }
     if (this.isDialogDismissBlocked()) {
       return true
     }
@@ -1852,10 +1865,6 @@ orderedSpecializedModels(profiles: ModelProfile[]): ModelProfile[] {
     }
     if (this.showModelMarketDialog) {
       this.closeModelMarketDialog()
-      return true
-    }
-    if (this.showBuiltinModelInstallDialog) {
-      this.closeBuiltinModelInstallDialog()
       return true
     }
     if (this.showModelLoadDialog) {
@@ -2956,30 +2965,60 @@ orderedSpecializedModels(profiles: ModelProfile[]): ModelProfile[] {
   }
 
   closeBuiltinModelInstallDialog(): void {
-    if (this.builtinModelInstalling) {
-      return
-    }
-    if (this.builtinModelInstallCanceled) {
-      const spec = this.currentBuiltinModelInstallSpec()
-      if (spec !== undefined) {
-        this.builtinModelInstallService.clearPartialDownload(this.filesDir, spec)
-          .then((_removedBytes: number) => undefined)
-          .catch((_err: Error) => undefined)
-      }
-    }
     this.showBuiltinModelInstallDialog = false
+    if (this.modelDownloadTaskActive) {
+      this.disableDownloadAutoLoad()
+    } else {
+      this.clearModelDownloadTask()
+    }
+    this.notify()
+  }
+
+  disableDownloadAutoLoad(): void {
+    this.apiServerStartAfterModelLoad = false
+    this.autoLoadAfterInstall = false
+  }
+
+  openModelDownloadTask(): void {
+    if (!this.modelDownloadTaskActive) return
+    this.showModelLoadDialog = false
+    this.showBuiltinModelInstallDialog = true
+    this.notify()
+  }
+
+  async discardModelDownloadTask(): Promise<void> {
+    const spec = this.modelDownloadSpec
+    if (this.builtinModelInstalling || this.modelDownloadDiscarding || spec === undefined) return
+    this.modelDownloadDiscarding = true
+    this.notify()
+    try {
+      await this.builtinModelInstallService.clearPartialDownload(this.filesDir, spec)
+      this.showBuiltinModelInstallDialog = false
+      this.clearModelDownloadTask()
+      this.toastCallback('已取消下载')
+    } catch (_) {
+      this.builtinModelInstallError = '未能清除下载进度，请重试。'
+    } finally {
+      this.modelDownloadDiscarding = false
+      this.notify()
+    }
+  }
+
+  private clearModelDownloadTask(): void {
     this.apiServerStartAfterModelLoad = false
     this.pendingInstallCatalogItemId = ''
     this.autoLoadAfterInstall = false
     this.builtinModelInstallCanceled = false
-    this.notify()
+    this.modelDownloadTaskActive = false
+    this.modelDownloadSpec = undefined
   }
 
   startBuiltinModelInstall(): void {
     if (this.rejectWhileModelScanning()) {
       return
     }
-    if (this.builtinModelInstalling || this.context === undefined) {
+    if (this.busy || this.modelLoading || this.modelImporting || this.builtinModelInstalling ||
+      this.modelDownloadDiscarding || this.context === undefined) {
       return
     }
     const spec = this.currentBuiltinModelInstallSpec()
@@ -2999,6 +3038,8 @@ orderedSpecializedModels(profiles: ModelProfile[]): ModelProfile[] {
       return
     }
     this.busy = true
+    this.modelDownloadTaskActive = true
+    this.modelDownloadSpec = spec
     this.builtinModelInstalling = true
     this.builtinModelInstallCancelRequested = false
     this.builtinModelInstallCanceled = false
@@ -3013,6 +3054,7 @@ orderedSpecializedModels(profiles: ModelProfile[]): ModelProfile[] {
         this.builtinModelInstallMessage = '正在读取模型文件信息...'
         this.notify()
         spec = await this.modelCatalogService.resolveInstallItem(this.filesDir, spec.id)
+        this.modelDownloadSpec = spec
         resolvingFiles = false
         this.builtinModelInstallTotalBytes = spec.totalBytes
       }
@@ -3024,6 +3066,11 @@ orderedSpecializedModels(profiles: ModelProfile[]): ModelProfile[] {
       }
       this.builtinModelInstallDownloadedBytes = existingBytes
       this.builtinModelInstallProgress = calculateDownloadProgress(existingBytes, spec.totalBytes)
+      if (this.builtinModelInstallCancelRequested) throw new Error('下载已取消')
+      const remainingBytes = Math.max(0, spec.totalBytes - existingBytes)
+      if (remainingBytes > 0 && await statvfs.getFreeSize(this.filesDir) < remainingBytes) {
+        throw new Error('设备可用存储空间不足')
+      }
       this.builtinModelInstallMessage = existingBytes > 0 ?
         `正在继续下载 ${spec.displayName}。请保持 App 在前台。` :
         `正在从 ${spec.sourceName} 下载 ${spec.displayName}。请保持 App 在前台。`
@@ -3084,18 +3131,19 @@ orderedSpecializedModels(profiles: ModelProfile[]): ModelProfile[] {
       this.setStatus(`${spec.displayName} 安装完成`, 'success')
       this.refreshModelMarketInstallStates()
       this.notify()
-      setTimeout(() => {
-        this.showBuiltinModelInstallDialog = false
-        this.pendingInstallCatalogItemId = ''
-        if (this.autoLoadAfterInstall) {
-          this.autoLoadAfterInstall = false
-          this.openModelLoadDialog(false)
-          this.startModelLoad()
-        } else {
-          this.autoLoadAfterInstall = false
-          this.notify()
-        }
-      }, 350)
+      const autoLoad = this.autoLoadAfterInstall && this.showBuiltinModelInstallDialog &&
+        this.currentModel().id === spec.modelId
+      const startApi = this.apiServerStartAfterModelLoad
+      this.showBuiltinModelInstallDialog = false
+      this.clearModelDownloadTask()
+      if (autoLoad) {
+        this.apiServerStartAfterModelLoad = startApi
+        this.openModelLoadDialog(false)
+        this.startModelLoad()
+      } else {
+        this.toastCallback(`${spec.displayName} 安装完成`)
+        this.notify()
+      }
     }).catch(async (err: Error) => {
       const canceled = this.builtinModelInstallCancelRequested
       if (canceled) {
@@ -3114,7 +3162,7 @@ orderedSpecializedModels(profiles: ModelProfile[]): ModelProfile[] {
       if (canceled) {
         this.builtinModelInstallError = ''
         this.builtinModelInstallCanceled = true
-        this.builtinModelInstallMessage = '下载已暂停，可继续下载。关闭窗口将清除未完成文件。'
+        this.builtinModelInstallMessage = '下载已暂停，稍后可以继续。'
         this.setStatus(`${spec.displayName} 下载已暂停`, 'warning')
       } else {
         this.builtinModelInstallCanceled = false
@@ -3141,19 +3189,20 @@ orderedSpecializedModels(profiles: ModelProfile[]): ModelProfile[] {
 
   private syncBuiltinModelInstallPartialProgress(spec: BuiltinModelDownloadSpec): void {
     this.builtinModelInstallService.existingPartialDownloadBytes(this.filesDir, spec).then((downloadedBytes: number) => {
-      if (this.builtinModelInstalling) {
+      if (this.builtinModelInstalling || this.modelDownloadSpec !== spec) {
         return
       }
       this.builtinModelInstallDownloadedBytes = downloadedBytes
       this.builtinModelInstallProgress = calculateDownloadProgress(downloadedBytes, spec.totalBytes)
       if (downloadedBytes > 0 && this.builtinModelInstallFileName.length <= 0) {
-        this.builtinModelInstallMessage = `${spec.displayName} 检测到未完成下载，可继续下载或关闭弹窗清理。`
+        this.builtinModelInstallMessage = '上次下载未完成，可以继续。'
       }
       this.notify()
     }).catch((_err: Error) => undefined)
   }
 
   private currentBuiltinModelInstallSpec(): BuiltinModelDownloadSpec | undefined {
+    if (this.modelDownloadSpec !== undefined) return this.modelDownloadSpec
     if (this.pendingInstallCatalogItemId.length > 0) {
       return this.modelCatalogService.findMarketItem(this.pendingInstallCatalogItemId)
     }
@@ -3500,6 +3549,11 @@ orderedSpecializedModels(profiles: ModelProfile[]): ModelProfile[] {
       if (installed) {
         return true
       }
+      if (this.modelDownloadTaskActive) {
+        this.showModelLoadDialog = false
+        this.openModelDownloadTask()
+        return false
+      }
       this.pendingInstallCatalogItemId = spec.id
       this.autoLoadAfterInstall = true
       this.openBuiltinModelInstallDialog(spec, true)
@@ -3508,6 +3562,7 @@ orderedSpecializedModels(profiles: ModelProfile[]): ModelProfile[] {
   }
 
   private openBuiltinModelInstallDialog(spec: BuiltinModelDownloadSpec, autoLoadAfterInstall: boolean = false): void {
+    this.modelDownloadSpec = spec
     this.showModelLoadDialog = false
     this.stopModelLoadTimer()
     this.modelLoadElapsedSeconds = 0

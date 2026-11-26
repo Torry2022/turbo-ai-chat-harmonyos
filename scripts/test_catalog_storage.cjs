@@ -606,7 +606,9 @@ async function main() {
     const source = fs.readFileSync(path.join(sourceRoot, 'state/ChatViewModel.ets'), 'utf8');
     const ast = ts.createSourceFile('ChatViewModel.ts', source, ts.ScriptTarget.Latest, true);
     const declaration = ast.statements.find(node => ts.isClassDeclaration(node) && node.name.text === 'ChatViewModel');
-    const names = ['prepareAndStartBuiltinModelInstall', 'cancelBuiltinModelInstall'];
+    const names = ['prepareAndStartBuiltinModelInstall', 'cancelBuiltinModelInstall',
+      'openModelDownloadTask', 'closeBuiltinModelInstallDialog', 'disableDownloadAutoLoad',
+      'clearModelDownloadTask', 'discardModelDownloadTask'];
     const methods = declaration.members.filter(node => node.name && names.includes(node.name.getText(ast)));
     const code = ts.transpileModule(`class Subject { ${methods.map(node => node.getText(ast)).join('\n')} }`, {
       compilerOptions: { target: ts.ScriptTarget.ES2020 }
@@ -614,15 +616,20 @@ async function main() {
     const { formatDownloadError, formatError } = load(path.join(sourceRoot, 'utils/formatters.ets'));
     const { calculateDownloadProgress } = load(path.join(sourceRoot, 'utils/downloadProgress.ets'));
     const { isPinnedModelDownload } = load(path.join(sourceRoot, 'utils/modelCatalog.ets'));
-    const Subject = vm.runInNewContext(code + '\nSubject', { isPinnedModelDownload, formatDownloadError, formatError, calculateDownloadProgress, setTimeout: () => 0 });
+    const Subject = vm.runInNewContext(code + '\nSubject', {
+      isPinnedModelDownload, formatDownloadError, formatError, calculateDownloadProgress,
+      statvfs: { getFreeSize: async () => 0 }
+    });
     const item = { ...parseOfficialModelCatalog(raw(official()), []).items[0], files: [{
       relativePath: 'config.json', sizeBytes: 999,
       url: 'https://modelscope.cn/models/MNN/Example-MNN/resolve/master/config.json' }] };
-    let downloads = 0;
+    let downloads = 0, clears = 0;
     const subject = new Subject();
-    Object.assign(subject, { filesDir: '/test', notify: () => {}, setStatus: value => { subject.status = value; },
+    Object.assign(subject, { filesDir: '/test', notify: () => {}, toastCallback: () => {},
+      setStatus: value => { subject.status = value; },
       rejectIncompatibleCatalogItem: () => false,
-      builtinModelInstallService: { cancelInstall: () => {}, existingPartialDownloadBytes: async () => 0 },
+      builtinModelInstallService: { cancelInstall: () => {}, existingPartialDownloadBytes: async () => 0,
+        clearPartialDownload: async () => { clears++; } },
       modelLifecycleService: { installCatalogItem: async () => { downloads++; } },
       modelCatalogService: { resolveInstallItem: async () => { throw new Error('metadata unavailable'); } }
     });
@@ -632,11 +639,27 @@ async function main() {
     let resolve;
     subject.modelCatalogService.resolveInstallItem = () => new Promise(done => { resolve = done; });
     await subject.prepareAndStartBuiltinModelInstall({}, item);
+    subject.closeBuiltinModelInstallDialog();
+    assert.equal(subject.showBuiltinModelInstallDialog, false);
+    assert.equal(subject.builtinModelInstalling, true);
+    assert.equal(clears, 0);
+    subject.openModelDownloadTask();
+    assert.equal(subject.showBuiltinModelInstallDialog, true);
     subject.cancelBuiltinModelInstall();
     resolve({ ...item, files: blobs }); await new Promise(setImmediate);
     assert.equal(downloads, 0); assert.equal(subject.busy, false); assert.equal(subject.builtinModelInstalling, false);
     assert.equal(subject.builtinModelInstallCanceled, true);
-    assert.equal(subject.builtinModelInstallMessage, '下载已暂停，可继续下载。关闭窗口将清除未完成文件。');
+    assert.equal(subject.builtinModelInstallMessage, '下载已暂停，稍后可以继续。');
+    subject.closeBuiltinModelInstallDialog();
+    assert.equal(subject.modelDownloadTaskActive, true);
+    assert.equal(clears, 0);
+    await subject.discardModelDownloadTask();
+    assert.equal(clears, 1);
+    assert.equal(subject.modelDownloadTaskActive, false);
+    subject.modelCatalogService.resolveInstallItem = async () => ({ ...item, files: blobs, totalBytes: 999 });
+    await subject.prepareAndStartBuiltinModelInstall({}, item); await new Promise(setImmediate);
+    assert.equal(downloads, 0);
+    assert.match(subject.builtinModelInstallError, /存储空间不足/);
   });
   await check('installed variant state accepts the current manifest after a package was replaced locally', async () => {
     const source = fs.readFileSync(path.join(sourceRoot, 'state/ChatViewModel.ets'), 'utf8');

@@ -14,6 +14,11 @@ import { DecisionDialog } from '../components/DecisionDialog'
 import { PhoneTabs } from '../components/PhoneTabs'
 import { BottomTabs } from '../components/BottomTabs'
 import { BuiltinModelInstallDialog } from '../components/BuiltinModelInstallDialog'
+import {
+  DownloadTaskButton, DownloadTaskPoint, DOWNLOAD_TASK_BUTTON_SIZE, clampDownloadTaskTop, downloadTaskDockX
+} from '../components/DownloadTaskButton'
+import { DOWNLOAD_TASK_PANEL_ID, DownloadPanelSnapshot, DownloadTaskFrame, DownloadTaskMotion }
+  from '../components/DownloadTaskMotion'
 import { ChatTab } from '../components/ChatTab'
 import { ChatContextDialog } from '../components/ChatContextDialog'
 import { ChatContextSnapshot } from '../models/ChatTypes'
@@ -29,6 +34,12 @@ import { SettingsDialog } from '../components/SettingsDialog'
 import { DIALOG_MOTION_DURATION } from '../components/DialogMotion'
 import { themeService } from '../services/ThemeService'
 import { ChatViewModel } from '../state/ChatViewModel'
+
+interface DownloadTaskMotionState {
+  snapshot: DownloadPanelSnapshot
+  dock: DownloadTaskPoint
+  open: boolean
+}
 
 @Entry
 @Component
@@ -51,6 +62,10 @@ struct Index {
   @State private dialogExitBlocking: boolean = false
   @State private stateVersion: number = 0
   @State private modelCardDragging: boolean = false
+  @State private downloadDockRight: boolean = true
+  @State private downloadDockTop: number = -1
+  @State private downloadTaskMotion: DownloadTaskMotionState | undefined = undefined
+  @State private downloadTaskMotionActive: boolean = false
   @State private windowWidth: number = 0
   @State private windowHeight: number = 0
   private lastBackTime: number = 0
@@ -108,7 +123,7 @@ struct Index {
   }
 
   onBackPress(): boolean {
-    if (this.dialogExitBlocking) return true
+    if (this.dialogExitBlocking || this.downloadTaskMotionActive) return true
     if (this.shownContext !== undefined) {
       this.shownContext = undefined
       return true
@@ -129,7 +144,7 @@ struct Index {
       this.showSettings = false
       return true
     }
-    if (this.viewModel.dismissTopDialogIfIdle()) {
+    if (this.dismissModelDialog()) {
       return true
     }
     if (this.chatInputExpanded) {
@@ -219,6 +234,7 @@ struct Index {
     this.mainWindow?.off('keyboardWillShow', this.onKeyboardWillShow)
     this.mainWindow?.off('keyboardWillHide', this.onKeyboardWillHide)
     clearTimeout(this.focusTimer)
+    this.downloadTaskMotion?.snapshot.image.release().catch(() => {})
     this.viewModel.dispose()
   }
 
@@ -235,10 +251,78 @@ struct Index {
     return 'app-content'
   }
 
+  private dismissModelDialog(): boolean {
+    if (this.viewModel.showBuiltinModelInstallDialog) {
+      this.switchDownloadTaskSurface(false)
+      return true
+    }
+    return this.viewModel.dismissTopDialogIfIdle()
+  }
+
+  private switchDownloadTaskSurface(open: boolean): void {
+    if (this.downloadTaskMotionActive || !open && !this.viewModel.showBuiltinModelInstallDialog) return
+    if (!this.viewModel.modelDownloadTaskActive || this.activeTab !== 1) {
+      if (!open) this.viewModel.closeBuiltinModelInstallDialog()
+      return
+    }
+    if (open) {
+      this.downloadTaskMotionActive = true
+      this.viewModel.openModelDownloadTask()
+      const context = this.getUIContext()
+      context.postFrameCallback(new DownloadTaskFrame(() => {
+        context.postFrameCallback(new DownloadTaskFrame(() => { this.captureDownloadTaskMotion(true) }))
+      }))
+    } else {
+      this.viewModel.disableDownloadAutoLoad()
+      this.captureDownloadTaskMotion(false)
+    }
+  }
+
+  private captureDownloadTaskMotion(open: boolean): void {
+    if (!this.viewModel.showBuiltinModelInstallDialog) {
+      this.downloadTaskMotionActive = false
+      return
+    }
+    const context = this.getUIContext()
+    try {
+      const rect = context.getComponentUtils().getRectangleById(DOWNLOAD_TASK_PANEL_ID)
+      const root = context.getComponentUtils().getRectangleById('model-download-motion-root')
+      if (rect.size.width <= 0 || rect.size.height <= 0) throw new Error('下载窗口尚未完成布局')
+      const size = DOWNLOAD_TASK_BUTTON_SIZE / 2
+      const dock: DownloadTaskPoint = {
+        x: context.vp2px(downloadTaskDockX(this.windowWidth, this.downloadDockRight) + size),
+        y: context.vp2px(clampDownloadTaskTop(this.downloadDockTop >= 0 ? this.downloadDockTop : this.windowHeight,
+          this.windowHeight, this.topInset, this.downloadTaskBottomInset()) + size)
+      }
+      const snapshot: DownloadPanelSnapshot = {
+        image: context.getComponentSnapshot().getSync(DOWNLOAD_TASK_PANEL_ID, { scale: 0.72 }),
+        x: rect.windowOffset.x - root.windowOffset.x, y: rect.windowOffset.y - root.windowOffset.y,
+        width: rect.size.width, height: rect.size.height
+      }
+      this.downloadTaskMotion = { snapshot, dock, open }
+      this.downloadTaskMotionActive = true
+    } catch (_) {
+      this.downloadTaskMotionActive = false
+      if (open) this.updateModalFocus(true)
+      else this.viewModel.closeBuiltinModelInstallDialog()
+    }
+  }
+
+  private finishDownloadTaskMotion(): void {
+    const motion = this.downloadTaskMotion
+    if (motion === undefined) return
+    if (!motion.open && this.viewModel.showBuiltinModelInstallDialog) this.viewModel.closeBuiltinModelInstallDialog()
+    this.downloadTaskMotion = undefined
+    this.downloadTaskMotionActive = false
+    motion.snapshot.image.release().catch(() => {})
+    this.updateModalFocus(true)
+  }
+
   private updateModalFocus(force: boolean = false): void {
     const id = this.modalFocusId()
     if (!force && this.focusScope === id) return
-    if (id === 'app-content' && this.focusScope.length > 0 && this.focusScope !== id) {
+    if (id === 'app-content' && this.focusScope.length > 0 && this.focusScope !== id &&
+      !this.downloadTaskMotionActive) {
       this.dialogExitBlocking = true
     } else if (id !== 'app-content') {
       this.dialogExitBlocking = false
@@ -305,7 +389,7 @@ struct Index {
   }
 
   private handleKey(event: KeyEvent): boolean {
-    if (this.dialogExitBlocking) return true
+    if (this.dialogExitBlocking || this.downloadTaskMotionActive) return true
     if (event.keyCode === KeyCode.KEYCODE_ESCAPE && event.type === KeyType.Down) {
       if (this.shownContext !== undefined) {
         this.shownContext = undefined
@@ -327,7 +411,7 @@ struct Index {
         this.showSettings = false
         return true
       }
-      if (this.viewModel.dismissTopDialogIfIdle()) return true
+      if (this.dismissModelDialog()) return true
       return this.viewModel.closeHistoryDrawer()
     }
     if (event.keyCode !== KeyCode.KEYCODE_N) {
@@ -355,6 +439,10 @@ struct Index {
 
   private mobileNavigationHeight(): number {
     return this.usePhoneTabs() ? 84 : 52
+  }
+
+  private downloadTaskBottomInset(): number {
+    return this.windowWidth < 600 ? Math.max(this.bottomInset, this.mobileNavigationHeight()) : 0
   }
 
   private handleLongPageScroll(yOffset: number): void {
@@ -475,6 +563,7 @@ struct Index {
       extendBottom: this.windowWidth >= 600,
       bottomOverlayInset: this.windowWidth < 600 && !this.keyboardVisible && !this.usePhoneTabs() ?
         this.mobileNavigationHeight() : 0,
+      downloadOverlayInset: this.downloadTaskBottomInset(),
       viewModel: this.viewModel,
       renderVersion: this.stateVersion,
       onDragStateChange: (dragging: boolean) => {
@@ -701,14 +790,31 @@ struct Index {
         .focusable(this.modalFocusId() === 'load-dialog')
         .onAppear(() => this.updateModalFocus(true))
       }
+      if (this.activeTab === 1 && this.viewModel.modelDownloadTaskActive &&
+        !this.viewModel.showBuiltinModelInstallDialog && !this.viewModel.showModelMarketDialog &&
+        !this.downloadTaskMotionActive) {
+        DownloadTaskButton({
+          viewModel: this.viewModel,
+          availableWidth: this.windowWidth,
+          availableHeight: this.windowHeight,
+          topInset: this.topInset,
+          bottomInset: this.downloadTaskBottomInset(),
+          dockRight: this.$downloadDockRight,
+          dockTop: this.$downloadDockTop,
+          onOpen: () => { this.switchDownloadTaskSurface(true) }
+        })
+        .id('download-task-button-host')
+      }
       if (this.viewModel.showBuiltinModelInstallDialog) {
         BuiltinModelInstallDialog({
           viewModel: this.viewModel,
           availableWidth: this.windowWidth,
-          availableHeight: this.windowHeight
+          availableHeight: this.windowHeight,
+          panelHidden: this.downloadTaskMotionActive,
+          onDismiss: () => { this.switchDownloadTaskSurface(false) }
         })
         .id('install-dialog')
-        .focusable(this.modalFocusId() === 'install-dialog')
+        .focusable(!this.downloadTaskMotionActive && this.modalFocusId() === 'install-dialog')
         .onAppear(() => this.updateModalFocus(true))
       }
       if (this.viewModel.showModelMarketDialog) {
@@ -806,9 +912,24 @@ struct Index {
           .hitTestBehavior(HitTestMode.Block)
           .onClick(() => {})
       }
+      if (this.downloadTaskMotionActive) {
+        Column().width('100%').height('100%').hitTestBehavior(HitTestMode.Block).onClick(() => {}).zIndex(14)
+      }
+      if (this.downloadTaskMotion !== undefined) {
+        DownloadTaskMotion({
+          snapshot: this.downloadTaskMotion.snapshot,
+          dock: this.downloadTaskMotion.dock,
+          widthPx: this.getUIContext().vp2px(this.windowWidth),
+          heightPx: this.getUIContext().vp2px(this.windowHeight),
+          targetSizePx: this.getUIContext().vp2px(DOWNLOAD_TASK_BUTTON_SIZE * 0.76),
+          opening: this.downloadTaskMotion.open,
+          onComplete: () => { this.finishDownloadTaskMotion() }
+        })
+      }
     }
     .width('100%')
     .height('100%')
+    .id('model-download-motion-root')
     .backgroundColor(this.windowWidth < 600 ? $r('app.color.page_compact') : $r('app.color.page'))
     .onAreaChange((_oldArea: Area, newArea: Area) => {
       this.windowWidth = Number(newArea.width)

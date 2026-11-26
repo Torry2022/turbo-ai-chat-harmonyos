@@ -20,6 +20,7 @@ import { ChatViewModel, LoadedModelEntry } from '../state/ChatViewModel'
 import { ModelDragFrame, resolveModelDragPreview } from '../utils/modelDrag'
 import { ModelType, ModelTypeSelector } from './ModelTypeSelector'
 import { SortableModelList } from './SortableModelList'
+import { DOWNLOAD_TASK_BUTTON_MARGIN, DOWNLOAD_TASK_BUTTON_SIZE } from './DownloadTaskButton'
 
 @Component
 export struct ModelTab {
@@ -33,6 +34,7 @@ export struct ModelTab {
   onContentScroll: (yOffset: number) => void = (_yOffset: number) => {}
   @Prop extendBottom: boolean = false
   @Prop bottomOverlayInset: number = 0
+  @Prop downloadOverlayInset: number = 0
   @StorageProp('darkAppearance') private darkAppearance: boolean = true
   @ObjectLink viewModel: ChatViewModel
   @Prop @Watch('onRenderVersionChange') renderVersion: number = 0
@@ -1194,7 +1196,9 @@ export struct ModelTab {
       }
       .width('100%')
       .padding({ bottom: $r('app.float.page_scroll_bottom_padding') })
-      .margin({ bottom: this.bottomOverlayInset })
+      .margin({ bottom: this.viewModel.modelDownloadTaskActive ?
+        Math.max(this.bottomOverlayInset, this.downloadOverlayInset + DOWNLOAD_TASK_BUTTON_SIZE +
+          DOWNLOAD_TASK_BUTTON_MARGIN) : this.bottomOverlayInset })
     }
     .width('100%')
     .height('100%')
