@@ -570,6 +570,7 @@ MNN Runtime and model weights follow their respective upstream licenses or model
 - [Qwen3-4B-Instruct-2507-MNN](https://modelscope.cn/models/MNN/Qwen3-4B-Instruct-2507-MNN)
 - [Gemma-4-E2B-it-MNN](https://modelscope.cn/models/MNN/Gemma-4-E2B-it-MNN)
 - [MiniCPM5-1B-MNN-BF16](https://modelscope.cn/models/TorryJi/MiniCPM5-1B-MNN-BF16)
+- [MNN-Pocket-0.3B-MNN (INT4)](https://modelscope.cn/models/MNN/MNN-Pocket-0.3B-MNN)
 
 ## Acknowledgments
 

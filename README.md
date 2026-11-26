@@ -572,6 +572,7 @@ MNN Runtime 和模型权重遵循各自上游许可证或模型卡说明。本�
 - [Qwen3-4B-Instruct-2507-MNN](https://modelscope.cn/models/MNN/Qwen3-4B-Instruct-2507-MNN)
 - [Gemma-4-E2B-it-MNN](https://modelscope.cn/models/MNN/Gemma-4-E2B-it-MNN)
 - [MiniCPM5-1B-MNN-BF16](https://modelscope.cn/models/TorryJi/MiniCPM5-1B-MNN-BF16)
+- [MNN-Pocket-0.3B-MNN（INT4）](https://modelscope.cn/models/MNN/MNN-Pocket-0.3B-MNN)
 
 ## 致谢
 

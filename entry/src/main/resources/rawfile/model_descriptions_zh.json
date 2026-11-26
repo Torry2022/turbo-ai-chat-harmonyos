@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "descriptionVersion": 1,
-  "publishedAt": "2026-11-03T06:00:00Z",
+  "descriptionVersion": 3,
+  "publishedAt": "2026-11-26T14:36:47Z",
   "entries": [
     {
       "repo": "MNN/Qwen3.5-2B-MNN",
@@ -825,6 +825,13 @@
       "description": "MiniCPM 端侧文本系列，侧重代码、数学与工具调用，面向本地助手和多步任务。",
       "sources": [
         "https://huggingface.co/openbmb/MiniCPM5-2B"
+      ]
+    },
+    {
+      "repo": "MNN/MNN-Pocket-0.3B-MNN",
+      "description": "MNN-Pocket 端侧文本模型，支持中英双语，面向本地助手、信息抽取和轻量任务。",
+      "sources": [
+        "https://huggingface.co/taobao-mnn/MNN-Pocket-0.3B-MNN"
       ]
     },
     {

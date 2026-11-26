@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogVersion": 3,
-  "publishedAt": "2026-09-18T01:59:53Z",
+  "catalogVersion": 5,
+  "publishedAt": "2026-11-23T02:53:40Z",
   "hiddenIds": [],
   "items": [
     {
@@ -692,6 +692,59 @@
           "penaltyWindow": 256
         }
       }
+    },
+    {
+      "id": "mnn-pocket-0.3b-int4",
+      "directoryName": "MNN-Pocket-0.3B-MNN-INT4",
+      "displayName": "MNN-Pocket-0.3B INT4",
+      "shortName": "MNN-Pocket-0.3B INT4",
+      "description": "约3亿参数的端侧中英双语模型，适合本地问答、信息抽取和轻量任务。",
+      "provider": "MNN-Pocket",
+      "supportsImage": false,
+      "capabilities": [
+        "对话"
+      ],
+      "source": {
+        "type": "modelscope",
+        "repo": "MNN/MNN-Pocket-0.3B-MNN",
+        "revision": "0660ecb18f363e17bd2944f5cfb64e04452378b1"
+      },
+      "files": [
+        {
+          "relativePath": "config.json",
+          "sizeBytes": 502
+        },
+        {
+          "relativePath": "llm.mnn",
+          "sizeBytes": 953112
+        },
+        {
+          "relativePath": "llm.mnn.weight",
+          "sizeBytes": 171481330
+        },
+        {
+          "relativePath": "llm_config.json",
+          "sizeBytes": 3237
+        },
+        {
+          "relativePath": "tokenizer.mtok",
+          "sizeBytes": 1710861
+        }
+      ],
+      "runtime": {
+        "systemPrompt": "你是运行在本地设备上的 MNN-Pocket-0.3B。请始终使用简体中文回答，表达简洁清楚。",
+        "contextMessageLimit": 6,
+        "generationDefaults": {
+          "temperature": 0.8,
+          "topP": 0.9,
+          "topK": 40,
+          "repetitionPenalty": 1.0,
+          "frequencyPenalty": 0.0,
+          "presencePenalty": 0.0,
+          "penaltyWindow": 0
+        }
+      },
+      "minAppVersionCode": 2001000
     }
   ]
 }
