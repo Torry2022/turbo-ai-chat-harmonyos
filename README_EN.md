@@ -54,6 +54,12 @@ The project can serve as a development and integration reference for local AI ap
 
 ## Recent Highlights
 
+**Model downloads and chat model speed testing (v2.2.0)**
+
+- **Download tasks.** Check download progress from other tabs and resume unfinished downloads from the floating button after reopening the app.
+- **Quick speed test.** Use a fixed prompt to test the currently loaded chat model from the Models page and see time to first output, generation speed, and the app’s peak sampled resident memory.
+- **Model Gallery.** Compare download sizes for H2O-Lightning-4B INT4 and INT8. The Models page and Model Gallery use the same category tabs.
+
 **Embedding models and text embeddings API (v2.1.0)**
 
 - Run embedding models on your device to turn text into vectors for semantic search, text similarity and related applications.
@@ -514,7 +520,7 @@ The app uses **MNN model directory** format. Built-in models are downloaded from
 
 ## Inference Backend and Performance
 
-With a chat model loaded, open the local benchmark in the Loaded Models card on the Model tab. It uses a fixed prompt and reports prefill time, time to first output, decode time, and peak sampled resident memory.
+On the Models page, open the speed test in the Loaded Models card to test the currently loaded chat model with a fixed prompt. The results show prefill time, time to first output, decode time, and the app’s peak sampled resident memory.
 
 The current version runs local inference with the **MNN CPU backend**. GPU / NPU backends are not integrated yet. All three model categories offer CPU inference thread controls under Runtime Configuration. The range starts at 1 and ends at the device’s logical CPU count, capped at 16. Chat and reranking default to 6; decision models default to 4. All three categories allow settings to be edited while loaded. Select Reload to release and reload the loaded model with the new settings. Generation parameters and thinking settings take effect on the next generation without reloading.
 
