@@ -608,7 +608,8 @@ async function main() {
     const declaration = ast.statements.find(node => ts.isClassDeclaration(node) && node.name.text === 'ChatViewModel');
     const names = ['prepareAndStartBuiltinModelInstall', 'cancelBuiltinModelInstall',
       'openModelDownloadTask', 'closeBuiltinModelInstallDialog', 'disableDownloadAutoLoad',
-      'clearModelDownloadTask', 'discardModelDownloadTask'];
+      'clearModelDownloadTask', 'discardModelDownloadTask', 'clearModelDownloadCompletion',
+      'saveModelDownloadTask', 'showModelDownloadFailure'];
     const methods = declaration.members.filter(node => node.name && names.includes(node.name.getText(ast)));
     const code = ts.transpileModule(`class Subject { ${methods.map(node => node.getText(ast)).join('\n')} }`, {
       compilerOptions: { target: ts.ScriptTarget.ES2020 }
@@ -616,8 +617,15 @@ async function main() {
     const { formatDownloadError, formatError } = load(path.join(sourceRoot, 'utils/formatters.ets'));
     const { calculateDownloadProgress } = load(path.join(sourceRoot, 'utils/downloadProgress.ets'));
     const { isPinnedModelDownload } = load(path.join(sourceRoot, 'utils/modelCatalog.ets'));
+    let persistedTaskId = '';
     const Subject = vm.runInNewContext(code + '\nSubject', {
-      isPinnedModelDownload, formatDownloadError, formatError, calculateDownloadProgress,
+      isPinnedModelDownload, formatDownloadError, formatError, calculateDownloadProgress, clearTimeout,
+      preferences: {
+        getPreferencesSync: () => ({
+          async put(_key, id) { persistedTaskId = id; },
+          async flush() {}
+        })
+      },
       statvfs: { getFreeSize: async () => 0 }
     });
     const item = { ...parseOfficialModelCatalog(raw(official()), []).items[0], files: [{
@@ -625,7 +633,8 @@ async function main() {
       url: 'https://modelscope.cn/models/MNN/Example-MNN/resolve/master/config.json' }] };
     let downloads = 0, clears = 0;
     const subject = new Subject();
-    Object.assign(subject, { filesDir: '/test', notify: () => {}, toastCallback: () => {},
+    Object.assign(subject, { filesDir: '/test', context: {}, appForeground: true,
+      modelDownloadCompletionTimer: -1, notify: () => {}, toastCallback: () => {},
       setStatus: value => { subject.status = value; },
       rejectIncompatibleCatalogItem: () => false,
       builtinModelInstallService: { cancelInstall: () => {}, existingPartialDownloadBytes: async () => 0,
@@ -636,9 +645,10 @@ async function main() {
     await subject.prepareAndStartBuiltinModelInstall({}, item); await new Promise(setImmediate);
     assert.equal(downloads, 0); assert.equal(subject.busy, false); assert.equal(subject.builtinModelInstalling, false);
     assert.equal(subject.builtinModelInstallError, '无法获取模型信息。下载未完成，请检查网络和可用存储空间后重试。');
+    assert.equal(persistedTaskId, item.id);
     let resolve;
     subject.modelCatalogService.resolveInstallItem = () => new Promise(done => { resolve = done; });
-    await subject.prepareAndStartBuiltinModelInstall({}, item);
+    await subject.prepareAndStartBuiltinModelInstall({}, item); await new Promise(setImmediate);
     subject.closeBuiltinModelInstallDialog();
     assert.equal(subject.showBuiltinModelInstallDialog, false);
     assert.equal(subject.builtinModelInstalling, true);
@@ -656,6 +666,7 @@ async function main() {
     await subject.discardModelDownloadTask();
     assert.equal(clears, 1);
     assert.equal(subject.modelDownloadTaskActive, false);
+    assert.equal(persistedTaskId, '');
     subject.modelCatalogService.resolveInstallItem = async () => ({ ...item, files: blobs, totalBytes: 999 });
     await subject.prepareAndStartBuiltinModelInstall({}, item); await new Promise(setImmediate);
     assert.equal(downloads, 0);
