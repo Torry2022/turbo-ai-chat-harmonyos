@@ -233,7 +233,7 @@ The app and HAP do not include model weights. Open the app → Model tab → Mod
 
 Interrupted downloads resume from verified blocks, with the unfinished block downloaded again. When the model source provides a SHA-256 checksum, the app verifies the completed file before installation. Unverified partial files from older app versions are downloaded again. Installed models remain available.
 
-You can minimize the download window and reopen it from the floating button on the Model tab to check progress or pause.
+You can minimize the download window and use the floating button to check progress or pause from another tab. When you reopen the app, unfinished downloads return in a paused state. Tap Continue Download to resume. If the window was minimized when the download finished, the app shows a confirmation and the green checkmark opens the matching model category.
 
 | Model | Size | Capability |
 |------|------|------|

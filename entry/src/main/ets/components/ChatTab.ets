@@ -27,6 +27,7 @@ export struct ChatTab {
   @Prop compactHistoryOpen: boolean = false
   @Prop leadingInset: number = 0
   @Prop inputExpanded: boolean = false
+  onComposerHeightChange: (height: number) => void = () => {}
   onInputExpandedChange: (expanded: boolean) => void = (_expanded: boolean) => {}
   onRequestModel: () => void = () => {}
   onViewContext: () => void = () => {}
@@ -763,7 +764,9 @@ export struct ChatTab {
         .backgroundColor(this.compactPage ? $r('app.color.page_compact') : $r('app.color.page'))
         .onAreaChange((_oldArea: Area, newArea: Area) => {
           if (!this.inputExpanded && this.animatedInputHeight < 0) {
-            this.collapsedComposerRegionHeight = Number(newArea.height)
+            const height = Number(newArea.height)
+            this.collapsedComposerRegionHeight = height
+            this.onComposerHeightChange(height)
           }
         })
       if (this.compactTicker) {

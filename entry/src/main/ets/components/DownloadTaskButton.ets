@@ -63,39 +63,57 @@ export struct DownloadTaskButton {
     })
   }
 
+  private downloadPercent(): number {
+    return Math.min(99, Math.round(this.viewModel.builtinModelInstallProgress))
+  }
+
+  private downloadAccentColor(): ResourceColor {
+    if (this.viewModel.modelDownloadCompleted) return $r('app.color.status_good')
+    return this.viewModel.builtinModelInstalling ?
+      $r('app.color.button_action_text') : $r('app.color.status_warning')
+  }
+
   build() {
     Button({ type: ButtonType.Circle }) {
       Stack({ alignContent: Alignment.Center }) {
+        Circle().width(DOWNLOAD_TASK_BUTTON_SIZE).height(DOWNLOAD_TASK_BUTTON_SIZE)
+          .fill(this.pressed ? $r('app.color.selected_background') : $r('app.color.card'))
+          .shadow(ShadowStyle.OUTER_DEFAULT_SM)
+          .opacity(0.95)
         Progress({ value: this.viewModel.builtinModelInstallProgress, total: 100, type: ProgressType.Ring })
           .width(DOWNLOAD_TASK_BUTTON_SIZE).height(DOWNLOAD_TASK_BUTTON_SIZE)
-          .color(this.viewModel.builtinModelInstalling ?
-            $r('app.color.button_action_text') : $r('app.color.status_warning'))
+          .color(this.downloadAccentColor())
           .backgroundColor($r('app.color.control_track'))
-          .style({ strokeWidth: 2,
+          .style({ strokeWidth: 2.5,
             status: this.viewModel.builtinModelInstalling && this.viewModel.builtinModelInstallProgress <= 0 ?
               ProgressStatus.LOADING : ProgressStatus.PROGRESSING })
           .accessibilityLevel('no')
-        if (this.viewModel.builtinModelInstalling && this.viewModel.builtinModelInstallProgress > 0) {
-          Text(`${Math.round(this.viewModel.builtinModelInstallProgress)}%`)
-            .fontSize(13).fontWeight(FontWeight.Medium).fontColor($r('app.color.button_action_text'))
+        if (this.viewModel.modelDownloadCompleted) {
+          Image($r('app.media.icon_download_complete')).width(22).height(22)
+            .fillColor($r('app.color.status_good'))
+            .transition(TransitionEffect.OPACITY.combine(TransitionEffect.scale({ x: 0.82, y: 0.82 }))
+              .animation({ duration: 200, curve: Curve.EaseOut }))
+        } else if (this.viewModel.builtinModelInstalling && this.viewModel.builtinModelInstallProgress > 0) {
+          Text(`${this.downloadPercent()}%`)
+            .fontSize(14).fontWeight(600).fontColor($r('app.color.button_action_text'))
+            .transition(TransitionEffect.OPACITY.animation({ duration: 120, curve: Curve.EaseOut }))
         } else {
-          Image($r('app.media.icon_download')).width(20).height(20)
-            .fillColor($r('app.color.button_action_text'))
+          Image($r('app.media.icon_download_task')).width(22).height(22)
+            .fillColor(this.downloadAccentColor())
             .translate({ y: -1.5 })
         }
       }.width('100%').height('100%').accessibilityLevel('no-hide-descendants')
     }
     .width(DOWNLOAD_TASK_BUTTON_SIZE).height(DOWNLOAD_TASK_BUTTON_SIZE).padding(0)
     .position({ x: this.dragging ? this.dragX : this.dockX(), y: this.dragging ? this.dragY : this.dockY() })
-    .backgroundColor(this.pressed ? $r('app.color.selected_background') : $r('app.color.card'))
+    .backgroundColor(Color.Transparent)
     .borderRadius(DOWNLOAD_TASK_BUTTON_SIZE / 2)
-    .shadow(ShadowStyle.OUTER_DEFAULT_SM)
     .scale({ x: this.pressed ? 0.94 : 1, y: this.pressed ? 0.94 : 1 })
     .hoverEffect(HoverEffect.Auto)
     .id('model-download-task')
-    .accessibilityText(this.viewModel.builtinModelInstalling ?
-      `查看下载进度，已完成 ${Math.round(this.viewModel.builtinModelInstallProgress)}%` :
-      (this.viewModel.builtinModelInstallCanceled ? '查看已暂停的下载' : '查看未完成的下载'))
+    .accessibilityText(this.viewModel.modelDownloadCompleted ? '模型下载完成，查看模型列表' : this.viewModel.builtinModelInstalling ?
+      `查看模型下载进度，已完成 ${this.downloadPercent()}%` :
+      (this.viewModel.builtinModelInstallCanceled ? '查看已暂停的模型下载' : '查看未完成的模型下载'))
     .transition(TransitionEffect.OPACITY.animation({ duration: 110, curve: Curve.EaseOut }))
     .onTouch((event: TouchEvent) => {
       if (event.type === TouchType.Down) this.setPressed(true)
@@ -103,6 +121,7 @@ export struct DownloadTaskButton {
     })
     .gesture(PanGesture({ direction: PanDirection.All, distance: 8 })
       .onActionStart(() => {
+        if (this.viewModel.modelDownloadCompleted) return
         this.setPressed(false)
         this.dragStartX = this.dockX()
         this.dragStartY = this.dockY()
@@ -111,6 +130,7 @@ export struct DownloadTaskButton {
         this.dragging = true
       })
       .onActionUpdate((event: GestureEvent) => {
+        if (!this.dragging) return
         this.dragX = Math.min(Math.max(0, this.availableWidth - DOWNLOAD_TASK_BUTTON_SIZE),
           Math.max(0, this.dragStartX + event.offsetX))
         this.dragY = this.clampY(this.dragStartY + event.offsetY)

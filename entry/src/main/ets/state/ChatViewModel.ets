@@ -96,6 +96,13 @@ export interface LoadedModelEntry {
   name: string
 }
 
+interface ModelDownloadCompletion {
+  modelName: string
+  category?: CatalogModelType
+  autoLoadModelId: string
+  startApi: boolean
+}
+
 @Observed
 export class ChatViewModel {
   messages: ChatMessage[] = []
@@ -164,6 +171,10 @@ export class ChatViewModel {
   builtinModelInstallError: string = ''
   builtinModelInstallCanceled: boolean = false
   modelDownloadTaskActive: boolean = false
+  private modelDownloadCompletionCategory?: CatalogModelType
+  private modelDownloadCompletionTimer: number = -1
+  private pendingModelDownloadCompletion?: ModelDownloadCompletion
+  private pendingModelDownloadFailure: boolean = false
   localBenchmarkModelId: string = ''
   localBenchmarkMessage: string = ''
   localBenchmarkRunning: boolean = false
@@ -444,6 +455,7 @@ export class ChatViewModel {
     this.notify()
     this.loadModelCatalog(context).then(async (result: ModelCatalogLoadResult) => {
       this.applyCatalogResult(result)
+      this.restoreModelDownloadTask(context)
       await this.migrateBundledCatalogInstalls()
       this.refreshModelMarketInstallStates()
       this.refreshModelCatalog(false)
@@ -477,6 +489,7 @@ export class ChatViewModel {
   dispose(): void {
     this.chatRequestSerial++
     this.backgroundTasks.dispose()
+    this.clearModelDownloadCompletion()
     if (this.generating) this.generationWorkflow.stop()
     if (this.builtinModelInstalling) {
       this.builtinModelInstallCancelRequested = true
@@ -2137,6 +2150,13 @@ orderedSpecializedModels(profiles: ModelProfile[]): ModelProfile[] {
     this.setConversationTitleActive(active)
     if (active) {
       this.backgroundTasks.refresh()
+      const completion = this.pendingModelDownloadCompletion
+      this.pendingModelDownloadCompletion = undefined
+      if (completion !== undefined) this.presentModelDownloadCompletion(completion)
+      if (this.pendingModelDownloadFailure) {
+        this.pendingModelDownloadFailure = false
+        this.showModelDownloadFailure()
+      }
       return
     }
     this.stopLocalBenchmark()
@@ -3068,6 +3088,7 @@ orderedSpecializedModels(profiles: ModelProfile[]): ModelProfile[] {
     this.notify()
     try {
       await this.builtinModelInstallService.clearPartialDownload(this.filesDir, spec)
+      await this.saveModelDownloadTask('')
       this.showBuiltinModelInstallDialog = false
       this.clearModelDownloadTask()
       this.toastCallback('已取消下载')
@@ -3077,6 +3098,85 @@ orderedSpecializedModels(profiles: ModelProfile[]): ModelProfile[] {
       this.modelDownloadDiscarding = false
       this.notify()
     }
+  }
+
+  private restoreModelDownloadTask(context: common.UIAbilityContext): void {
+    if (this.modelDownloadTaskActive || this.showBuiltinModelInstallDialog) return
+    try {
+      const store = preferences.getPreferencesSync(context, { name: 'model-download' })
+      const id = store.getSync('active-id', '')
+      if (typeof id !== 'string' || id.length === 0) return
+      const spec = this.modelCatalogService.findMarketItem(id) ?? this.modelCatalogService.findInstallItem(id)
+      if (spec === undefined) return
+      this.pendingInstallCatalogItemId = id
+      this.modelDownloadSpec = spec
+      this.modelDownloadTaskActive = true
+      this.builtinModelInstallCanceled = true
+      this.builtinModelInstallTotalBytes = spec.totalBytes
+      this.builtinModelInstallModelName = spec.displayName
+      this.builtinModelInstallSourceName = spec.sourceName
+      this.builtinModelInstallMessage = '上次下载未完成，可以继续。'
+      this.syncBuiltinModelInstallPartialProgress(spec)
+      this.notify()
+    } catch (error) {
+      console.warn(`Read model download task failed: ${formatError(error as Object)}`)
+    }
+  }
+
+  private async saveModelDownloadTask(id: string): Promise<void> {
+    if (this.context === undefined) return
+    try {
+      const store = preferences.getPreferencesSync(this.context, { name: 'model-download' })
+      await store.put('active-id', id)
+      await store.flush()
+    } catch (error) {
+      console.warn(`Save model download task failed: ${formatError(error as Object)}`)
+    }
+  }
+
+  get modelDownloadCompleted(): boolean {
+    return this.modelDownloadCompletionCategory !== undefined
+  }
+
+  openCompletedModelDownload(): boolean {
+    const category = this.modelDownloadCompletionCategory
+    if (category === undefined) return false
+    this.clearModelDownloadCompletion()
+    this.updateModelPageCategory(category)
+    return true
+  }
+
+  private presentModelDownloadCompletion(completion: ModelDownloadCompletion): void {
+    if (completion.autoLoadModelId.length > 0 && this.currentModel().id === completion.autoLoadModelId &&
+      !this.busy && !this.modelLoading) {
+      this.apiServerStartAfterModelLoad = completion.startApi
+      this.startModelLoad()
+      return
+    }
+
+    if (completion.category !== undefined) this.showModelDownloadCompletion(completion.category)
+    this.notify()
+    this.toastCallback(`${completion.modelName} 下载完成`)
+  }
+
+  private showModelDownloadFailure(): void {
+    if (!this.showBuiltinModelInstallDialog) {
+      this.toastCallback(`${this.builtinModelInstallModelName} 安装未完成，请打开下载任务重试`)
+    }
+  }
+
+  private showModelDownloadCompletion(category: CatalogModelType): void {
+    this.modelDownloadCompletionCategory = category
+    this.modelDownloadCompletionTimer = setTimeout(() => {
+      this.clearModelDownloadCompletion()
+      this.notify()
+    }, 1250)
+  }
+
+  private clearModelDownloadCompletion(): void {
+    clearTimeout(this.modelDownloadCompletionTimer)
+    this.modelDownloadCompletionTimer = -1
+    this.modelDownloadCompletionCategory = undefined
   }
 
   private clearModelDownloadTask(): void {
@@ -3112,6 +3212,8 @@ orderedSpecializedModels(profiles: ModelProfile[]): ModelProfile[] {
     if (this.rejectIncompatibleCatalogItem(spec)) {
       return
     }
+    this.clearModelDownloadCompletion()
+    this.pendingModelDownloadFailure = false
     this.busy = true
     this.modelDownloadTaskActive = true
     this.modelDownloadSpec = spec
@@ -3125,6 +3227,7 @@ orderedSpecializedModels(profiles: ModelProfile[]): ModelProfile[] {
     this.builtinModelInstallSourceName = spec.sourceName
     let resolvingFiles = !isPinnedModelDownload(spec)
     const install = async (): Promise<void> => {
+      await this.saveModelDownloadTask(spec.id)
       if (resolvingFiles) {
         this.builtinModelInstallMessage = '正在读取模型文件信息...'
         this.notify()
@@ -3197,26 +3300,26 @@ orderedSpecializedModels(profiles: ModelProfile[]): ModelProfile[] {
         }
         if (installedItem.modelType === 'decision') this.refreshDecisionReady()
       }
+      await this.saveModelDownloadTask('')
+      const autoLoad = this.autoLoadAfterInstall && this.showBuiltinModelInstallDialog &&
+        this.currentModel().id === spec.modelId
+      const completion: ModelDownloadCompletion = {
+        modelName: spec.displayName,
+        category: this.showBuiltinModelInstallDialog ? undefined : (spec.modelType ?? 'chat'),
+        autoLoadModelId: autoLoad ? spec.modelId : '',
+        startApi: this.apiServerStartAfterModelLoad
+      }
       this.builtinModelInstalling = false
       this.busy = false
       this.builtinModelInstallProgress = 100
-      this.builtinModelInstallMessage = this.autoLoadAfterInstall ?
-        `${spec.displayName} 安装完成，正在加载模型。` :
-        `${spec.displayName} 安装完成，可在模型列表中选择并加载。`
       this.setStatus(`${spec.displayName} 安装完成`, 'success')
-      this.refreshModelMarketInstallStates()
-      this.notify()
-      const autoLoad = this.autoLoadAfterInstall && this.showBuiltinModelInstallDialog &&
-        this.currentModel().id === spec.modelId
-      const startApi = this.apiServerStartAfterModelLoad
       this.showBuiltinModelInstallDialog = false
       this.clearModelDownloadTask()
-      if (autoLoad) {
-        this.apiServerStartAfterModelLoad = startApi
-        this.openModelLoadDialog(false)
-        this.startModelLoad()
+      this.refreshModelMarketInstallStates()
+      if (this.appForeground) {
+        this.presentModelDownloadCompletion(completion)
       } else {
-        this.toastCallback(`${spec.displayName} 安装完成`)
+        this.pendingModelDownloadCompletion = completion
         this.notify()
       }
     }).catch(async (err: Error) => {
@@ -3246,6 +3349,8 @@ orderedSpecializedModels(profiles: ModelProfile[]): ModelProfile[] {
         this.builtinModelInstallError = `${stage}。${formatDownloadError(err as Object)}`
         this.builtinModelInstallMessage = `${spec.displayName} 未安装完成，可以重试。`
         this.setStatus(this.builtinModelInstallError, 'neutral')
+        if (this.appForeground) this.showModelDownloadFailure()
+        else this.pendingModelDownloadFailure = true
       }
       this.notify()
     })

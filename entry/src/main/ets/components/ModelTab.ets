@@ -1295,7 +1295,7 @@ export struct ModelTab {
       }
       .width('100%')
       .padding({ bottom: $r('app.float.page_scroll_bottom_padding') })
-      .margin({ bottom: this.viewModel.modelDownloadTaskActive ?
+      .margin({ bottom: this.viewModel.modelDownloadTaskActive || this.viewModel.modelDownloadCompleted ?
         Math.max(this.bottomOverlayInset, this.downloadOverlayInset + DOWNLOAD_TASK_BUTTON_SIZE +
           DOWNLOAD_TASK_BUTTON_MARGIN) : this.bottomOverlayInset })
     }

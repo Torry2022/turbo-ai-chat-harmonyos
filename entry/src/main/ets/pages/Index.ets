@@ -84,6 +84,7 @@ struct Index {
   @State private bottomInset: number = 0
   @State private keyboardVisible: boolean = false
   @State private chatInputExpanded: boolean = false
+  @State private chatComposerHeight: number = 64
   @State private phoneHistoryOpen: boolean = false
   @State private phoneTabBarHidden: boolean = false
   private phoneTabBarScrollDelta: number = 0
@@ -261,7 +262,11 @@ struct Index {
 
   private switchDownloadTaskSurface(open: boolean): void {
     if (this.downloadTaskMotionActive || !open && !this.viewModel.showBuiltinModelInstallDialog) return
-    if (!this.viewModel.modelDownloadTaskActive || this.activeTab !== 1) {
+    if (open && this.viewModel.openCompletedModelDownload()) {
+      this.changeTab(1)
+      return
+    }
+    if (!this.viewModel.modelDownloadTaskActive) {
       if (!open) this.viewModel.closeBuiltinModelInstallDialog()
       return
     }
@@ -292,7 +297,7 @@ struct Index {
       const dock: DownloadTaskPoint = {
         x: context.vp2px(downloadTaskDockX(this.windowWidth, this.downloadDockRight) + size),
         y: context.vp2px(clampDownloadTaskTop(this.downloadDockTop >= 0 ? this.downloadDockTop : this.windowHeight,
-          this.windowHeight, this.topInset, this.downloadTaskBottomInset()) + size)
+          this.windowHeight, this.topInset, this.downloadTaskDockBottomInset()) + size)
       }
       const snapshot: DownloadPanelSnapshot = {
         image: context.getComponentSnapshot().getSync(DOWNLOAD_TASK_PANEL_ID, { scale: 0.72 }),
@@ -445,6 +450,10 @@ struct Index {
     return this.windowWidth < 600 ? Math.max(this.bottomInset, this.mobileNavigationHeight()) : 0
   }
 
+  private downloadTaskDockBottomInset(): number {
+    return this.downloadTaskBottomInset() + (this.activeTab === 0 ? this.chatComposerHeight + 16 : 0)
+  }
+
   private handleLongPageScroll(yOffset: number): void {
     if (!this.usePhoneTabs() || Math.abs(yOffset) < 0.2) return
     if (this.phoneTabBarScrollDelta === 0 || this.phoneTabBarScrollDelta * yOffset > 0) {
@@ -516,6 +525,7 @@ struct Index {
         keyboardVisible: this.keyboardVisible,
         inputExpanded: this.chatInputExpanded,
         onInputExpandedChange: (expanded: boolean): void => { this.chatInputExpanded = expanded },
+        onComposerHeightChange: (height: number): void => { this.chatComposerHeight = height },
         contentInset: this.usePhoneTabs() ? this.pagePadding() : 0,
         contentBottomInset: this.usePhoneTabs() && !this.keyboardVisible ? (this.mobileNavigationHeight() + 8) : 0,
         compactHistoryManaged: this.usePhoneTabs(),
@@ -790,15 +800,16 @@ struct Index {
         .focusable(this.modalFocusId() === 'load-dialog')
         .onAppear(() => this.updateModalFocus(true))
       }
-      if (this.activeTab === 1 && this.viewModel.modelDownloadTaskActive &&
-        !this.viewModel.showBuiltinModelInstallDialog && !this.viewModel.showModelMarketDialog &&
-        !this.downloadTaskMotionActive) {
+      if ((this.viewModel.modelDownloadTaskActive || this.viewModel.modelDownloadCompleted) &&
+        !this.downloadTaskMotionActive &&
+        this.modalFocusId() === 'app-content' &&
+        (this.activeTab !== 0 || (!this.keyboardVisible && !this.chatInputExpanded && !this.phoneHistoryOpen))) {
         DownloadTaskButton({
           viewModel: this.viewModel,
           availableWidth: this.windowWidth,
           availableHeight: this.windowHeight,
           topInset: this.topInset,
-          bottomInset: this.downloadTaskBottomInset(),
+          bottomInset: this.downloadTaskDockBottomInset(),
           dockRight: this.$downloadDockRight,
           dockTop: this.$downloadDockTop,
           onOpen: () => { this.switchDownloadTaskSurface(true) }
